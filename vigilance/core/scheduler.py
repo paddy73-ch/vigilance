@@ -33,6 +33,7 @@ async def run_scan_job():
                 tools_found=result.tools_found,
                 new_findings=result.new_findings,
             )
+            await db.commit()
             logger.info(f"Scan completed: {result}")
         except Exception as e:
             logger.error(f"Scan job failed: {e}")
@@ -132,6 +133,7 @@ async def trigger_scan_now(full: bool = False) -> int:
             tools_found=result.tools_found,
             new_findings=result.new_findings,
         )
+        await db.commit()
         return scan_run.id
 
 
