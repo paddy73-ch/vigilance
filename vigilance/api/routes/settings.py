@@ -27,6 +27,16 @@ async def get_settings(
         "ssh_parallel_jobs": settings.ssh_parallel_jobs,
         "gotify_configured": bool(settings.notifications and settings.notifications.gotify and settings.notifications.gotify.url),
         "proxmox_nodes_configured": len(settings.proxmox_nodes),
+        "proxmox_nodes": [
+            {
+                "name": node.name,
+                "url": node.url,
+                "token_id": node.token_id,
+                "verify_tls": node.verify_tls,
+                "ssh_host": node.ssh_host,
+            }
+            for node in settings.proxmox_nodes
+        ],
     }
 
 

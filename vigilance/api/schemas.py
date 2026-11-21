@@ -32,6 +32,7 @@ class ProxmoxNodeUpdate(BaseModel):
 
 
 class ProxmoxNodeResponse(ProxmoxNodeBase):
+    token_secret: str = Field(default="", exclude=True)
     id: int
     created_at: datetime
     updated_at: datetime

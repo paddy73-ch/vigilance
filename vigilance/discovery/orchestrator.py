@@ -1,5 +1,6 @@
 import json
 import logging
+import re
 from dataclasses import dataclass
 from datetime import datetime
 from typing import List, Optional
@@ -67,6 +68,13 @@ class DiscoveryOrchestrator:
             vms = await client.get_vms(node.name)
             lxcs = await client.get_lxcs(node.name)
 
+            for lxc in lxcs:
+                try:
+                    config = await client.get_lxc_config(node.name, lxc.vmid)
+                    lxc.ip = self._ip_from_lxc_config(config)
+                except Exception as exc:
+                    logger.warning("Could not read LXC network config for %s: %s", lxc.vmid, exc)
+
             all_targets = []
             for vm in vms:
                 all_targets.append(("qemu", vm))
@@ -78,6 +86,16 @@ class DiscoveryOrchestrator:
             # Process each VM/LXC
             for vtype, target in all_targets:
                 await self._process_inventory_target(node, vtype, target, scan_run_id, result)
+
+    @staticmethod
+    def _ip_from_lxc_config(config: dict) -> Optional[str]:
+        for value in config.values():
+            if not isinstance(value, str) or not value.startswith("name="):
+                continue
+            match = re.search(r"(?:^|,)ip=([^/,]+)", value)
+            if match and match.group(1) not in {"dhcp", "manual"}:
+                return match.group(1).split("/")[0]
+        return None
 
     async def _process_inventory_target(
         self,

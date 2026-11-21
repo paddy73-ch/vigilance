@@ -39,6 +39,7 @@ class ProxmoxVM:
     diskread: int
     diskwrite: int
     uptime: int
+    ip: Optional[str] = None
 
 
 @dataclass
@@ -56,6 +57,7 @@ class ProxmoxLXC:
     diskread: int
     diskwrite: int
     uptime: int
+    ip: Optional[str] = None
 
 
 class ProxmoxClient:
