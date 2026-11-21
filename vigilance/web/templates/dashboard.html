@@ -1,0 +1,226 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - Vigilance{% endblock %}
+
+{% block content %}
+<div x-data="dashboard()" x-init="loadStats()">
+    <!-- Stats Cards -->
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6 border border-gray-200 dark:border-gray-700">
+            <div class="flex items-center">
+                <div class="p-3 rounded-full bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-400">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"></path>
+                    </svg>
+                </div>
+                <div class="ml-4">
+                    <p class="text-sm text-gray-500 dark:text-gray-400">Proxmox Nodes</p>
+                    <p class="text-2xl font-bold">{{ stats.total_nodes }}</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6 border border-gray-200 dark:border-gray-700">
+            <div class="flex items-center">
+                <div class="p-3 rounded-full bg-green-100 dark:bg-green-900 text-green-600 dark:text-green-400">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9v2m0 4v2m5-6v2m0 4v2m-10-4h.01M9 16h.01M17 16h.01"></path>
+                    </svg>
+                </div>
+                <div class="ml-4">
+                    <p class="text-sm text-gray-500 dark:text-gray-400">VMs / LXCs</p>
+                    <p class="text-2xl font-bold">{{ stats.total_vms }} / {{ stats.total_lxcs }}</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6 border border-gray-200 dark:border-gray-700">
+            <div class="flex items-center">
+                <div class="p-3 rounded-full bg-purple-100 dark:bg-purple-900 text-purple-600 dark:text-purple-400">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"></path>
+                    </svg>
+                </div>
+                <div class="ml-4">
+                    <p class="text-sm text-gray-500 dark:text-gray-400">Discovered Tools</p>
+                    <p class="text-2xl font-bold">{{ stats.total_tools }}</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6 border border-gray-200 dark:border-gray-700">
+            <div class="flex items-center">
+                <div class="p-3 rounded-full bg-red-100 dark:bg-red-900 text-red-600 dark:text-red-400">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
+                    </svg>
+                </div>
+                <div class="ml-4">
+                    <p class="text-sm text-gray-500 dark:text-gray-400">Open Findings</p>
+                    <p class="text-2xl font-bold">{{ stats.open_findings }}</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Severity Breakdown -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6 border border-gray-200 dark:border-gray-700">
+            <h3 class="text-lg font-semibold mb-4">Findings by Severity</h3>
+            <div class="space-y-3">
+                <div class="flex items-center justify-between">
+                    <span class="text-gray-500 dark:text-gray-400">Critical</span>
+                    <span class="font-bold text-red-600 dark:text-red-400">{{ stats.findings_by_severity.CRITICAL or 0 }}</span>
+                </div>
+                <div class="flex items-center justify-between">
+                    <span class="text-gray-500 dark:text-gray-400">High</span>
+                    <span class="font-bold text-orange-600 dark:text-orange-400">{{ stats.findings_by_severity.HIGH or 0 }}</span>
+                </div>
+                <div class="flex items-center justify-between">
+                    <span class="text-gray-500 dark:text-gray-400">Medium</span>
+                    <span class="font-bold text-yellow-600 dark:text-yellow-400">{{ stats.findings_by_severity.MEDIUM or 0 }}</span>
+                </div>
+                <div class="flex items-center justify-between">
+                    <span class="text-gray-500 dark:text-gray-400">Low</span>
+                    <span class="font-bold text-blue-600 dark:text-blue-400">{{ stats.findings_by_severity.LOW or 0 }}</span>
+                </div>
+                <div class="flex items-center justify-between">
+                    <span class="text-gray-500 dark:text-gray-400">None</span>
+                    <span class="font-bold text-gray-500 dark:text-gray-400">{{ stats.findings_by_severity.NONE or 0 }}</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6 border border-gray-200 dark:border-gray-700">
+            <h3 class="text-lg font-semibold mb-4">Findings by Status</h3>
+            <div class="space-y-3">
+                <div class="flex items-center justify-between">
+                    <span class="text-gray-500 dark:text-gray-400">Open</span>
+                    <span class="font-bold text-red-600 dark:text-red-400">{{ stats.findings_by_status.open or 0 }}</span>
+                </div>
+                <div class="flex items-center justify-between">
+                    <span class="text-gray-500 dark:text-gray-400">Fixed</span>
+                    <span class="font-bold text-green-600 dark:text-green-400">{{ stats.findings_by_status.fixed or 0 }}</span>
+                </div>
+                <div class="flex items-center justify-between">
+                    <span class="text-gray-500 dark:text-gray-400">Suppressed</span>
+                    <span class="font-bold text-yellow-600 dark:text-yellow-400">{{ stats.findings_by_status.suppressed or 0 }}</span>
+                </div>
+                <div class="flex items-center justify-between">
+                    <span class="text-gray-500 dark:text-gray-400">Unknown Version</span>
+                    <span class="font-bold text-gray-500 dark:text-gray-400">{{ stats.findings_by_status.unknown_version or 0 }}</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Recent Scans & CVE Sync Status -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6 border border-gray-200 dark:border-gray-700">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-lg font-semibold">Recent Scans</h3>
+                <button @click="triggerScan()" class="btn-primary text-sm">
+                    <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                    </svg>
+                    Scan Now
+                </button>
+            </div>
+            <div class="space-y-3 max-h-64 overflow-y-auto">
+                <template x-for="scan in stats.recent_scans" :key="scan.id">
+                    <div class="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700 rounded">
+                        <div>
+                            <p class="font-medium">{{ scan.scan_type }} - {{ formatDate(scan.started_at) }}</p>
+                            <p class="text-sm text-gray-500 dark:text-gray-400">
+                                Nodes: {{ scan.nodes_scanned }}, Tools: {{ scan.tools_found }}, New: {{ scan.new_findings }}
+                            </p>
+                        </div>
+                        <span :class="getStatusClass(scan.status)">{{ scan.status }}</span>
+                    </div>
+                </template>
+            </div>
+        </div>
+
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6 border border-gray-200 dark:border-gray-700">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-lg font-semibold">CVE Sync Status</h3>
+                <button @click="triggerCveSync()" class="btn-primary text-sm">
+                    <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                    </svg>
+                    Sync Now
+                </button>
+            </div>
+            <div class="space-y-3 max-h-64 overflow-y-auto">
+                <template x-for="sync in stats.cve_sync_status" :key="sync.source">
+                    <div class="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700 rounded">
+                        <div>
+                            <p class="font-medium capitalize">{{ sync.source }}</p>
+                            <p class="text-sm text-gray-500 dark:text-gray-400">
+                                {{ sync.entries_count }} entries, Last: {{ sync.last_success_at ? formatDate(sync.last_success_at) : 'Never' }}
+                            </p>
+                        </div>
+                        <span :class="sync.error_message ? 'text-red-600' : 'text-green-600'">
+                            {{ sync.error_message ? 'Error' : 'OK' }}
+                        </span>
+                    </div>
+                </template>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function dashboard() {
+    return {
+        stats: {},
+        async loadStats() {
+            try {
+                const resp = await fetch('/api/dashboard/stats');
+                this.stats = await resp.json();
+            } catch (e) {
+                console.error('Failed to load stats', e);
+            }
+        },
+        async triggerScan() {
+            if (!confirm('Start a new scan?')) return;
+            try {
+                const resp = await fetch('/api/scans/trigger', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ full: false })
+                });
+                const data = await resp.json();
+                alert(data.message);
+                this.loadStats();
+            } catch (e) {
+                alert('Failed to trigger scan');
+            }
+        },
+        async triggerCveSync() {
+            if (!confirm('Sync CVE database now?')) return;
+            try {
+                const resp = await fetch('/api/cves/sync', { method: 'POST' });
+                const data = await resp.json();
+                alert('CVE sync completed');
+                this.loadStats();
+            } catch (e) {
+                alert('Failed to trigger CVE sync');
+            }
+        },
+        formatDate(dateStr) {
+            if (!dateStr) return 'Never';
+            return new Date(dateStr).toLocaleString();
+        },
+        getStatusClass(status) {
+            const classes = {
+                'running': 'text-blue-600',
+                'completed': 'text-green-600',
+                'failed': 'text-red-600',
+            };
+            return classes[status] || 'text-gray-600';
+        }
+    }
+}
+</script>
+{% endblock %}

@@ -1,0 +1,158 @@
+{% extends "base.html" %}
+
+{% block title %}Tool Overrides - Vigilance{% endblock %}
+
+{% block content %}
+<div x-data="overridesPage()" x-init="loadOverrides()">
+    <div class="flex items-center justify-between mb-6">
+        <h1 class="text-2xl font-bold">Tool Overrides</h1>
+        <button @click="showCreateModal = true" class="btn-primary">
+            <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
+            </svg>
+            Add Override
+        </button>
+    </div>
+
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow border border-gray-200 dark:border-gray-700 overflow-hidden">
+        <table class="w-full">
+            <thead class="bg-gray-50 dark:bg-gray-700">
+                <tr>
+                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Tool Name</th>
+                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">CPE Name</th>
+                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Package Name</th>
+                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Ecosystem</th>
+                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Version Pattern</th>
+                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Description</th>
+                    <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Actions</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
+                <template x-for="override in overrides" :key="override.id">
+                    <tr class="hover:bg-gray-50 dark:hover:bg-gray-700">
+                        <td class="px-4 py-3 font-mono text-gray-900 dark:text-gray-100" x-text="override.tool_name"></td>
+                        <td class="px-4 py-3 text-sm font-mono text-gray-500 dark:text-gray-400 truncate max-w-xs" x-text="override.cpe_name || ''"></td>
+                        <td class="px-4 py-3 text-sm text-gray-500 dark:text-gray-400" x-text="override.package_name || ''"></td>
+                        <td class="px-4 py-3 text-sm text-gray-500 dark:text-gray-400" x-text="override.ecosystem || ''"></td>
+                        <td class="px-4 py-3 text-sm font-mono text-gray-500 dark:text-gray-400" x-text="override.version_pattern || ''"></td>
+                        <td class="px-4 py-3 text-sm text-gray-500 dark:text-gray-400 max-w-xs truncate" x-text="override.description || ''"></td>
+                        <td class="px-4 py-3 text-right text-sm">
+                            <button @click="editOverride(override)" class="text-blue-600 hover:text-blue-900 mr-2">Edit</button>
+                            <button @click="deleteOverride(override.tool_name)" class="text-red-600 hover:text-red-900">Delete</button>
+                        </td>
+                    </tr>
+                </template>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Create/Edit Modal -->
+    <div x-show="showCreateModal" x-transition class="fixed inset-0 z-50 overflow-y-auto" @click.outside="closeModal()">
+        <div class="flex min-h-full items-center justify-center p-4">
+            <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full p-6">
+                <h3 class="text-lg font-semibold mb-4" x-text="editingOverride ? 'Edit Override' : 'Add Override'"></h3>
+                <form @submit.prevent="saveOverride()">
+                    <input type="hidden" name="id" x-model="form.id">
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Tool Name</label>
+                        <input type="text" name="tool_name" x-model="form.tool_name" :required="!editingOverride" :readonly="editingOverride" class="input-field w-full">
+                    </div>
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">CPE Name</label>
+                        <input type="text" name="cpe_name" x-model="form.cpe_name" placeholder="cpe:2.3:a:vendor:product" class="input-field w-full">
+                    </div>
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Package Name</label>
+                        <input type="text" name="package_name" x-model="form.package_name" placeholder="nginx, postgresql, etc." class="input-field w-full">
+                    </div>
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Ecosystem</label>
+                        <select name="ecosystem" x-model="form.ecosystem" class="input-field w-full">
+                            <option value="">Auto-detect</option>
+                            <option value="debian">Debian</option>
+                            <option value="ubuntu">Ubuntu</option>
+                            <option value="alpine">Alpine</option>
+                            <option value="docker">Docker</option>
+                            <option value="pypi">PyPI</option>
+                            <option value="npm">npm</option>
+                            <option value="maven">Maven</option>
+                            <option value="golang">Go</option>
+                            <option value="nodejs">Node.js</option>
+                        </select>
+                    </div>
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Version Pattern (regex)</label>
+                        <input type="text" name="version_pattern" x-model="form.version_pattern" placeholder="v(\\d+\\.\\d+\\.\\d+)" class="input-field w-full">
+                    </div>
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Description</label>
+                        <textarea name="description" x-model="form.description" rows="2" class="input-field w-full"></textarea>
+                    </div>
+                    <div class="flex justify-end space-x-3">
+                        <button type="button" @click="closeModal()" class="btn-secondary">Cancel</button>
+                        <button type="submit" class="btn-primary">Save</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function overridesPage() {
+    return {
+        overrides: [],
+        showCreateModal: false,
+        editingOverride: false,
+        form: { tool_name: '', cpe_name: '', package_name: '', ecosystem: '', version_pattern: '', description: '' },
+
+        async loadOverrides() {
+            try {
+                const resp = await fetch('/api/overrides');
+                this.overrides = await resp.json();
+            } catch (e) {
+                console.error('Failed to load overrides', e);
+            }
+        },
+        editOverride(override) {
+            this.editingOverride = true;
+            this.form = { ...override };
+            this.showCreateModal = true;
+        },
+        closeModal() {
+            this.showCreateModal = false;
+            this.editingOverride = false;
+            this.form = { tool_name: '', cpe_name: '', package_name: '', ecosystem: '', version_pattern: '', description: '' };
+        },
+        async saveOverride() {
+            const method = this.editingOverride ? 'PATCH' : 'POST';
+            const url = this.editingOverride ? '/api/overrides/' + this.form.tool_name : '/api/overrides';
+            try {
+                const resp = await fetch(url, {
+                    method,
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(this.form)
+                });
+                if (resp.ok) {
+                    this.closeModal();
+                    this.loadOverrides();
+                } else {
+                    alert('Failed to save override');
+                }
+            } catch (e) {
+                alert('Error saving override');
+            }
+        },
+        async deleteOverride(toolName) {
+            if (!confirm('Delete this override?')) return;
+            try {
+                const resp = await fetch('/api/overrides/' + toolName, { method: 'DELETE' });
+                if (resp.ok) this.loadOverrides();
+            } catch (e) {
+                alert('Failed to delete override');
+            }
+        }
+    }
+}
+</script>
+{% endblock %}

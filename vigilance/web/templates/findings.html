@@ -1,0 +1,256 @@
+{% extends "base.html" %}
+
+{% block title %}Findings - Vigilance{% endblock %}
+
+{% block content %}
+<div x-data="findingsPage()" x-init="loadFindings()">
+    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-6 gap-4">
+        <h1 class="text-2xl font-bold">Vulnerability Findings</h1>
+        <div class="flex flex-wrap gap-2">
+            <select x-model="filters.status" @change="loadFindings()" class="input-field">
+                <option value="">All Status</option>
+                <option value="open">Open</option>
+                <option value="fixed">Fixed</option>
+                <option value="suppressed">Suppressed</option>
+                <option value="unknown_version">Unknown Version</option>
+            </select>
+            <select x-model="filters.severity" @change="loadFindings()" class="input-field">
+                <option value="">All Severities</option>
+                <option value="CRITICAL">Critical</option>
+                <option value="HIGH">High</option>
+                <option value="MEDIUM">Medium</option>
+                <option value="LOW">Low</option>
+                <option value="NONE">None</option>
+            </select>
+            <input type="text" x-model="filters.search" @input.debounce.300ms="loadFindings()" placeholder="Search tools, CVEs..." class="input-field w-64">
+        </div>
+    </div>
+
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow border border-gray-200 dark:border-gray-700 overflow-hidden">
+        <table class="w-full">
+            <thead class="bg-gray-50 dark:bg-gray-700">
+                <tr>
+                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">CVE</th>
+                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Severity</th>
+                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Tool</th>
+                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Version</th>
+                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Host</th>
+                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Status</th>
+                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">First Seen</th>
+                    <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Actions</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
+                <template x-for="finding in findings" :key="finding.id">
+                    <tr class="hover:bg-gray-50 dark:hover:bg-gray-700">
+                        <td class="px-4 py-3">
+                            <a :href="'/api/cves/' + finding.cve_entry_id" target="_blank" class="font-mono text-blue-600 hover:underline" x-text="finding.cve_id"></a>
+                        </td>
+                        <td class="px-4 py-3">
+                            <span :class="getSeverityClass(finding.severity)" x-text="finding.severity"></span>
+                        </td>
+                        <td class="px-4 py-3 text-sm text-gray-900 dark:text-gray-100" x-text="finding.tool_name"></td>
+                        <td class="px-4 py-3 text-sm font-mono text-gray-500 dark:text-gray-400" x-text="finding.detected_version"></td>
+                        <td class="px-4 py-3 text-sm text-gray-500 dark:text-gray-400" x-text="finding.inventory_name"></td>
+                        <td class="px-4 py-3">
+                            <span :class="getStatusClass(finding.status)" x-text="finding.status"></span>
+                        </td>
+                        <td class="px-4 py-3 text-sm text-gray-500 dark:text-gray-400" x-text="formatDate(finding.first_seen_at)"></td>
+                        <td class="px-4 py-3 text-right text-sm">
+                            <button @click="viewDetails(finding.id)" class="text-blue-600 hover:text-blue-900 mr-2">Details</button>
+                            <button x-show="finding.status === 'open'" @click="suppressFinding(finding)" class="text-yellow-600 hover:text-yellow-900 mr-2">Suppress</button>
+                            <button x-show="finding.status === 'suppressed'" @click="unsuppressFinding(finding.id)" class="text-green-600 hover:text-green-900">Unsuppress</button>
+                        </td>
+                    </tr>
+                </template>
+            </tbody>
+        </table>
+
+        <!-- Pagination -->
+        <div class="px-4 py-3 border-t border-gray-200 dark:border-gray-700 flex items-center justify-between">
+            <span class="text-sm text-gray-500 dark:text-gray-400" x-text="'Showing ' + ((pagination.page - 1) * pagination.limit + 1) + ' to ' + Math.min(pagination.page * pagination.limit, pagination.total) + ' of ' + pagination.total"></span>
+            <div class="flex space-x-2">
+                <button @click="prevPage()" :disabled="pagination.page <= 1" class="btn-secondary text-sm">Previous</button>
+                <button @click="nextPage()" :disabled="pagination.page * pagination.limit >= pagination.total" class="btn-primary text-sm">Next</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Details Modal -->
+    <div x-show="showDetailsModal" x-transition class="fixed inset-0 z-50 overflow-y-auto" @click.outside="closeDetailsModal()">
+        <div class="flex min-h-full items-center justify-center p-4">
+            <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-3xl w-full p-6 max-h-[80vh] overflow-y-auto">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="text-lg font-semibold">Finding Details</h3>
+                    <button @click="closeDetailsModal()" class="text-gray-500 hover:text-gray-700">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                        </svg>
+                    </button>
+                </div>
+                <div x-html="detailsHtml"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Suppress Modal -->
+    <div x-show="showSuppressModal" x-transition class="fixed inset-0 z-50 overflow-y-auto" @click.outside="closeSuppressModal()">
+        <div class="flex min-h-full items-center justify-center p-4">
+            <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full p-6">
+                <h3 class="text-lg font-semibold mb-4">Suppress Finding</h3>
+                <form @submit.prevent="confirmSuppress()">
+                    <input type="hidden" x-model="suppressFindingId">
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Reason</label>
+                        <textarea name="reason" x-model="suppressReason" required rows="3" class="input-field w-full"></textarea>
+                    </div>
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Expires (optional)</label>
+                        <input type="datetime-local" name="expires_at" x-model="suppressExpires" class="input-field w-full">
+                    </div>
+                    <div class="flex justify-end space-x-3">
+                        <button type="button" @click="closeSuppressModal()" class="btn-secondary">Cancel</button>
+                        <button type="submit" class="btn-primary">Suppress</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function findingsPage() {
+    return {
+        findings: [],
+        filters: { status: '', severity: '', search: '' },
+        pagination: { page: 1, limit: 50, total: 0 },
+        showDetailsModal: false,
+        detailsHtml: '',
+        showSuppressModal: false,
+        suppressFindingId: null,
+        suppressReason: '',
+        suppressExpires: '',
+
+        async loadFindings() {
+            const params = new URLSearchParams();
+            params.append('status', this.filters.status);
+            params.append('severity', this.filters.severity);
+            params.append('limit', this.pagination.limit);
+            params.append('offset', (this.pagination.page - 1) * this.pagination.limit);
+            if (this.filters.search) params.append('tool_name', this.filters.search);
+
+            try {
+                const resp = await fetch('/api/findings?' + params.toString());
+                const data = await resp.json();
+                this.findings = data.map(f => ({
+                    ...f,
+                    cve_id: f.cve?.cve_id || 'Unknown',
+                    severity: f.cve?.severity || 'NONE',
+                    tool_name: f.tool?.tool_name || 'Unknown',
+                    detected_version: f.tool?.detected_version || 'Unknown',
+                    inventory_name: f.tool?.inventory?.name || 'Unknown',
+                }));
+            } catch (e) {
+                console.error('Failed to load findings', e);
+            }
+        },
+        async viewDetails(id) {
+            try {
+                const resp = await fetch('/api/findings/' + id);
+                const finding = await resp.json();
+                this.detailsHtml = this.renderDetails(finding);
+                this.showDetailsModal = true;
+            } catch (e) {
+                alert('Failed to load details');
+            }
+        },
+        renderDetails(f) {
+            const cve = f.cve;
+            const tool = f.tool;
+            const inv = tool?.inventory;
+            let html = `
+                <div class="space-y-4">
+                    <div class="p-4 bg-gray-50 dark:bg-gray-700 rounded">
+                        <h4 class="font-semibold">${cve?.cve_id || 'Unknown'}</h4>
+                        <p class="text-sm text-gray-500">${cve?.title || 'No title'}</p>
+                    </div>
+                    <dl class="space-y-2 text-sm">
+                        <dt class="font-medium">Severity:</dt>
+                        <dd class="text-${this.getSeverityColor(cve?.severity)}">${cve?.severity || 'NONE'}</dd>
+                        <dt class="font-medium">CVSS:</dt>
+                        <dd>${cve?.cvss_score || 'N/A'}</dd>
+                        <dt class="font-medium">Tool:</dt>
+                        <dd>${tool?.tool_name || 'Unknown'} (${tool?.detected_version || 'Unknown'})</dd>
+                        <dt class="font-medium">Host:</dt>
+                        <dd>${inv?.name || 'Unknown'} (${inv?.ip_address || 'No IP'})</dd>
+                        <dt class="font-medium">Fixed Version:</dt>
+                        <dd>${f.fixed_version || 'Unknown'}</dd>
+                        <dt class="font-medium">Description:</dt>
+                        <dd class="whitespace-pre-wrap">${cve?.description || 'No description'}</dd>
+                    </dl>
+                </div>
+            `;
+            if (cve?.references) {
+                try {
+                    const refs = JSON.parse(cve.references);
+                    if (refs.length) {
+                        html += '<div class="mt-4"><h5 class="font-medium mb-2">References:</h5><ul class="space-y-1">';
+                        refs.slice(0, 10).forEach(r => {
+                            html += `<li><a href="${r.url}" target="_blank" class="text-blue-600 text-sm">${r.type}: ${r.url}</a></li>`;
+                        });
+                        html += '</ul></div>';
+                    }
+                } catch (e) {}
+            }
+            return html;
+        },
+        getSeverityColor(sev) {
+            const colors = { CRITICAL: 'red-600', HIGH: 'orange-600', MEDIUM: 'yellow-600', LOW: 'blue-600', NONE: 'gray-500' };
+            return colors[sev] || 'gray-500';
+        },
+        getSeverityClass(sev) {
+            const classes = { CRITICAL: 'bg-red-100 text-red-800', HIGH: 'bg-orange-100 text-orange-800', MEDIUM: 'bg-yellow-100 text-yellow-800', LOW: 'bg-blue-100 text-blue-800', NONE: 'bg-gray-100 text-gray-800' };
+            return 'px-2 py-1 rounded text-xs font-medium ' + (classes[sev] || classes.NONE);
+        },
+        getStatusClass(status) {
+            const classes = { open: 'bg-red-100 text-red-800', fixed: 'bg-green-100 text-green-800', suppressed: 'bg-yellow-100 text-yellow-800', unknown_version: 'bg-gray-100 text-gray-800' };
+            return 'px-2 py-1 rounded text-xs font-medium ' + (classes[status] || classes.open);
+        },
+        formatDate(dateStr) {
+            if (!dateStr) return '';
+            return new Date(dateStr).toLocaleString();
+        },
+        prevPage() { if (this.pagination.page > 1) { this.pagination.page--; this.loadFindings(); } },
+        nextPage() { if (this.pagination.page * this.pagination.limit < this.pagination.total) { this.pagination.page++; this.loadFindings(); } },
+        suppressFinding(f) {
+            this.suppressFindingId = f.id;
+            this.suppressReason = '';
+            this.suppressExpires = '';
+            this.showSuppressModal = true;
+        },
+        closeSuppressModal() { this.showSuppressModal = false; },
+        async confirmSuppress() {
+            try {
+                const resp = await fetch('/api/findings/' + this.suppressFindingId + '/suppress', {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ reason: this.suppressReason, expires_at: this.suppressExpires || null })
+                });
+                if (resp.ok) {
+                    this.closeSuppressModal();
+                    this.loadFindings();
+                }
+            } catch (e) { alert('Failed to suppress'); }
+        },
+        async unsuppressFinding(id) {
+            if (!confirm('Remove suppression?')) return;
+            try {
+                const resp = await fetch('/api/findings/' + id + '/unsuppress', { method: 'PATCH' });
+                if (resp.ok) this.loadFindings();
+            } catch (e) { alert('Failed to unsuppress'); }
+        },
+        closeDetailsModal() { this.showDetailsModal = false; }
+    }
+}
+</script>
+{% endblock %}

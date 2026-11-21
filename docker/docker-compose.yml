@@ -1,0 +1,37 @@
+version: '3.8'
+
+services:
+  vigilance:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: vigilance
+    restart: unless-stopped
+    user: "1000:1000"
+    environment:
+      - VIGILANCE_DB_PATH=/app/data/vigilance.db
+      - VIGILANCE_CONFIG_PATH=/app/data/config.yaml
+    env_file:
+      - ../.env
+    volumes:
+      - vigilance_data:/app/data
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+
+volumes:
+  vigilance_data:
+    driver: local

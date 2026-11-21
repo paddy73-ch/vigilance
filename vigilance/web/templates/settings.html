@@ -1,0 +1,177 @@
+{% extends "base.html" %}
+
+{% block title %}Settings - Vigilance{% endblock %}
+
+{% block content %}
+<div x-data="settingsPage()" x-init="loadSettings()">
+    <h1 class="text-2xl font-bold mb-6">Settings</h1>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <!-- General Settings -->
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6 border border-gray-200 dark:border-gray-700">
+            <h2 class="text-lg font-semibold mb-4">General</h2>
+            <dl class="space-y-3 text-sm">
+                <div class="flex justify-between">
+                    <dt class="text-gray-500 dark:text-gray-400">Auth Mode</dt>
+                    <dd class="font-medium" x-text="settings.auth_mode"></dd>
+                </div>
+                <div class="flex justify-between">
+                    <dt class="text-gray-500 dark:text-gray-400">Scan Interval</dt>
+                    <dd class="font-medium" x-text="settings.scan_interval_hours + ' hours'"></dd>
+                </div>
+                <div class="flex justify-between">
+                    <dt class="text-gray-500 dark:text-gray-400">CVE Sync Interval</dt>
+                    <dd class="font-medium" x-text="settings.cve_sync_interval_hours + ' hours'"></dd>
+                </div>
+                <div class="flex justify-between">
+                    <dt class="text-gray-500 dark:text-gray-400">SSH Timeout</dt>
+                    <dd class="font-medium" x-text="settings.ssh_timeout + ' seconds'"></dd>
+                </div>
+                <div class="flex justify-between">
+                    <dt class="text-gray-500 dark:text-gray-400">SSH Parallel Jobs</dt>
+                    <dd class="font-medium" x-text="settings.ssh_parallel_jobs"></dd>
+                </div>
+                <div class="flex justify-between">
+                    <dt class="text-gray-500 dark:text-gray-400">Proxmox Nodes Configured</dt>
+                    <dd class="font-medium" x-text="settings.proxmox_nodes_configured"></dd>
+                </div>
+                <div class="flex justify-between">
+                    <dt class="text-gray-500 dark:text-gray-400">Gotify Configured</dt>
+                    <dd class="font-medium" x-text="settings.gotify_configured ? 'Yes' : 'No'"></dd>
+                </div>
+            </dl>
+        </div>
+
+        <!-- Gotify Settings -->
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6 border border-gray-200 dark:border-gray-700">
+            <h2 class="text-lg font-semibold mb-4">Gotify Notifications</h2>
+            <div x-show="!gotifyConfigured" class="mb-4 p-4 bg-yellow-50 dark:bg-yellow-900 border border-yellow-200 dark:border-yellow-800 rounded">
+                <p class="text-yellow-800 dark:text-yellow-200">Gotify is not configured. Set VIGILANCE_GOTIFY_URL and VIGILANCE_GOTIFY_TOKEN in .env</p>
+            </div>
+            <div x-show="gotifyConfigured" class="space-y-4">
+                <div class="flex justify-between">
+                    <span class="text-gray-500 dark:text-gray-400">Min Severity</span>
+                    <span class="font-medium" x-text="gotifyConfig.min_severity"></span>
+                </div>
+                <div class="flex justify-between">
+                    <span class="text-gray-500 dark:text-gray-400">Digest Mode</span>
+                    <span class="font-medium" x-text="gotifyConfig.digest_mode ? 'Enabled' : 'Disabled'"></span>
+                </div>
+                <div class="flex justify-between">
+                    <span class="text-gray-500 dark:text-gray-400">Digest Interval</span>
+                    <span class="font-medium" x-text="gotifyConfig.digest_interval_minutes + ' minutes'"></span>
+                </div>
+                <button @click="testGotify()" class="btn-primary w-full" :disabled="testingGotify">
+                    <template x-if="!testingGotify">
+                        <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path>
+                        </svg>
+                        Test Gotify Connection
+                    </template>
+                    <template x-if="testingGotify">Testing...</template>
+                </button>
+                <div x-show="gotifyTestResult" class="p-3 rounded" :class="gotifyTestSuccess ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'" x-text="gotifyTestMessage"></div>
+            </div>
+        </div>
+
+        <!-- API Token -->
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6 border border-gray-200 dark:border-gray-700 lg:col-span-2">
+            <h2 class="text-lg font-semibold mb-4">API Token</h2>
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-gray-500 dark:text-gray-400">Used for write access (scans, sync, suppressions) when using Reverse Proxy auth.</p>
+                    <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">Set VIGILANCE_API_TOKEN in .env</p>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <code class="bg-gray-100 dark:bg-gray-700 px-3 py-1 rounded text-sm" x-text="tokenPreview"></code>
+                </div>
+            </div>
+        </div>
+
+        <!-- Proxmox Nodes Summary -->
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6 border border-gray-200 dark:border-gray-700 lg:col-span-2">
+            <h2 class="text-lg font-semibold mb-4">Proxmox Nodes</h2>
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead>
+                        <tr class="text-left border-b border-gray-200 dark:border-gray-700">
+                            <th class="pb-2 font-medium text-gray-500 dark:text-gray-400">Name</th>
+                            <th class="pb-2 font-medium text-gray-500 dark:text-gray-400">URL</th>
+                            <th class="pb-2 font-medium text-gray-500 dark:text-gray-400">Token ID</th>
+                            <th class="pb-2 font-medium text-gray-500 dark:text-gray-400">TLS Verify</th>
+                            <th class="pb-2 font-medium text-gray-500 dark:text-gray-400">SSH Host</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <template x-for="node in proxmoxNodes" :key="node.name">
+                            <tr class="border-b border-gray-100 dark:border-gray-800">
+                                <td class="py-2 font-mono" x-text="node.name"></td>
+                                <td class="py-2 text-gray-500 dark:text-gray-400" x-text="node.url"></td>
+                                <td class="py-2 font-mono" x-text="node.token_id"></td>
+                                <td class="py-2" x-text="node.verify_tls ? 'Yes' : 'No'"></td>
+                                <td class="py-2 text-gray-500 dark:text-gray-400" x-text="node.ssh_host || 'Not configured'"></td>
+                            </tr>
+                        </template>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function settingsPage() {
+    return {
+        settings: {},
+        gotifyConfig: {},
+        gotifyConfigured: false,
+        testingGotify: false,
+        gotifyTestResult: false,
+        gotifyTestSuccess: false,
+        gotifyTestMessage: '',
+        tokenPreview: '',
+        proxmoxNodes: [],
+
+        async loadSettings() {
+            try {
+                const [settingsResp, tokenResp] = await Promise.all([
+                    fetch('/api/settings'),
+                    fetch('/api/settings/api-token')
+                ]);
+                this.settings = await settingsResp.json();
+                const tokenData = await tokenResp.json();
+                this.tokenPreview = tokenData.preview || 'Not configured';
+                this.gotifyConfigured = this.settings.gotify_configured;
+                this.proxmoxNodes = this.settings.proxmox_nodes || [];
+
+                // Load gotify config from settings
+                this.gotifyConfig = {
+                    min_severity: 'HIGH',
+                    digest_mode: false,
+                    digest_interval_minutes: 60,
+                };
+            } catch (e) {
+                console.error('Failed to load settings', e);
+            }
+        },
+        async testGotify() {
+            this.testingGotify = true;
+            this.gotifyTestResult = false;
+            try {
+                const resp = await fetch('/api/settings/gotify/test', { method: 'POST' });
+                const data = await resp.json();
+                this.gotifyTestSuccess = data.success;
+                this.gotifyTestMessage = data.message;
+                this.gotifyTestResult = true;
+            } catch (e) {
+                this.gotifyTestSuccess = false;
+                this.gotifyTestMessage = 'Failed to send test: ' + e.message;
+                this.gotifyTestResult = true;
+            } finally {
+                this.testingGotify = false;
+            }
+        }
+    }
+}
+</script>
+{% endblock %}

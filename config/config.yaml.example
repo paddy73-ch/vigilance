@@ -1,0 +1,106 @@
+proxmox:
+  nodes:
+    - name: "pve-node1"
+      url: "https://pve-node1.example.com:8006"
+      token_id: "vigilance@pam"
+      token_secret: "from-env-or-here"
+      verify_tls: true
+      ssh:
+        host: "pve-node1.example.com"
+        port: 22
+        user: "root"
+        key_path: "/app/data/ssh/id_rsa"
+        known_hosts: "/app/data/ssh/known_hosts"
+
+    - name: "pve-node2"
+      url: "https://pve-node2.example.com:8006"
+      token_id: "vigilance@pam"
+      token_secret: "from-env-or-here"
+      verify_tls: true
+      ssh:
+        host: "pve-node2.example.com"
+        port: 22
+        user: "root"
+        key_path: "/app/data/ssh/id_rsa"
+        known_hosts: "/app/data/ssh/known_hosts"
+
+discovery:
+  ssh:
+    timeout: 30
+    parallel_jobs: 10
+    strict_host_key_checking: true
+  docker:
+    enabled: true
+  packages:
+    enabled: true
+    managers: ["dpkg", "apk", "rpm"]
+  services:
+    enabled: true
+    include_patterns:
+      - "nginx"
+      - "apache2"
+      - "postgresql"
+      - "mysql"
+      - "redis"
+      - "docker"
+  custom_checks:
+    - name: "nodejs_version"
+      command: "node --version"
+      version_regex: "v(\\d+\\.\\d+\\.\\d+)"
+      ecosystem: "nodejs"
+    - name: "go_version"
+      command: "go version"
+      version_regex: "go(\\d+\\.\\d+\\.\\d+)"
+      ecosystem: "go"
+
+cve_sync:
+  sources:
+    osv:
+      enabled: true
+      interval_hours: 6
+    ghsa:
+      enabled: true
+      interval_hours: 6
+    nvd:
+      enabled: false
+      interval_hours: 24
+      api_key: ""
+    debian:
+      enabled: true
+      interval_hours: 12
+      suites: ["bookworm", "bullseye", "trixie"]
+    ubuntu:
+      enabled: true
+      interval_hours: 12
+      releases: ["noble", "jammy", "focal"]
+
+notifications:
+  gotify:
+    enabled: true
+    url: "https://gotify.example.com"
+    token: "from-env"
+    min_severity: "HIGH"
+    digest_mode: false
+    digest_interval_minutes: 60
+  webhooks:
+    - name: "slack"
+      url: "https://hooks.slack.com/services/..."
+      min_severity: "CRITICAL"
+      template: "slack"
+
+scan:
+  interval_hours: 24
+  full_scan_on_start: true
+  incremental: true
+
+overrides:
+  "docker": "cpe:2.3:a:docker:docker"
+  "containerd": "cpe:2.3:a:containerd:containerd"
+  "nginx": "nginx"
+  "postgresql": "postgresql"
+
+suppressions:
+  - cve_id: "CVE-2024-XXXX"
+    tool_name_pattern: "openssl"
+    reason: "Covered by distro patch"
+    expires_at: "2025-12-31"
