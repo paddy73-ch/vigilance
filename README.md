@@ -1,6 +1,6 @@
 # Vigilance
 
-Self-hosted Security & Patch Monitoring for Proxmox environments.
+Self-hosted Proxmox security and patch monitoring dashboard with inventory, CVE tracking, and optional SSH-based discovery.
 
 Vigilance automatically discovers webapps, services, Docker images, and tools on your Proxmox hosts, LXC containers, and VMs, matches them against CVE and security advisory databases, and sends notifications via Gotify or generic webhooks.
 
@@ -225,7 +225,7 @@ export VIGILANCE_CONFIG_PATH=./config/config.yaml.example
 alembic upgrade head
 
 # Start server
-uvicorn vigilance.__init__:app --reload --host 0.0.0.0 --port 8000
+uvicorn vigilance.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
 ### Run Tests

@@ -115,12 +115,16 @@ class DiscoveryOrchestrator:
         if not inventory.ip_address:
             return None
 
+        node_config = next(
+            (config for config in settings.proxmox_nodes if config.name == node.name),
+            None,
+        )
         return {
             "host": inventory.ip_address,
-            "port": 22,
-            "user": "root",  # Could be configurable
-            "key_path": node.ssh_key_path if hasattr(node, "ssh_key_path") else "/app/data/ssh/id_rsa",
-            "known_hosts": node.ssh_known_hosts if hasattr(node, "ssh_known_hosts") else "/app/data/ssh/known_hosts",
+            "port": node_config.ssh_port if node_config else 22,
+            "user": node_config.ssh_user if node_config else "root",
+            "key_path": node_config.ssh_key_path if node_config and node_config.ssh_key_path else "/app/data/ssh/id_ed25519",
+            "known_hosts": node_config.ssh_known_hosts if node_config and node_config.ssh_known_hosts else "/app/data/ssh/known_hosts",
         }
 
     async def _run_ssh_discovery(

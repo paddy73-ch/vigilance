@@ -105,14 +105,22 @@ class ProxmoxClient:
         data = await self._request("GET", f"/api2/json/nodes/{node}/qemu")
         vms = []
         for item in data.get("data", []):
-            vms.append(ProxmoxVM(**item))
+            item.setdefault("node", node)
+            item.setdefault("type", "qemu")
+            item.setdefault("diskread", 0)
+            item.setdefault("diskwrite", 0)
+            vms.append(ProxmoxVM(**{key: value for key, value in item.items() if key in ProxmoxVM.__dataclass_fields__}))
         return vms
 
     async def get_lxcs(self, node: str) -> List[ProxmoxLXC]:
         data = await self._request("GET", f"/api2/json/nodes/{node}/lxc")
         lxcs = []
         for item in data.get("data", []):
-            lxcs.append(ProxmoxLXC(**item))
+            item.setdefault("node", node)
+            item.setdefault("type", "lxc")
+            item.setdefault("diskread", 0)
+            item.setdefault("diskwrite", 0)
+            lxcs.append(ProxmoxLXC(**{key: value for key, value in item.items() if key in ProxmoxLXC.__dataclass_fields__}))
         return lxcs
 
     async def get_vm_config(self, node: str, vmid: int) -> dict:

@@ -51,9 +51,9 @@ def upgrade() -> None:
         sa.Column("updated_at", sa.DateTime(), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
         sa.ForeignKeyConstraint(["proxmox_node_id"], ["proxmox_nodes.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("proxmox_node_id", "vmid", name="uq_node_vmid"),
     )
     op.create_index("idx_inventory_node", "inventories", ["proxmox_node_id"], unique=False)
-    op.create_unique_constraint("uq_node_vmid", "inventories", ["proxmox_node_id", "vmid"])
 
     # Discovered Tools
     op.create_table(
@@ -135,11 +135,11 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(["discovered_tool_id"], ["discovered_tools.id"], ondelete="CASCADE"),
         sa.ForeignKeyConstraint(["scan_run_id"], ["scan_runs.id"], ondelete="SET NULL"),
         sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("discovered_tool_id", "cve_entry_id", name="uq_tool_cve"),
     )
     op.create_index("idx_vuln_findings_tool", "vulnerability_findings", ["discovered_tool_id"], unique=False)
     op.create_index("idx_vuln_findings_cve", "vulnerability_findings", ["cve_entry_id"], unique=False)
     op.create_index("idx_vuln_findings_status", "vulnerability_findings", ["status"], unique=False)
-    op.create_unique_constraint("uq_tool_cve", "vulnerability_findings", ["discovered_tool_id", "cve_entry_id"])
 
     # Suppressions
     op.create_table(
@@ -200,7 +200,6 @@ def downgrade() -> None:
     op.drop_table("cve_sync_status")
     op.drop_table("tool_overrides")
     op.drop_table("suppressions")
-    op.drop_constraint("uq_tool_cve", "vulnerability_findings", type_="unique")
     op.drop_index("idx_vuln_findings_status", table_name="vulnerability_findings")
     op.drop_index("idx_vuln_findings_cve", table_name="vulnerability_findings")
     op.drop_index("idx_vuln_findings_tool", table_name="vulnerability_findings")
@@ -215,7 +214,6 @@ def downgrade() -> None:
     op.drop_index("idx_discovered_tools_tool_name", table_name="discovered_tools")
     op.drop_index("idx_discovered_tools_inventory", table_name="discovered_tools")
     op.drop_table("discovered_tools")
-    op.drop_constraint("uq_node_vmid", "inventories", type_="unique")
     op.drop_index("idx_inventory_node", table_name="inventories")
     op.drop_table("inventories")
     op.drop_table("proxmox_nodes")

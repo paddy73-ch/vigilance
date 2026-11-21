@@ -6,6 +6,7 @@ from vigilance.api.schemas import HealthResponse
 from vigilance.config import settings
 from vigilance.database.base import engine
 from datetime import datetime
+from sqlalchemy import text
 
 router = APIRouter()
 
@@ -16,7 +17,7 @@ async def health_check(db: AsyncSession = Depends(get_db)):
     # Check database connectivity
     db_status = "ok"
     try:
-        await db.execute("SELECT 1")
+        await db.execute(text("SELECT 1"))
     except Exception:
         db_status = "error"
 
