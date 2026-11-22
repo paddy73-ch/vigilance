@@ -2,7 +2,7 @@ from typing import AsyncGenerator
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy import event
-from sqlalchemy.pool import NullPool, QueuePool
+from sqlalchemy.pool import NullPool
 from vigilance.config import settings
 
 
@@ -35,12 +35,11 @@ def _create_engine():
             cursor.close()
 
     elif is_postgres:
-        # PostgreSQL: use QueuePool with appropriate sizing
+        # PostgreSQL: use default async pool (AsyncAdaptedQueuePool) with appropriate sizing
         engine = create_async_engine(
             url,
             echo=settings.log_level == "DEBUG",
             future=True,
-            poolclass=QueuePool,
             pool_size=5,
             max_overflow=10,
             pool_pre_ping=True,
