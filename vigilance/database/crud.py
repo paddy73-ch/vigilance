@@ -190,7 +190,7 @@ async def get_cve_entries(
     if source:
         stmt = stmt.where(CVEEntry.source == source)
     if severity:
-        stmt = stmt.where(CVEEntry.severity == severity)
+        stmt = stmt.where(func.upper(CVEEntry.severity) == severity.upper())
     result = await db.execute(stmt)
     return result.scalars().all()
 
@@ -249,7 +249,7 @@ async def get_findings(
     if tool_name:
         stmt = stmt.where(DiscoveredTool.tool_name == tool_name)
     if severity:
-        stmt = stmt.join(CVEEntry).where(CVEEntry.severity == severity)
+        stmt = stmt.join(CVEEntry).where(func.upper(CVEEntry.severity) == severity.upper())
     result = await db.execute(stmt)
     return result.scalars().all()
 
@@ -273,7 +273,7 @@ async def count_filtered_findings(
     if status:
         stmt = stmt.where(VulnerabilityFinding.status == status)
     if severity:
-        stmt = stmt.join(CVEEntry).where(CVEEntry.severity == severity)
+        stmt = stmt.join(CVEEntry).where(func.upper(CVEEntry.severity) == severity.upper())
     if inventory_id or tool_name:
         stmt = stmt.join(DiscoveredTool)
         if inventory_id:
@@ -295,7 +295,7 @@ async def get_finding_stats(db: AsyncSession) -> dict:
     severity_counts = {}
     for severity in ["CRITICAL", "HIGH", "MEDIUM", "LOW", "NONE"]:
         stmt = select(func.count(VulnerabilityFinding.id)).join(CVEEntry).where(
-            CVEEntry.severity == severity, VulnerabilityFinding.status == "open"
+            func.upper(CVEEntry.severity) == severity.upper(), VulnerabilityFinding.status == "open"
         )
         result = await db.execute(stmt)
         severity_counts[severity] = result.scalar_one()
