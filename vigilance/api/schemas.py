@@ -206,6 +206,10 @@ class CVESyncStatusResponse(BaseModel):
         from_attributes = True
 
 
+class CVESyncStatusWithEntriesResponse(CVESyncStatusResponse):
+    entries: List[CVEEntryResponse] = []
+
+
 # Settings
 class SettingResponse(BaseModel):
     key: str

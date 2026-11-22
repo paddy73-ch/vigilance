@@ -28,10 +28,18 @@ class GHSAClient:
         wait=wait_exponential(multiplier=1, min=2, max=30),
         stop=stop_after_attempt(3),
     )
-    async def fetch_advisories(self, per_page: int = 100) -> List[CVEData]:
-        """Fetch GitHub Security Advisories using the public REST API."""
+    async def fetch_advisories(self, per_page: int = 100, max_pages: int = 0) -> List[CVEData]:
+        """Fetch GitHub Security Advisories using the public REST API.
+        
+        Args:
+            per_page: Results per page (max 100)
+            max_pages: Maximum pages to fetch (0 = no limit)
+        """
         all_advisories = []
-        for page in range(1, 11):
+        page = 1
+        while True:
+            if max_pages and page > max_pages:
+                break
             response = await self.client.get(self.BASE_URL, params={"per_page": per_page, "page": page})
             response.raise_for_status()
             advisories = response.json()
@@ -44,6 +52,7 @@ class GHSAClient:
                     all_advisories.append(cve)
             if len(advisories) < per_page:
                 break
+            page += 1
 
         logger.info(f"Fetched {len(all_advisories)} advisories from GHSA")
         return all_advisories
@@ -136,10 +145,14 @@ class GHSAClient:
             return None
 
 
-async def sync_ghsa() -> List[CVEData]:
-    """Sync all advisories from GitHub Security Advisories."""
+async def sync_ghsa(max_pages: int = 0) -> List[CVEData]:
+    """Sync all advisories from GitHub Security Advisories.
+    
+    Args:
+        max_pages: Maximum pages to fetch (0 = no limit)
+    """
     client = GHSAClient()
     try:
-        return await client.fetch_advisories()
+        return await client.fetch_advisories(max_pages=max_pages)
     finally:
         await client.close()

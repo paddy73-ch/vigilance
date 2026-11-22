@@ -195,6 +195,22 @@ async def get_cve_entries(
     return result.scalars().all()
 
 
+async def get_cve_entries_by_source(
+    db: AsyncSession,
+    source: str,
+    limit: int = 100,
+) -> Sequence[CVEEntry]:
+    """Get CVE entries for a specific source, ordered by fetch time (newest first)."""
+    stmt = (
+        select(CVEEntry)
+        .where(CVEEntry.source == source)
+        .order_by(CVEEntry.fetched_at.desc())
+        .limit(limit)
+    )
+    result = await db.execute(stmt)
+    return result.scalars().all()
+
+
 async def count_cve_entries(db: AsyncSession, source: Optional[str] = None) -> int:
     stmt = select(func.count(CVEEntry.id))
     if source:

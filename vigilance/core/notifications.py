@@ -198,13 +198,29 @@ async def get_digest_queue() -> List[dict]:
     return items
 
 
-async def send_test_gotify() -> bool:
+async def send_test_gotify(url: Optional[str] = None, token: Optional[str] = None) -> bool:
     if not settings.notifications or not settings.notifications.gotify:
         return False
 
     config = settings.notifications.gotify
+    # Use provided url/token for testing, fallback to configured values
+    test_url = url or config.url
+    test_token = token or config.token
+    
+    if not test_url or not test_token:
+        return False
+
+    test_config = GotifyConfig(
+        enabled=True,
+        url=test_url,
+        token=test_token,
+        min_severity=config.min_severity,
+        digest_mode=config.digest_mode,
+        digest_interval_minutes=config.digest_interval_minutes,
+    )
+    
     return await send_gotify_message(
-        config=config,
+        config=test_config,
         title="[Vigilance] Test Notification",
         message="This is a test message from Vigilance. If you see this, Gotify integration is working!",
         priority=5,

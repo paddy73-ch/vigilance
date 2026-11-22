@@ -20,15 +20,15 @@ class VersionMatch:
 
 
 def parse_debian_version(version: str) -> Optional[Version]:
-    """Parse Debian version format (e.g., 1.2.3-4+deb11u1)."""
+    """Parse Debian/Ubuntu version format (e.g., 1.2.3-4+deb11u1, 1.25.0-2ubuntu1)."""
     try:
         # Remove epoch if present (e.g., 1:1.2.3 -> 1.2.3)
         if ":" in version:
             version = version.split(":", 1)[1]
         return Version(version)
     except InvalidVersion:
-        # Try to normalize
-        normalized = re.sub(r"[+-].*$", "", version)
+        # Try to normalize: remove revision suffixes like -2, -2ubuntu1, +deb11u1
+        normalized = re.sub(r"[-+].*$", "", version)
         try:
             return Version(normalized)
         except InvalidVersion:
@@ -45,13 +45,14 @@ def parse_semver(version: str) -> Optional[Version]:
 
 def check_version_in_range(detected_version: str, range_obj: AffectedRange) -> VersionMatch:
     """Check if a detected version falls within an affected range."""
-    if range_obj.type == "DEBIAN":
+    # DEBIAN and UBUNTU use the same version format
+    if range_obj.type in ("DEBIAN", "UBUNTU"):
         detected = parse_debian_version(detected_version)
         introduced = parse_debian_version(range_obj.introduced) if range_obj.introduced else None
         fixed = parse_debian_version(range_obj.fixed) if range_obj.fixed else None
         last_affected = parse_debian_version(range_obj.last_affected) if range_obj.last_affected else None
     else:
-        # Default to SemVer
+        # Default to SemVer for CPE, ECOSYSTEM, etc.
         detected = parse_semver(detected_version)
         introduced = parse_semver(range_obj.introduced) if range_obj.introduced else None
         fixed = parse_semver(range_obj.fixed) if range_obj.fixed else None
@@ -93,6 +94,15 @@ def check_version_in_range(detected_version: str, range_obj: AffectedRange) -> V
     )
 
 
+def _extract_package_from_cpe(cpe: str) -> str:
+    """Extract package name from CPE string (e.g., cpe:2.3:a:gnu:wget:1.5.3 -> wget)."""
+    # CPE format: cpe:2.3:part:vendor:product:version:...
+    parts = cpe.split(":")
+    if len(parts) >= 5:
+        return parts[4].lower()  # product name
+    return cpe.lower()
+
+
 def match_tool_against_cves(tool, cve: CVEData) -> MatchResult:
     """Match a discovered tool against a CVE entry."""
     detected_version = tool.detected_version
@@ -120,13 +130,29 @@ def match_tool_against_cves(tool, cve: CVEData) -> MatchResult:
         # Check if this range applies to our tool
         range_repo = (range_obj.repo or "").lower()
 
-        # Match by package name / CPE
+        # Match by package name / CPE - stricter matching
         if range_repo:
-            if range_repo in tool_name or tool_name in range_repo:
-                pass  # Good match
-            elif range_repo in cpe_name:
-                pass  # Good match
+            matched = False
+            if range_obj.type == "CPE":
+                # Extract package name from CPE
+                cpe_package = _extract_package_from_cpe(range_repo)
+                if cpe_package == tool_name or cpe_package in cpe_name:
+                    matched = True
+            elif range_obj.type in ("DEBIAN", "UBUNTU", "ECOSYSTEM"):
+                # Exact match for package name
+                if range_repo == tool_name:
+                    matched = True
+                # Also check CPE name for docker/containers
+                elif range_repo in cpe_name:
+                    matched = True
             else:
+                # Fallback: substring match (legacy behavior)
+                if range_repo in tool_name or tool_name in range_repo:
+                    matched = True
+                elif range_repo in cpe_name:
+                    matched = True
+
+            if not matched:
                 continue  # Range doesn't apply to this tool
 
         match = check_version_in_range(detected_version, range_obj)

@@ -45,11 +45,11 @@ async def test_gotify(
     request: GotifyTestRequest,
     current_user: User = Depends(require_write_access),
 ):
-    """Test Gotify connectivity."""
-    success = await send_test_gotify()
+    """Test Gotify connectivity with provided or configured credentials."""
+    success = await send_test_gotify(url=request.url, token=request.token)
     return GotifyTestResponse(
         success=success,
-        message="Test notification sent successfully" if success else "Failed to send test notification",
+        message="Test notification sent successfully" if success else "Failed to send test notification. Check URL and token.",
     )
 
 

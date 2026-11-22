@@ -50,12 +50,18 @@ class NVDClient:
         wait=wait_exponential(multiplier=1, min=2, max=60),
         stop=stop_after_attempt(3),
     )
-    async def fetch_recent_cves(self, days: int = 30) -> List[CVEData]:
-        """Fetch CVEs from NVD from the last N days."""
+    async def fetch_recent_cves(self, days: int = 30, max_pages: int = 0) -> List[CVEData]:
+        """Fetch CVEs from NVD from the last N days.
+        
+        Args:
+            days: Number of days back to fetch (ignored if max_pages > 0, which fetches latest)
+            max_pages: Maximum pages to fetch (0 = no limit, fetch all available)
+        """
         all_cves = []
         start_index = 0
         results_per_page = 2000
         fallback_latest = False
+        pages_fetched = 0
 
         # Calculate date range
         end_date = datetime.utcnow()
@@ -65,6 +71,9 @@ class NVDClient:
         latest_only = True
 
         while True:
+            if max_pages and pages_fetched >= max_pages:
+                break
+            
             params = {"startIndex": start_index, "resultsPerPage": results_per_page}
             if not latest_only:
                 params.update({
@@ -88,13 +97,19 @@ class NVDClient:
                     all_cves.append(cve)
 
             total_results = data.get("totalResults", 0)
+            pages_fetched += 1
+            
             if fallback_latest or latest_only:
-                break
-            if start_index + results_per_page >= total_results:
-                break
+                # For latest_only, fetch all pages (not just first one)
+                if start_index + results_per_page >= total_results:
+                    break
+            else:
+                if start_index + results_per_page >= total_results:
+                    break
+            
             start_index += results_per_page
 
-        logger.info(f"Fetched {len(all_cves)} CVEs from NVD")
+        logger.info(f"Fetched {len(all_cves)} CVEs from NVD ({pages_fetched} pages)")
         return all_cves
 
     def _parse_cve(self, vuln: dict) -> Optional[CVEData]:
@@ -179,10 +194,10 @@ class NVDClient:
             return None
 
 
-async def sync_nvd(days: int = 30) -> List[CVEData]:
+async def sync_nvd(days: int = 30, max_pages: int = 0) -> List[CVEData]:
     """Sync recent CVEs from NVD."""
     client = NVDClient()
     try:
-        return await client.fetch_recent_cves(days)
+        return await client.fetch_recent_cves(days, max_pages)
     finally:
         await client.close()

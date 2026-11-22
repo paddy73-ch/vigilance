@@ -37,11 +37,13 @@ class CVESyncOrchestrator:
 
         # GHSA
         if settings.cve_sync and settings.cve_sync.ghsa.get("enabled", True):
-            results["ghsa"] = await self._sync_source("ghsa", sync_ghsa)
+            max_pages = settings.cve_sync.ghsa.get("max_pages", 0)
+            results["ghsa"] = await self._sync_source("ghsa", lambda: sync_ghsa(max_pages=max_pages))
 
         # NVD
         if settings.cve_sync and settings.cve_sync.nvd.get("enabled", False):
-            results["nvd"] = await self._sync_source("nvd", lambda: sync_nvd(30))
+            max_pages = settings.cve_sync.nvd.get("max_pages", 0)
+            results["nvd"] = await self._sync_source("nvd", lambda: sync_nvd(30, max_pages=max_pages))
 
         # Debian
         if settings.cve_sync and settings.cve_sync.debian.get("enabled", True):

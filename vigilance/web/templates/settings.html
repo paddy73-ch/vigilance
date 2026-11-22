@@ -61,16 +61,34 @@
                     <span class="text-gray-500 dark:text-gray-400">Digest Interval</span>
                     <span class="font-medium" x-text="gotifyConfig.digest_interval_minutes + ' minutes'"></span>
                 </div>
-                <button @click="testGotify()" class="btn-primary w-full" :disabled="testingGotify">
-                    <template x-if="!testingGotify">
-                        <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path>
-                        </svg>
-                        Test Gotify Connection
-                    </template>
-                    <template x-if="testingGotify">Testing...</template>
-                </button>
-                <div x-show="gotifyTestResult" class="p-3 rounded" :class="gotifyTestSuccess ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'" x-text="gotifyTestMessage"></div>
+                
+                <!-- Custom token/URL for testing -->
+                <div class="border-t border-gray-200 dark:border-gray-700 pt-4">
+                    <h3 class="text-md font-medium mb-3">Test with Custom Credentials</h3>
+                    <p class="text-sm text-gray-500 dark:text-gray-400 mb-3">Enter a Gotify URL and token to test without saving. Leave empty to use configured values.</p>
+                    <div class="space-y-3">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Gotify URL</label>
+                            <input type="url" x-model="testGotifyUrl" placeholder="https://gotify.example.com" 
+                                   class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Gotify Token</label>
+                            <input type="password" x-model="testGotifyToken" placeholder="Application token" 
+                                   class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100">
+                        </div>
+                        <button @click="testGotify()" class="btn-primary w-full" :disabled="testingGotify">
+                            <template x-if="!testingGotify">
+                                <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path>
+                                </svg>
+                                Test Gotify Connection
+                            </template>
+                            <template x-if="testingGotify">Testing...</template>
+                        </button>
+                        <div x-show="gotifyTestResult" class="p-3 rounded" :class="gotifyTestSuccess ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'" x-text="gotifyTestMessage"></div>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -99,11 +117,43 @@
                     <span x-text="cveSyncRunning ? 'Läuft …' : 'CVE-Sync starten'"></span>
                 </button>
             </div>
-            <div class="mt-4 grid grid-cols-2 md:grid-cols-5 gap-2 text-sm">
+            <div class="mt-4">
                 <template x-for="sync in cveSyncStatus" :key="sync.source">
-                    <div class="rounded border border-gray-200 dark:border-gray-700 px-3 py-2 flex justify-between gap-2">
-                        <span class="capitalize" x-text="sync.source"></span>
-                        <span :class="sync.status === 'running' ? 'text-blue-600' : (sync.status === 'error' ? 'text-red-600' : 'text-green-600')" x-text="sync.status === 'running' ? 'Läuft' : (sync.status === 'error' ? 'Fehler' : 'OK')"></span>
+                    <div class="rounded border border-gray-200 dark:border-gray-700 mb-2">
+                        <div class="px-3 py-2 flex justify-between gap-2 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700" @click="toggleSyncEntries(sync.source)">
+                            <span class="capitalize" x-text="sync.source"></span>
+                            <span :class="sync.status === 'running' ? 'text-blue-600' : (sync.status === 'error' ? 'text-red-600' : 'text-green-600')" x-text="sync.status === 'running' ? 'Läuft' : (sync.status === 'error' ? 'Fehler' : 'OK')"></span>
+                            <span class="text-gray-500 dark:text-gray-400 text-sm" x-text="sync.entries_count + ' Einträge'"></span>
+                            <svg class="w-5 h-5 text-gray-400 self-center" fill="none" stroke="currentColor" viewBox="0 0 24 24" :class="{ 'rotate-180': showSyncEntries[sync.source] }">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                            </svg>
+                        </div>
+                        <div x-show="showSyncEntries[sync.source]" x-cloak class="border-t border-gray-200 dark:border-gray-700 p-3 max-h-96 overflow-y-auto">
+                            <div x-show="loadingSyncEntries[sync.source]" class="text-center py-4 text-gray-500 dark:text-gray-400">Loading entries...</div>
+                            <template x-if="!loadingSyncEntries[sync.source] && syncEntries[sync.source] && syncEntries[sync.source].length > 0">
+                                <table class="w-full text-xs">
+                                    <thead>
+                                        <tr class="text-left border-b border-gray-200 dark:border-gray-700">
+                                            <th class="pb-1 font-medium text-gray-500 dark:text-gray-400 w-32">CVE ID</th>
+                                            <th class="pb-1 font-medium text-gray-500 dark:text-gray-400">Severity</th>
+                                            <th class="pb-1 font-medium text-gray-500 dark:text-gray-400">CVSS</th>
+                                            <th class="pb-1 font-medium text-gray-500 dark:text-gray-400">Fetched</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <template x-for="entry in syncEntries[sync.source]" :key="entry.cve_id">
+                                            <tr class="border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700">
+                                                <td class="py-1 font-mono" x-text="entry.cve_id"></td>
+                                                <td class="py-1" :class="entry.severity === 'CRITICAL' ? 'text-red-600' : (entry.severity === 'HIGH' ? 'text-orange-600' : (entry.severity === 'MEDIUM' ? 'text-yellow-600' : (entry.severity === 'LOW' ? 'text-green-600' : 'text-gray-500')))" x-text="entry.severity || 'NONE'"></td>
+                                                <td class="py-1" x-text="entry.cvss_score ? entry.cvss_score.toFixed(1) : '-'"></td>
+                                                <td class="py-1 text-gray-500 dark:text-gray-400" x-text="entry.fetched_at ? new Date(entry.fetched_at).toLocaleString() : '-'"></td>
+                                            </tr>
+                                        </template>
+                                    </tbody>
+                                </table>
+                            </template>
+                            <div x-show="!loadingSyncEntries[sync.source] && (!syncEntries[sync.source] || syncEntries[sync.source].length === 0)" class="text-center py-4 text-gray-500 dark:text-gray-400">No entries found</div>
+                        </div>
                     </div>
                 </template>
             </div>
@@ -154,6 +204,11 @@ function settingsPage() {
         proxmoxNodes: [],
         cveSyncStatus: [],
         cveSyncRunning: false,
+        testGotifyUrl: '',
+        testGotifyToken: '',
+        showSyncEntries: {},
+        loadingSyncEntries: {},
+        syncEntries: {},
 
         async loadSettings() {
             try {
@@ -184,6 +239,29 @@ function settingsPage() {
             this.cveSyncRunning = this.cveSyncStatus.some(s => s.status === 'running');
             if (this.cveSyncRunning) setTimeout(() => this.loadCveSyncStatus(), 2000);
         },
+        toggleSyncEntries(source) {
+            this.showSyncEntries[source] = !this.showSyncEntries[source];
+            if (this.showSyncEntries[source] && !this.syncEntries[source]) {
+                this.loadSyncEntries(source);
+            }
+        },
+        async loadSyncEntries(source) {
+            this.loadingSyncEntries[source] = true;
+            try {
+                const resp = await fetch(`/api/cves/sync/status/${source}/entries?limit=100`);
+                if (resp.ok) {
+                    const data = await resp.json();
+                    this.syncEntries[source] = data.entries || [];
+                } else {
+                    this.syncEntries[source] = [];
+                }
+            } catch (e) {
+                console.error('Failed to load sync entries', e);
+                this.syncEntries[source] = [];
+            } finally {
+                this.loadingSyncEntries[source] = false;
+            }
+        },
         async triggerCveSync() {
             this.cveSyncRunning = true;
             const resp = await fetch('/api/cves/sync', { method: 'POST' });
@@ -198,7 +276,14 @@ function settingsPage() {
             this.testingGotify = true;
             this.gotifyTestResult = false;
             try {
-                const resp = await fetch('/api/settings/gotify/test', { method: 'POST' });
+                const resp = await fetch('/api/settings/gotify/test', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        url: this.testGotifyUrl || '',
+                        token: this.testGotifyToken || ''
+                    })
+                });
                 const data = await resp.json();
                 this.gotifyTestSuccess = data.success;
                 this.gotifyTestMessage = data.message;
