@@ -15,7 +15,7 @@
                 </div>
                 <div class="ml-4">
                     <p class="text-sm text-gray-500 dark:text-gray-400">Proxmox Nodes</p>
-                    <p class="text-2xl font-bold" x-text="stats.total_nodes || 0"></p>
+                    <a href="/nodes" class="text-2xl font-bold text-blue-600 hover:underline" x-text="stats.total_nodes || 0" aria-label="Proxmox Nodes öffnen"></a>
                 </div>
             </div>
         </div>
@@ -43,7 +43,7 @@
                 </div>
                 <div class="ml-4">
                     <p class="text-sm text-gray-500 dark:text-gray-400">Discovered Tools</p>
-                    <p class="text-2xl font-bold" x-text="stats.total_tools || 0"></p>
+                    <a href="/findings" class="text-2xl font-bold text-blue-600 hover:underline" x-text="stats.total_tools || 0" aria-label="Discovered Tools öffnen"></a>
                 </div>
             </div>
         </div>
@@ -57,7 +57,7 @@
                 </div>
                 <div class="ml-4">
                     <p class="text-sm text-gray-500 dark:text-gray-400">Open Findings</p>
-                    <p class="text-2xl font-bold" x-text="stats.open_findings || 0"></p>
+                    <a href="/findings?status=open" class="text-2xl font-bold text-blue-600 hover:underline" x-text="stats.open_findings || 0" aria-label="Open Findings öffnen"></a>
                 </div>
             </div>
         </div>
@@ -70,23 +70,23 @@
             <div class="space-y-3">
                 <div class="flex items-center justify-between">
                     <span class="text-gray-500 dark:text-gray-400">Critical</span>
-                    <span class="font-bold text-red-600 dark:text-red-400" x-text="stats.findings_by_severity.CRITICAL || 0"></span>
+                    <a href="/findings?severity=CRITICAL" class="font-bold text-red-600 dark:text-red-400 hover:underline" x-text="stats.findings_by_severity.CRITICAL || 0"></a>
                 </div>
                 <div class="flex items-center justify-between">
                     <span class="text-gray-500 dark:text-gray-400">High</span>
-                    <span class="font-bold text-orange-600 dark:text-orange-400" x-text="stats.findings_by_severity.HIGH || 0"></span>
+                    <a href="/findings?severity=HIGH" class="font-bold text-orange-600 dark:text-orange-400 hover:underline" x-text="stats.findings_by_severity.HIGH || 0"></a>
                 </div>
                 <div class="flex items-center justify-between">
                     <span class="text-gray-500 dark:text-gray-400">Medium</span>
-                    <span class="font-bold text-yellow-600 dark:text-yellow-400" x-text="stats.findings_by_severity.MEDIUM || 0"></span>
+                    <a href="/findings?severity=MEDIUM" class="font-bold text-yellow-600 dark:text-yellow-400 hover:underline" x-text="stats.findings_by_severity.MEDIUM || 0"></a>
                 </div>
                 <div class="flex items-center justify-between">
                     <span class="text-gray-500 dark:text-gray-400">Low</span>
-                    <span class="font-bold text-blue-600 dark:text-blue-400" x-text="stats.findings_by_severity.LOW || 0"></span>
+                    <a href="/findings?severity=LOW" class="font-bold text-blue-600 dark:text-blue-400 hover:underline" x-text="stats.findings_by_severity.LOW || 0"></a>
                 </div>
                 <div class="flex items-center justify-between">
                     <span class="text-gray-500 dark:text-gray-400">None</span>
-                    <span class="font-bold text-gray-500 dark:text-gray-400" x-text="stats.findings_by_severity.NONE || 0"></span>
+                    <a href="/findings?severity=NONE" class="font-bold text-gray-500 dark:text-gray-400 hover:underline" x-text="stats.findings_by_severity.NONE || 0"></a>
                 </div>
             </div>
         </div>

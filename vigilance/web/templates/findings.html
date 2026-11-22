@@ -131,6 +131,12 @@ function findingsPage() {
         suppressReason: '',
         suppressExpires: '',
 
+        init() {
+            const params = new URLSearchParams(window.location.search);
+            this.filters.status = params.get('status') || '';
+            this.filters.severity = params.get('severity') || '';
+        },
+
         async loadFindings() {
             const params = new URLSearchParams();
             params.append('status', this.filters.status);
