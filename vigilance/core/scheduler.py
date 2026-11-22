@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 from typing import Optional
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -79,14 +80,13 @@ def init_scheduler() -> AsyncIOScheduler:
         max_instances=1,
     )
 
-    # CVE Sync job
-    cve_interval = settings.cve_sync_interval_hours
+    # CVE Sync job - daily at 07:00 UTC
     scheduler.add_job(
         run_cve_sync_job,
-        IntervalTrigger(hours=cve_interval, jitter=300),
+        CronTrigger(hour=7, minute=0, timezone="UTC"),
         id="cve_sync_job",
-        name="CVE Sync",
-        misfire_grace_time=600,
+        name="CVE Sync (daily 07:00 UTC)",
+        misfire_grace_time=3600,
         max_instances=1,
     )
 
@@ -154,6 +154,9 @@ async def lifespan(app):
         logger.info("Running initial scan on startup")
         # Do not hold the HTTP server healthcheck open while offline guests time out.
         asyncio.create_task(trigger_scan_now(full=True), name="initial-scan")
+    # Run initial CVE sync on startup
+    logger.info("Running initial CVE sync on startup")
+    asyncio.create_task(trigger_cve_sync_now(), name="initial-cve-sync")
     yield
     # Shutdown
     await shutdown_scheduler()
