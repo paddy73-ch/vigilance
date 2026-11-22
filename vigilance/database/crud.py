@@ -262,6 +262,28 @@ async def count_findings(db: AsyncSession, status: Optional[str] = None) -> int:
     return result.scalar_one()
 
 
+async def count_filtered_findings(
+    db: AsyncSession,
+    status: Optional[str] = None,
+    severity: Optional[str] = None,
+    inventory_id: Optional[int] = None,
+    tool_name: Optional[str] = None,
+) -> int:
+    stmt = select(func.count(VulnerabilityFinding.id))
+    if status:
+        stmt = stmt.where(VulnerabilityFinding.status == status)
+    if severity:
+        stmt = stmt.join(CVEEntry).where(CVEEntry.severity == severity)
+    if inventory_id or tool_name:
+        stmt = stmt.join(DiscoveredTool)
+        if inventory_id:
+            stmt = stmt.where(DiscoveredTool.inventory_id == inventory_id)
+        if tool_name:
+            stmt = stmt.where(DiscoveredTool.tool_name == tool_name)
+    result = await db.execute(stmt)
+    return result.scalar_one()
+
+
 async def get_finding_stats(db: AsyncSession) -> dict:
     # Count by status
     status_counts = {}

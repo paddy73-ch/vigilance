@@ -146,8 +146,13 @@ function findingsPage() {
             if (this.filters.search) params.append('tool_name', this.filters.search);
 
             try {
-                const resp = await fetch('/api/findings?' + params.toString());
+                const [resp, countResp] = await Promise.all([
+                    fetch('/api/findings?' + params.toString()),
+                    fetch('/api/findings/count?' + new URLSearchParams({status: this.filters.status, severity: this.filters.severity, tool_name: this.filters.search}).toString())
+                ]);
                 const data = await resp.json();
+                const countData = await countResp.json();
+                this.pagination.total = countData.total || 0;
                 this.findings = data.map(f => ({
                     ...f,
                     cve_id: f.cve?.cve_id || 'Unknown',

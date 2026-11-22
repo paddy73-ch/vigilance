@@ -40,6 +40,20 @@ async def list_findings(
     return findings
 
 
+@router.get("/findings/count")
+async def count_filtered_findings(
+    status: Optional[str] = Query(None),
+    severity: Optional[str] = Query(None),
+    inventory_id: Optional[int] = Query(None),
+    tool_name: Optional[str] = Query(None),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user_optional),
+):
+    return {"total": await crud.count_filtered_findings(
+        db, status=status, severity=severity, inventory_id=inventory_id, tool_name=tool_name
+    )}
+
+
 @router.get("/findings/stats")
 async def get_findings_stats(
     db: AsyncSession = Depends(get_db),
