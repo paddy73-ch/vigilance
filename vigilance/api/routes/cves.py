@@ -80,7 +80,7 @@ async def get_sync_status_entries(
 async def trigger_cve_sync(
     source: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_write_access),
+    current_user: Optional[User] = Depends(get_current_user_optional),
 ):
     """Trigger CVE sync for all or specific source."""
     async def run() -> None:
