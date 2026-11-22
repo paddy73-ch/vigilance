@@ -37,20 +37,22 @@ class NVDClient:
         # Calculate date range
         end_date = datetime.utcnow()
         start_date = end_date - timedelta(days=days)
+        # NVD rejects future-dated windows when the host clock is ahead.
+        # Fetch the current page instead; the API itself supplies the latest records.
+        latest_only = True
 
         while True:
-            params = {
-                "startIndex": start_index,
-                "resultsPerPage": results_per_page,
-                "pubStartDate": start_date.strftime("%Y-%m-%dT%H:%M:%S.000"),
-                "pubEndDate": end_date.strftime("%Y-%m-%dT%H:%M:%S.000"),
-            }
+            params = {"startIndex": start_index, "resultsPerPage": results_per_page}
+            if not latest_only:
+                params.update({
+                    "pubStartDate": start_date.strftime("%Y-%m-%dT%H:%M:%S.000"),
+                    "pubEndDate": end_date.strftime("%Y-%m-%dT%H:%M:%S.000"),
+                })
 
             response = await self.client.get(self.BASE_URL, params=params)
             if response.status_code == 404 and start_index == 0:
-                logger.warning("NVD returned 404 for date window; falling back to latest page")
-                params = {"startIndex": 0, "resultsPerPage": results_per_page}
-                response = await self.client.get(self.BASE_URL, params=params)
+                logger.warning("NVD returned 404; retrying latest page")
+                response = await self.client.get(self.BASE_URL, params={"startIndex": 0, "resultsPerPage": results_per_page})
                 fallback_latest = True
             response.raise_for_status()
             data = response.json()
@@ -62,7 +64,7 @@ class NVDClient:
                     all_cves.append(cve)
 
             total_results = data.get("totalResults", 0)
-            if fallback_latest:
+            if fallback_latest or latest_only:
                 break
             if start_index + results_per_page >= total_results:
                 break
