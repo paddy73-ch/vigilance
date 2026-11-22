@@ -31,7 +31,7 @@ async def get_current_user(
         return User(
             username=remote_user,
             is_admin=has_token,
-            can_write=has_token,
+            can_write=True,
             auth_method="proxy",
         )
 
