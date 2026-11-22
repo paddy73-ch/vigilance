@@ -88,6 +88,27 @@
             </div>
         </div>
 
+        <!-- CVE Sync -->
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6 border border-gray-200 dark:border-gray-700 lg:col-span-2">
+            <div class="flex items-center justify-between gap-4">
+                <div>
+                    <h2 class="text-lg font-semibold">CVE Synchronisation</h2>
+                    <p class="text-sm text-gray-500 dark:text-gray-400">Quellen abrufen und laufenden Status anzeigen.</p>
+                </div>
+                <button @click="triggerCveSync()" class="btn-primary" :disabled="cveSyncRunning">
+                    <span x-text="cveSyncRunning ? 'Läuft …' : 'CVE-Sync starten'"></span>
+                </button>
+            </div>
+            <div class="mt-4 grid grid-cols-2 md:grid-cols-5 gap-2 text-sm">
+                <template x-for="sync in cveSyncStatus" :key="sync.source">
+                    <div class="rounded border border-gray-200 dark:border-gray-700 px-3 py-2 flex justify-between gap-2">
+                        <span class="capitalize" x-text="sync.source"></span>
+                        <span :class="sync.status === 'running' ? 'text-blue-600' : (sync.status === 'error' ? 'text-red-600' : 'text-green-600')" x-text="sync.status === 'running' ? 'Läuft' : (sync.status === 'error' ? 'Fehler' : 'OK')"></span>
+                    </div>
+                </template>
+            </div>
+        </div>
+
         <!-- Proxmox Nodes Summary -->
         <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6 border border-gray-200 dark:border-gray-700 lg:col-span-2">
             <h2 class="text-lg font-semibold mb-4">Proxmox Nodes</h2>
@@ -131,6 +152,8 @@ function settingsPage() {
         gotifyTestMessage: '',
         tokenPreview: '',
         proxmoxNodes: [],
+        cveSyncStatus: [],
+        cveSyncRunning: false,
 
         async loadSettings() {
             try {
@@ -143,6 +166,7 @@ function settingsPage() {
                 this.tokenPreview = tokenData.preview || 'Not configured';
                 this.gotifyConfigured = this.settings.gotify_configured;
                 this.proxmoxNodes = this.settings.proxmox_nodes || [];
+                await this.loadCveSyncStatus();
 
                 // Load gotify config from settings
                 this.gotifyConfig = {
@@ -153,6 +177,22 @@ function settingsPage() {
             } catch (e) {
                 console.error('Failed to load settings', e);
             }
+        },
+        async loadCveSyncStatus() {
+            const resp = await fetch('/api/cves/sync/status');
+            this.cveSyncStatus = await resp.json();
+            this.cveSyncRunning = this.cveSyncStatus.some(s => s.status === 'running');
+            if (this.cveSyncRunning) setTimeout(() => this.loadCveSyncStatus(), 2000);
+        },
+        async triggerCveSync() {
+            this.cveSyncRunning = true;
+            const resp = await fetch('/api/cves/sync', { method: 'POST' });
+            if (!resp.ok) {
+                this.cveSyncRunning = false;
+                alert('CVE-Sync konnte nicht gestartet werden (' + resp.status + ')');
+                return;
+            }
+            await this.loadCveSyncStatus();
         },
         async testGotify() {
             this.testingGotify = true;
