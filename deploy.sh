@@ -3,68 +3,67 @@ set -euo pipefail
 
 PROXMOX_HOST="192.0.2.49"
 PROXMOX_USER="root"
-REPO_URL="https://github.com/paddy73-ch/vigilance.git"
-DEPLOY_BRANCH="main"
+CONTAINER_ID="123"
 DEPLOY_DIR="/opt/vigilance"
 REMOTE="${PROXMOX_USER}@${PROXMOX_HOST}"
+COMMIT="$(git rev-parse --short HEAD)"
+ARCHIVE="$(mktemp "${TMPDIR:-/tmp}/vigilance-deploy.XXXXXX")"
+REMOTE_ARCHIVE="/tmp/vigilance-deploy-${COMMIT}.tar"
 
-echo "=== Vigilance Deployment auf ${PROXMOX_HOST} ==="
+trap 'rm -f "$ARCHIVE"' EXIT
 
-ssh "$REMOTE" bash -s -- "$DEPLOY_DIR" "$REPO_URL" "$DEPLOY_BRANCH" <<'REMOTE_SCRIPT'
+echo "=== Vigilance ${COMMIT} -> CT ${CONTAINER_ID} auf ${PROXMOX_HOST} ==="
+git archive --format=tar --output="$ARCHIVE" HEAD
+scp -o BatchMode=yes "$ARCHIVE" "${REMOTE}:${REMOTE_ARCHIVE}"
+
+ssh -o BatchMode=yes "$REMOTE" "pct status ${CONTAINER_ID} | grep -q 'status: running' && pct push ${CONTAINER_ID} ${REMOTE_ARCHIVE} ${REMOTE_ARCHIVE}"
+ssh -o BatchMode=yes "$REMOTE" "pct exec ${CONTAINER_ID} -- bash -s -- ${COMMIT} ${REMOTE_ARCHIVE} ${DEPLOY_DIR}" <<'REMOTE_SCRIPT'
 set -euo pipefail
 
-deploy_dir=$1
-repo_url=$2
-branch=$3
+commit=$1
+archive=$2
+deploy_dir=$3
+stage="/tmp/vigilance-release-${commit}"
 
-mkdir -p "$deploy_dir"
-if [ -d "$deploy_dir/.git" ]; then
-    git -C "$deploy_dir" fetch origin "$branch"
-    git -C "$deploy_dir" checkout "$branch"
-    git -C "$deploy_dir" merge --ff-only "origin/$branch"
-else
-    if [ -n "$(find "$deploy_dir" -mindepth 1 -maxdepth 1 -print -quit)" ]; then
-        echo "Fehler: $deploy_dir ist nicht leer und kein Git-Checkout." >&2
-        exit 1
-    fi
-    git clone --branch "$branch" "$repo_url" "$deploy_dir"
-fi
+test -f "$deploy_dir/.env"
+test -f "$deploy_dir/docker/docker-compose.override.yml"
+rm -rf "$stage"
+mkdir -p "$stage"
+tar -xf "$archive" -C "$stage"
+test -f "$stage/docker/docker-compose.yml"
+test -f "$stage/vigilance/database/crud.py"
+cp "$deploy_dir/docker/docker-compose.override.yml" "$stage/docker/docker-compose.override.yml"
 
-if [ ! -f "$deploy_dir/.env" ]; then
-    cp "$deploy_dir/.env.example" "$deploy_dir/.env"
-    chmod 600 "$deploy_dir/.env"
-    echo "Vorlage erstellt: $deploy_dir/.env"
-    echo "Bitte Secrets eintragen und deploy.sh danach erneut starten." >&2
-    exit 1
-fi
+# Keep environment, container-specific config, and the existing Docker volume.
+docker exec vigilance python -c "import sqlite3; src=sqlite3.connect('file:/app/data/vigilance.db?mode=ro', uri=True); dst=sqlite3.connect('/app/data/vigilance.db.before-${commit}'); src.backup(dst); print('database_backup=' + dst.execute('PRAGMA quick_check').fetchone()[0]); dst.close(); src.close()"
+tar -cf "/tmp/vigilance-source-before-${commit}.tar" -C "$deploy_dir" vigilance docker
+rm -rf "$deploy_dir/vigilance" "$deploy_dir/docker"
+mv "$stage/vigilance" "$deploy_dir/vigilance"
+mv "$stage/docker" "$deploy_dir/docker"
+tar -xf "$archive" -C "$deploy_dir"
 
-if grep -Eq 'example\.com|your-token-secret|your-app-token|your-write-api-token|change-me-in-production' "$deploy_dir/.env"; then
-    echo "Fehler: Bitte die Platzhalter-Secrets in $deploy_dir/.env ersetzen." >&2
-    exit 1
-fi
-
-compose=(docker compose --project-directory "$deploy_dir/docker" -f "$deploy_dir/docker/docker-compose.yml")
-
-# The application uses a named Docker volume, so prepare SSH material there.
-"${compose[@]}" build vigilance
-"${compose[@]}" run --rm --no-deps --user 0:0 --entrypoint /bin/sh vigilance -ec '
-    mkdir -p /app/data/ssh
-    if [ ! -f /app/data/ssh/id_rsa ]; then
-        ssh-keygen -q -t ed25519 -f /app/data/ssh/id_rsa -N ""
-    fi
-    touch /app/data/ssh/known_hosts
-    chmod 700 /app/data/ssh
-    chmod 600 /app/data/ssh/id_rsa
-    chmod 644 /app/data/ssh/id_rsa.pub /app/data/ssh/known_hosts
-    chown -R 1000:1000 /app/data/ssh
-'
-
+compose=(docker compose -p vigilance --project-directory "$deploy_dir/docker" -f "$deploy_dir/docker/docker-compose.yml" -f "$deploy_dir/docker/docker-compose.override.yml")
+"${compose[@]}" config --quiet
 "${compose[@]}" up -d --build
 
-echo "=== SSH Public Key (auf Zielsysteme deployen) ==="
-"${compose[@]}" exec -T vigilance cat /app/data/ssh/id_rsa.pub
-echo
-echo "=== Deployment abgeschlossen ==="
-echo "Known hosts bei Bedarf ergänzen: docker compose -f $DEPLOY_DIR/docker/docker-compose.yml exec vigilance sh"
-echo "Health: curl http://${PROXMOX_HOST}:8000/api/health"
+for attempt in $(seq 1 30); do
+    if curl -fsS http://127.0.0.1:8000/api/health >/dev/null; then
+        break
+    fi
+    if [ "$attempt" -eq 30 ]; then
+        echo "Health check failed after deployment." >&2
+        exit 1
+    fi
+    sleep 2
+done
+
+curl -fsS http://127.0.0.1:8000/api/health
+printf '\nDashboard severity counts: '
+curl -fsS http://127.0.0.1:8000/api/dashboard/stats | python3 -c 'import json,sys; print(json.dumps(json.load(sys.stdin).get("findings_by_severity", {}), sort_keys=True))'
+printf 'Container severity counts: '
+curl -fsS http://127.0.0.1:8000/api/inventory-findings | python3 -c 'import json,sys; hosts=json.load(sys.stdin); levels=("CRITICAL","HIGH","MEDIUM","LOW","NONE"); print(json.dumps({k:sum(h.get("counts",{}).get(k,0) for h in hosts) for k in levels}, sort_keys=True))'
+
+rm -rf "$stage" "$archive"
 REMOTE_SCRIPT
+
+ssh -o BatchMode=yes "$REMOTE" "rm -f ${REMOTE_ARCHIVE}"
