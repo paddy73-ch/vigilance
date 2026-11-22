@@ -34,9 +34,16 @@ test -f "$stage/docker/docker-compose.yml"
 test -f "$stage/vigilance/database/crud.py"
 cp "$deploy_dir/docker/docker-compose.override.yml" "$stage/docker/docker-compose.override.yml"
 
-# Keep environment, container-specific config, and the existing Docker volume.
-docker exec vigilance python -c "import sqlite3; src=sqlite3.connect('file:/app/data/vigilance.db?mode=ro', uri=True); dst=sqlite3.connect('/app/data/vigilance.db.before-${commit}'); src.backup(dst); print('database_backup=' + dst.execute('PRAGMA quick_check').fetchone()[0]); dst.close(); src.close()"
+# Backup database (PostgreSQL)
+echo "Backing up database..."
+docker exec vigilance-postgres pg_dump -U vigilance vigilance > "/tmp/vigilance-db-before-${commit}.sql" 2>/dev/null || echo "pg_dump failed (database may not exist yet)"
+# Also backup config volume
+tar -cf "/tmp/vigilance-config-before-${commit}.tar" -C "$deploy_dir" data 2>/dev/null || true
+
+# Backup source code
 tar -cf "/tmp/vigilance-source-before-${commit}.tar" -C "$deploy_dir" vigilance docker
+
+# Deploy new code
 rm -rf "$deploy_dir/vigilance" "$deploy_dir/docker"
 mv "$stage/vigilance" "$deploy_dir/vigilance"
 mv "$stage/docker" "$deploy_dir/docker"
@@ -44,17 +51,25 @@ tar -xf "$archive" -C "$deploy_dir"
 
 compose=(docker compose -p vigilance --project-directory "$deploy_dir/docker" -f "$deploy_dir/docker/docker-compose.yml" -f "$deploy_dir/docker/docker-compose.override.yml")
 "${compose[@]}" config --quiet
-"${compose[@]}" up -d --build
 
-for attempt in $(seq 1 30); do
+# Clear BuildKit cache to avoid stale build plan (pip install before COPY vigilance/)
+docker builder prune -af
+
+# Force fresh build plan with cache-bust arg
+"${compose[@]}" build --no-cache --build-arg CACHEBUST=$(date +%s)
+"${compose[@]}" up -d
+
+# Wait longer for PostgreSQL to be ready and migrations to run
+for attempt in $(seq 1 60); do
     if curl -fsS http://127.0.0.1:8000/api/health >/dev/null; then
         break
     fi
-    if [ "$attempt" -eq 30 ]; then
+    if [ "$attempt" -eq 60 ]; then
         echo "Health check failed after deployment." >&2
+        docker compose -p vigilance --project-directory "$deploy_dir/docker" logs --tail 50
         exit 1
     fi
-    sleep 2
+    sleep 3
 done
 
 curl -fsS http://127.0.0.1:8000/api/health

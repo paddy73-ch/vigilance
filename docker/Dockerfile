@@ -6,7 +6,7 @@ ARG GID=1000
 RUN groupadd -g ${GID} vigilance && \
     useradd -u ${UID} -g ${GID} -m -s /bin/bash vigilance
 
-# System dependencies for paramiko, ssh, healthcheck, and building
+# System dependencies for paramiko, ssh, healthcheck, building, and postgresql
 RUN apt-get update && apt-get install -y --no-install-recommends \
     openssh-client \
     curl \
@@ -14,18 +14,24 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     libffi-dev \
     libssl-dev \
+    postgresql-client \
+    gosu \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# Install Python dependencies
+# Copy application code first (needed for editable install)
 COPY pyproject.toml .
-RUN pip install --no-cache-dir -e .
-
-# Copy application code
 COPY vigilance/ ./vigilance/
 COPY config/ ./config/
 COPY alembic.ini .
+
+# Create data directory with correct ownership before switching user
+RUN mkdir -p /app/data /app/data/ssh && \
+    chown -R 1000:1000 /app/data
+
+# Install Python dependencies
+RUN pip install --no-cache-dir -e .
 
 # Entry point
 COPY docker/entrypoint.sh /entrypoint.sh
@@ -34,12 +40,12 @@ RUN chmod +x /entrypoint.sh
 # Volume for data persistence
 VOLUME ["/app/data"]
 
-# Non-root user
-USER vigilance
+# Run as root for entrypoint (permission fixes), then drop to vigilance via gosu
+USER root
 
 # Environment variables
 ENV PYTHONUNBUFFERED=1 \
-    VIGILANCE_DB_PATH=/app/data/vigilance.db \
+    VIGILANCE_DATABASE_URL=sqlite+aiosqlite:////app/data/vigilance.db \
     VIGILANCE_CONFIG_PATH=/app/data/config.yaml
 
 EXPOSE 8000

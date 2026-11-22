@@ -88,7 +88,7 @@ class Settings(BaseSettings):
     )
 
     # Database
-    db_path: str = "/app/data/vigilance.db"
+    database_url: str = "sqlite+aiosqlite:////app/data/vigilance.db"
     config_path: str = "/app/data/config.yaml"
 
     # Proxmox (from env, can be overridden by config.yaml)
@@ -129,6 +129,14 @@ class Settings(BaseSettings):
     scan: Optional[ScanConfig] = None
     overrides: Dict[str, str] = {}
     suppressions: List[Dict[str, Any]] = []
+
+    @field_validator("database_url")
+    @classmethod
+    def validate_database_url(cls, v: str) -> str:
+        valid_schemes = ("sqlite+aiosqlite://", "postgresql+asyncpg://")
+        if not any(v.startswith(scheme) for scheme in valid_schemes):
+            raise ValueError(f"database_url must start with one of: {valid_schemes}")
+        return v
 
     @field_validator("auth_mode")
     @classmethod

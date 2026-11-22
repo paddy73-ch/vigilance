@@ -1,20 +1,38 @@
-version: '3.8'
-
 services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: vigilance-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: vigilance
+      POSTGRES_PASSWORD: vigilance
+      POSTGRES_DB: vigilance
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vigilance -d vigilance"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
   vigilance:
     build:
       context: ..
       dockerfile: docker/Dockerfile
     container_name: vigilance
     restart: unless-stopped
-    user: "1000:1000"
+    user: "0:0"
+    depends_on:
+      postgres:
+        condition: service_healthy
     environment:
-      - VIGILANCE_DB_PATH=/app/data/vigilance.db
+      - VIGILANCE_DATABASE_URL=postgresql+asyncpg://vigilance:vigilance@postgres:5432/vigilance
       - VIGILANCE_CONFIG_PATH=/app/data/config.yaml
     env_file:
       - ../.env
     volumes:
-      - vigilance_data:/app/data
+      - vigilance_config:/app/data
     ports:
       - "8000:8000"
     healthcheck:
@@ -22,7 +40,7 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 10s
+      start_period: 15s
     deploy:
       resources:
         limits:
@@ -33,5 +51,7 @@ services:
           memory: 256M
 
 volumes:
-  vigilance_data:
+  postgres_data:
+    driver: local
+  vigilance_config:
     driver: local
