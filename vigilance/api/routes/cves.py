@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -8,6 +9,8 @@ from vigilance.api.schemas import CVEEntryResponse, CVESyncStatusResponse, CVESy
 from vigilance.database import crud
 from vigilance.cve.sync import sync_cve_source
 from vigilance.core.security import User
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -81,13 +84,24 @@ async def trigger_cve_sync(
 ):
     """Trigger CVE sync for all or specific source."""
     async def run() -> None:
-        if source:
-            await sync_cve_source(source)
-        else:
-            from vigilance.cve.sync import CVESyncOrchestrator
+        try:
+            if source:
+                await sync_cve_source(source)
+            else:
+                from vigilance.cve.sync import CVESyncOrchestrator
+                from vigilance.database.base import async_session_maker
+                async with async_session_maker() as sync_db:
+                    await CVESyncOrchestrator(sync_db).sync_all()
+        except Exception as e:
+            logger.error(f"CVE sync failed for {source or 'all'}: {e}")
+            # Update sync status to error
             from vigilance.database.base import async_session_maker
+            from vigilance.database import crud
             async with async_session_maker() as sync_db:
-                await CVESyncOrchestrator(sync_db).sync_all()
+                src = source or "all"
+                await crud.update_sync_status(sync_db, src, status="error", error_message=str(e))
+                await sync_db.commit()
 
-    asyncio.create_task(run(), name=f"cve-sync-{source or 'all'}")
-    return CVESyncTriggerResponse(results={}, message="CVE sync started")
+    task = asyncio.create_task(run(), name=f"cve-sync-{source or 'all'}")
+    task.add_done_callback(lambda t: t.exception() if t.exception() else None)
+    return CVESyncTriggerResponse(results={}, message="CVE sync started in background")
