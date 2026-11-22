@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}Containers - Vigilance{% endblock %}
+{% block content %}
+<div x-data="containerFindings()" x-init="load()">
+    <div class="flex items-center justify-between mb-6">
+        <div><h1 class="text-2xl font-bold">Container-Risiken</h1><p class="text-sm text-gray-500 mt-1">Offene Findings pro VM und LXC, nach Risiko sortiert.</p></div>
+        <a href="/findings" class="btn-secondary">Alle Findings</a>
+    </div>
+    <div class="space-y-3">
+        <template x-for="host in hosts" :key="host.id">
+            <section class="bg-white dark:bg-gray-800 rounded-lg shadow border border-gray-200 dark:border-gray-700">
+                <button class="w-full flex flex-wrap items-center gap-4 px-4 py-4 text-left" @click="host.expanded = !host.expanded">
+                    <span class="text-lg" x-text="host.expanded ? '⌄' : '›'"></span>
+                    <span class="font-semibold" x-text="host.name"></span>
+                    <span class="text-sm text-gray-500" x-text="host.node + ' · ' + host.type.toUpperCase() + ' · VMID ' + host.vmid"></span>
+                    <span class="ml-auto font-semibold" x-text="host.total + ' offene Findings'"></span>
+                    <span class="text-red-600" x-show="host.counts.CRITICAL" x-text="host.counts.CRITICAL + ' Critical'"></span>
+                    <span class="text-orange-600" x-show="host.counts.HIGH" x-text="host.counts.HIGH + ' High'"></span>
+                    <span class="text-yellow-600" x-show="host.counts.MEDIUM" x-text="host.counts.MEDIUM + ' Medium'"></span>
+                    <span class="text-blue-600" x-show="host.counts.LOW" x-text="host.counts.LOW + ' Low'"></span>
+                </button>
+                <div x-show="host.expanded" class="border-t border-gray-200 dark:border-gray-700 px-4 py-3 space-y-3">
+                    <template x-for="tool in host.tools" :key="tool.name + tool.version">
+                        <div class="rounded bg-gray-50 dark:bg-gray-700 p-3">
+                            <div class="font-medium" x-text="tool.name + ' · ' + (tool.version || 'Version unbekannt')"></div>
+                            <div class="mt-2 space-y-1">
+                                <template x-for="finding in tool.findings" :key="finding.cve_id">
+                                    <div class="flex flex-wrap gap-3 text-sm">
+                                        <a class="text-blue-600 hover:underline" :href="'/cves?cve_id=' + encodeURIComponent(finding.cve_id)" x-text="finding.cve_id"></a>
+                                        <span :class="severityClass(finding.severity)" x-text="finding.severity"></span>
+                                        <span x-text="finding.title || 'Kein Titel'" class="text-gray-600 dark:text-gray-300"></span>
+                                        <span x-show="finding.fixed_version" class="text-gray-500" x-text="'Fix: ' + finding.fixed_version"></span>
+                                    </div>
+                                </template>
+                            </div>
+                        </div>
+                    </template>
+                    <p x-show="host.total === 0" class="text-sm text-gray-500">Keine offenen Findings.</p>
+                </div>
+            </section>
+        </template>
+    </div>
+</div>
+<script>
+function containerFindings() {
+    return {
+        hosts: [],
+        async load() {
+            try {
+                const response = await fetch('/api/inventory-findings');
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                this.hosts = (await response.json()).map(host => ({...host, expanded: false}));
+            } catch (error) {
+                console.error('Failed to load container findings', error);
+            }
+        },
+        severityClass(level) {
+            return {CRITICAL: 'text-red-600 font-semibold', HIGH: 'text-orange-600 font-semibold', MEDIUM: 'text-yellow-600', LOW: 'text-blue-600'}[level] || 'text-gray-500';
+        }
+    };
+}
+</script>
+{% endblock %}

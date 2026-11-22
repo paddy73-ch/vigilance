@@ -28,6 +28,11 @@ async def findings_page(request: Request, current_user: User = Depends(get_curre
     return templates.TemplateResponse(request=request, name="findings.html", context={"request": request})
 
 
+@router.get("/containers", response_class=HTMLResponse)
+async def containers_page(request: Request, current_user: User = Depends(get_current_user_optional)):
+    return templates.TemplateResponse(request=request, name="containers.html", context={"request": request})
+
+
 @router.get("/cves", response_class=HTMLResponse)
 async def cves_page(request: Request, current_user: User = Depends(get_current_user_optional)):
     return templates.TemplateResponse(request=request, name="cves.html", context={"request": request})
