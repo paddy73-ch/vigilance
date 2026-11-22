@@ -44,10 +44,8 @@ class CVESyncOrchestrator:
                     "ghsa", lambda: sync_ghsa(package_names=tool_names)
                 )
             else:
-                # No tools discovered yet: fetch all GHSA advisories (no limit)
-                results["ghsa"] = await self._sync_source(
-                    "ghsa", lambda: sync_ghsa()
-                )
+                # No tools discovered yet: do NOT fetch GHSA advisories
+                results["ghsa"] = {"status": "skipped", "count": 0, "message": "No discovered tools, skipping GHSA sync"}
 
         # NVD
         if settings.cve_sync and settings.cve_sync.nvd.get("enabled", False):
@@ -200,9 +198,7 @@ async def sync_cve_source(source: str) -> dict:
                 return await orchestrator._sync_source(
                     source, lambda: sync_ghsa(package_names=tool_names)
                 )
-            return await orchestrator._sync_source(
-                source, lambda: sync_ghsa()
-            )
+            return {"status": "skipped", "count": 0, "message": "No discovered tools, skipping GHSA sync"}
         return await orchestrator._sync_source(source, _get_sync_func(source))
 
 
