@@ -176,6 +176,7 @@ class CVESyncStatus(Base):
     __tablename__ = "cve_sync_status"
 
     source: Mapped[str] = mapped_column(String(32), primary_key=True)
+    status: Mapped[str] = mapped_column(String(16), default="idle", server_default="idle")
     last_sync_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
     last_success_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
     entries_count: Mapped[int] = mapped_column(Integer, default=0)

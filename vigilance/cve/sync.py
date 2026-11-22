@@ -62,6 +62,8 @@ class CVESyncOrchestrator:
         """Sync a single source and update database."""
         start_time = datetime.utcnow()
         try:
+            await crud.update_sync_status(self.db, source, status="running", error_message=None)
+            await self.db.commit()
             logger.info(f"Starting CVE sync for {source}")
             cve_data_list = await sync_func()
 
@@ -94,6 +96,7 @@ class CVESyncOrchestrator:
                 last_sync_at=datetime.utcnow(),
                 last_success_at=datetime.utcnow(),
                 entries_count=count,
+                status="success",
                 error_message=None,
                 next_sync_at=datetime.utcnow() + timedelta(hours=6),
             )
@@ -107,6 +110,7 @@ class CVESyncOrchestrator:
                 self.db,
                 source,
                 last_sync_at=datetime.utcnow(),
+                status="error",
                 error_message=str(e),
             )
             await self.db.commit()

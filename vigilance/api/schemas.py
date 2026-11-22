@@ -193,6 +193,7 @@ class ToolOverrideResponse(ToolOverrideBase):
 # CVE Sync Status
 class CVESyncStatusResponse(BaseModel):
     source: str
+    status: str = "idle"
     last_sync_at: Optional[datetime] = None
     last_success_at: Optional[datetime] = None
     entries_count: int

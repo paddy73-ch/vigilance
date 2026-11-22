@@ -1,3 +1,4 @@
+import asyncio
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -53,11 +54,14 @@ async def trigger_cve_sync(
     current_user: User = Depends(require_write_access),
 ):
     """Trigger CVE sync for all or specific source."""
-    if source:
-        results = await sync_cve_source(source)
-    else:
-        from vigilance.cve.sync import CVESyncOrchestrator
-        orchestrator = CVESyncOrchestrator(db)
-        results = await orchestrator.sync_all()
+    async def run() -> None:
+        if source:
+            await sync_cve_source(source)
+        else:
+            from vigilance.cve.sync import CVESyncOrchestrator
+            from vigilance.database.base import async_session_maker
+            async with async_session_maker() as sync_db:
+                await CVESyncOrchestrator(sync_db).sync_all()
 
-    return CVESyncTriggerResponse(results=results, message="CVE sync completed")
+    asyncio.create_task(run(), name=f"cve-sync-{source or 'all'}")
+    return CVESyncTriggerResponse(results={}, message="CVE sync started")

@@ -38,7 +38,7 @@
             <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4 border border-gray-200 dark:border-gray-700">
                 <div class="flex items-center justify-between">
                     <span class="font-medium capitalize" x-text="sync.source"></span>
-                    <span :class="sync.error_message ? 'text-red-600' : 'text-green-600'" x-text="sync.error_message ? 'Error' : 'OK'"></span>
+                    <span :class="sync.status === 'running' ? 'text-blue-600' : (sync.status === 'error' ? 'text-red-600' : 'text-green-600')" x-text="sync.status === 'running' ? 'Läuft' : (sync.status === 'error' ? 'Fehler' : (sync.status === 'success' ? 'OK' : 'Noch nicht gestartet'))"></span>
                 </div>
                 <div class="mt-2 text-sm text-gray-500 dark:text-gray-400 space-y-1">
                     <div>Entries: <span class="font-medium" x-text="sync.entries_count"></span></div>
@@ -136,6 +136,9 @@ function cvesPage() {
             try {
                 const resp = await fetch('/api/cves/sync/status');
                 this.syncStatus = await resp.json();
+                if (this.syncStatus.some(s => s.status === 'running')) {
+                    setTimeout(() => this.loadSyncStatus(), 2000);
+                }
             } catch (e) {
                 console.error('Failed to load sync status', e);
             }
@@ -145,7 +148,7 @@ function cvesPage() {
             try {
                 const resp = await fetch('/api/cves/sync', { method: 'POST' });
                 const data = await resp.json();
-                alert('CVE sync completed');
+                alert('CVE-Sync gestartet');
                 this.loadCves();
                 this.loadSyncStatus();
             } catch (e) {
