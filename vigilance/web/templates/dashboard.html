@@ -175,6 +175,9 @@ function dashboard() {
             try {
                 const resp = await fetch('/api/dashboard/stats');
                 this.stats = await resp.json();
+                if (this.stats.cve_sync_status.some(sync => sync.status === 'running')) {
+                    setTimeout(() => this.loadStats(), 2000);
+                }
             } catch (e) {
                 console.error('Failed to load stats', e);
             }
@@ -196,13 +199,16 @@ function dashboard() {
         },
         async triggerCveSync() {
             if (!confirm('Sync CVE database now?')) return;
+            this.stats.cve_sync_status = this.stats.cve_sync_status.map(sync => ({ ...sync, status: 'running', error_message: null }));
             try {
                 const resp = await fetch('/api/cves/sync', { method: 'POST' });
                 const data = await resp.json();
-                alert('CVE sync completed');
+                if (!resp.ok) throw new Error(data.detail || `HTTP ${resp.status}`);
                 this.loadStats();
+                return;
             } catch (e) {
                 alert('Failed to trigger CVE sync');
+                this.loadStats();
             }
         },
         formatDate(dateStr) {
