@@ -1,11 +1,55 @@
 /* Vigilance Custom Styles */
 
+.nav-tabs {
+    align-self: stretch;
+    display: flex;
+    gap: 0.25rem;
+    margin-left: 2rem;
+    overflow-x: auto;
+    white-space: nowrap;
+}
+
 .nav-link {
-    @apply px-3 py-2 rounded-md text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors;
+    align-items: center;
+    border-bottom: 2px solid transparent;
+    color: #6b7280;
+    display: inline-flex;
+    flex: 0 0 auto;
+    font-size: 0.875rem;
+    font-weight: 500;
+    padding: 0 0.75rem;
+    transition: color 150ms ease, border-color 150ms ease, background-color 150ms ease;
+}
+
+.nav-link:hover {
+    background-color: #f9fafb;
+    color: #374151;
 }
 
 .nav-link.active {
-    @apply text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20;
+    border-bottom-color: #2563eb;
+    color: #2563eb;
+    font-weight: 600;
+}
+
+.dark .nav-link {
+    color: #9ca3af;
+}
+
+.dark .nav-link:hover {
+    background-color: #374151;
+    color: #e5e7eb;
+}
+
+.dark .nav-link.active {
+    border-bottom-color: #60a5fa;
+    color: #60a5fa;
+}
+
+@media (max-width: 767px) {
+    .nav-tabs {
+        margin-left: 1rem;
+    }
 }
 
 .btn-primary {

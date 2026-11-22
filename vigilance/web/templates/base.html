@@ -18,15 +18,15 @@
                     <a href="/" class="text-xl font-bold text-blue-600 dark:text-blue-400">
                         Vigilance
                     </a>
-                    <div class="ml-8 flex space-x-4">
-                        <a href="/" class="nav-link">Dashboard</a>
-                        <a href="/nodes" class="nav-link">Nodes</a>
-                        <a href="/findings" class="nav-link">Findings</a>
-                        <a href="/containers" class="nav-link">Containers</a>
-                        <a href="/cves" class="nav-link">CVE Database</a>
-                        <a href="/suppressions" class="nav-link">Suppressions</a>
-                        <a href="/overrides" class="nav-link">Overrides</a>
-                        <a href="/settings" class="nav-link">Settings</a>
+                    <div class="nav-tabs" aria-label="Main navigation">
+                        <a href="/" class="nav-link{% if request.url.path == '/' %} active{% endif %}"{% if request.url.path == '/' %} aria-current="page"{% endif %}>Dashboard</a>
+                        <a href="/nodes" class="nav-link{% if request.url.path == '/nodes' %} active{% endif %}"{% if request.url.path == '/nodes' %} aria-current="page"{% endif %}>Nodes</a>
+                        <a href="/findings" class="nav-link{% if request.url.path == '/findings' %} active{% endif %}"{% if request.url.path == '/findings' %} aria-current="page"{% endif %}>Findings</a>
+                        <a href="/containers" class="nav-link{% if request.url.path == '/containers' %} active{% endif %}"{% if request.url.path == '/containers' %} aria-current="page"{% endif %}>Containers</a>
+                        <a href="/cves" class="nav-link{% if request.url.path == '/cves' %} active{% endif %}"{% if request.url.path == '/cves' %} aria-current="page"{% endif %}>CVE Database</a>
+                        <a href="/suppressions" class="nav-link{% if request.url.path == '/suppressions' %} active{% endif %}"{% if request.url.path == '/suppressions' %} aria-current="page"{% endif %}>Suppressions</a>
+                        <a href="/overrides" class="nav-link{% if request.url.path == '/overrides' %} active{% endif %}"{% if request.url.path == '/overrides' %} aria-current="page"{% endif %}>Overrides</a>
+                        <a href="/settings" class="nav-link{% if request.url.path == '/settings' %} active{% endif %}"{% if request.url.path == '/settings' %} aria-current="page"{% endif %}>Settings</a>
                     </div>
                 </div>
                 <div class="flex items-center space-x-4">
