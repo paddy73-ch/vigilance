@@ -108,16 +108,23 @@ class CVESyncOrchestrator:
             return {"status": "success", "count": count, "duration": (datetime.utcnow() - start_time).total_seconds()}
 
         except Exception as e:
-            logger.error(f"CVE sync failed for {source}: {e}")
+            # Unwrap tenacity RetryError to get the actual inner exception
+            from tenacity import RetryError
+            if isinstance(e, RetryError) and e.last_attempt.failed:
+                inner = e.last_attempt.exception()
+                if inner is not None:
+                    e = inner
+            error_msg = str(e)
+            logger.error(f"CVE sync failed for {source}: {error_msg}")
             await crud.update_sync_status(
                 self.db,
                 source,
                 last_sync_at=datetime.utcnow(),
                 status="error",
-                error_message=str(e),
+                error_message=error_msg,
             )
             await self.db.commit()
-            return {"status": "error", "error": str(e), "duration": (datetime.utcnow() - start_time).total_seconds()}
+            return {"status": "error", "error": error_msg, "duration": (datetime.utcnow() - start_time).total_seconds()}
 
     async def _rematch_findings(self):
         """Re-match all open findings against updated CVE database."""
