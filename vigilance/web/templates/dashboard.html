@@ -153,12 +153,14 @@
                 <template x-for="sync in stats.cve_sync_status" :key="sync.source">
                     <div class="flex items-center justify-between gap-4 px-3 py-2 bg-gray-50 dark:bg-gray-700 rounded">
                         <span class="font-medium capitalize" x-text="sync.source"></span>
-                        <span class="text-sm text-gray-500 dark:text-gray-400" x-text="sync.entries_count + ' entries, Last: ' + (sync.last_success_at ? formatDate(sync.last_success_at) : 'Never')"></span>
-                        <button x-show="sync.status === 'error' || sync.error_message" @click="retryCveSource(sync)" class="text-blue-600 hover:text-blue-800" title="Quelle erneut synchronisieren" aria-label="Quelle erneut synchronisieren">
-                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h5m11 11v-5h-5M5.5 9A7 7 0 0117 6.5L20 9m-1.5 6A7 7 0 017 17.5L4 15"></path></svg>
-                        </button>
-                        <span :class="sync.status === 'running' ? 'text-blue-600' : (sync.status === 'error' || sync.error_message ? 'text-red-600' : 'text-green-600')"
-                              x-text="sync.status === 'running' ? 'Läuft' : (sync.status === 'error' || sync.error_message ? 'Fehler' : (sync.status === 'success' ? 'OK' : 'Noch nicht gestartet'))"></span>
+                        <span class="flex-1 text-sm text-gray-500 dark:text-gray-400" x-text="sync.entries_count + ' entries, Last: ' + (sync.last_success_at ? formatDate(sync.last_success_at) : 'Never')"></span>
+                        <div class="flex items-center justify-end gap-3 min-w-[5.5rem]">
+                            <span :class="sync.status === 'running' ? 'text-blue-600' : (sync.status === 'error' || sync.error_message ? 'text-red-600' : 'text-green-600')"
+                                  x-text="sync.status === 'running' ? 'Läuft' : (sync.status === 'error' || sync.error_message ? 'Fehler' : (sync.status === 'success' ? 'OK' : 'Noch nicht gestartet'))"></span>
+                            <button x-show="(sync.status === 'error' || sync.error_message) && sync.status !== 'running'" @click="retryCveSource(sync)" class="shrink-0 text-blue-600 hover:text-blue-800" title="Quelle erneut synchronisieren" aria-label="Quelle erneut synchronisieren">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h5m11 11v-5h-5M5.5 9A7 7 0 0117 6.5L20 9m-1.5 6A7 7 0 017 17.5L4 15"></path></svg>
+                            </button>
+                        </div>
                     </div>
                 </template>
             </div>
@@ -213,12 +215,18 @@ function dashboard() {
         async retryCveSource(sync) {
             sync.status = 'running';
             sync.error_message = null;
-            const resp = await fetch('/api/cves/sync?source=' + encodeURIComponent(sync.source), { method: 'POST' });
-            if (!resp.ok) {
+            try {
+                const resp = await fetch('/api/cves/sync?source=' + encodeURIComponent(sync.source), { method: 'POST' });
+                if (!resp.ok) {
+                    const data = await resp.json().catch(() => ({}));
+                    throw new Error(data.detail || `HTTP ${resp.status}`);
+                }
+                this.loadStats();
+            } catch (e) {
                 sync.status = 'error';
-                sync.error_message = 'HTTP ' + resp.status;
+                sync.error_message = e.message;
+                alert(`${sync.source.toUpperCase()}-Synchronisierung konnte nicht gestartet werden: ${e.message}`);
             }
-            this.loadStats();
         },
         formatDate(dateStr) {
             if (!dateStr) return 'Never';
