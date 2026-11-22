@@ -111,6 +111,7 @@ class Settings(BaseSettings):
     # CVE Sync
     cve_sync_interval_hours: int = 6
     nvd_api_key: str = ""
+    github_token: str = ""
 
     # Scan
     scan_interval_hours: int = 24

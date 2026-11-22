@@ -15,8 +15,11 @@ class GHSAClient:
 
     def __init__(self):
         # GitHub Advisory API doesn't require auth for public data, but token helps with rate limits
-        headers = {"Accept": "application/vnd.github+json"}
-        github_token = getattr(settings, "github_token", "")
+        headers = {
+            "Accept": "application/vnd.github+json",
+            "User-Agent": "vigilance-cve-sync",
+        }
+        github_token = getattr(settings, "github_token", "") or getattr(settings, "ghsa_token", "")
         if github_token:
             headers["Authorization"] = f"Bearer {github_token}"
         self.client = httpx.AsyncClient(timeout=30.0, headers=headers)
@@ -41,7 +44,13 @@ class GHSAClient:
             if max_pages and page > max_pages:
                 break
             response = await self.client.get(self.BASE_URL, params={"per_page": per_page, "page": page})
-            response.raise_for_status()
+            try:
+                response.raise_for_status()
+            except httpx.HTTPStatusError as e:
+                status = e.response.status_code
+                body = e.response.text[:200]
+                logger.error(f"GitHub API returned HTTP {status}: {body}")
+                raise
             advisories = response.json()
             if not isinstance(advisories, list):
                 logger.error("GitHub advisories returned a non-list response; stopping pagination")
