@@ -46,6 +46,10 @@ class Inventory(Base):
         Index("idx_inventory_node", "proxmox_node_id"),
     )
 
+    @property
+    def node_name(self) -> Optional[str]:
+        return self.node.name if self.node else None
+
 
 class DiscoveredTool(Base):
     __tablename__ = "discovered_tools"

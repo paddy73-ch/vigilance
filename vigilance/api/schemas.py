@@ -55,6 +55,7 @@ class InventoryResponse(BaseModel):
     last_seen: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
+    node_name: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -72,6 +73,7 @@ class DiscoveredToolResponse(BaseModel):
     package_manager: Optional[str] = None
     raw_data: Optional[str] = None
     discovered_at: datetime
+    inventory: Optional[InventoryResponse] = None
 
     class Config:
         from_attributes = True

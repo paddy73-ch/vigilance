@@ -252,7 +252,11 @@ async def get_findings(
 ) -> Sequence[VulnerabilityFinding]:
     stmt = (
         select(VulnerabilityFinding)
-        .options(selectinload(VulnerabilityFinding.tool).selectinload(DiscoveredTool.inventory))
+        .options(
+            selectinload(VulnerabilityFinding.tool)
+            .selectinload(DiscoveredTool.inventory)
+            .selectinload(Inventory.node)
+        )
         .options(selectinload(VulnerabilityFinding.cve))
         .order_by(VulnerabilityFinding.first_seen_at.desc())
         .limit(limit)
