@@ -126,6 +126,8 @@ class VulnerabilityFindingResponse(BaseModel):
     last_seen_at: datetime
     resolved_at: Optional[datetime] = None
     scan_run_id: Optional[int] = None
+    tool: Optional[DiscoveredToolResponse] = None
+    cve: Optional[CVEEntryResponse] = None
 
     class Config:
         from_attributes = True

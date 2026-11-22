@@ -126,12 +126,6 @@ def match_tool_against_cves(tool, cve: CVEData) -> MatchResult:
                 pass  # Good match
             elif range_repo in cpe_name:
                 pass  # Good match
-            elif package_manager in ["dpkg", "apt"] and range_obj.type == "DEBIAN":
-                pass  # Debian package match
-            elif package_manager in ["apk"] and range_obj.type == "ECOSYSTEM":
-                pass  # Alpine package match
-            elif package_manager in ["docker"] and range_obj.type in ["ECOSYSTEM", "CPE"]:
-                pass  # Docker image match
             else:
                 continue  # Range doesn't apply to this tool
 

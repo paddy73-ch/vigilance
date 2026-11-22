@@ -126,7 +126,7 @@
                     Scan Now
                 </button>
             </div>
-            <div class="space-y-3 max-h-64 overflow-y-auto">
+            <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
                 <template x-for="scan in stats.recent_scans" :key="scan.id">
                     <div class="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700 rounded">
                         <div>

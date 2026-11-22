@@ -32,6 +32,7 @@ class NVDClient:
         all_cves = []
         start_index = 0
         results_per_page = 2000
+        fallback_latest = False
 
         # Calculate date range
         end_date = datetime.utcnow()
@@ -46,6 +47,11 @@ class NVDClient:
             }
 
             response = await self.client.get(self.BASE_URL, params=params)
+            if response.status_code == 404 and start_index == 0:
+                logger.warning("NVD returned 404 for date window; falling back to latest page")
+                params = {"startIndex": 0, "resultsPerPage": results_per_page}
+                response = await self.client.get(self.BASE_URL, params=params)
+                fallback_latest = True
             response.raise_for_status()
             data = response.json()
 
@@ -56,6 +62,8 @@ class NVDClient:
                     all_cves.append(cve)
 
             total_results = data.get("totalResults", 0)
+            if fallback_latest:
+                break
             if start_index + results_per_page >= total_results:
                 break
             start_index += results_per_page
