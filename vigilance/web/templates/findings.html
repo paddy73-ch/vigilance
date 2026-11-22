@@ -44,7 +44,7 @@
                 <template x-for="finding in findings" :key="finding.id">
                     <tr class="hover:bg-gray-50 dark:hover:bg-gray-700">
                         <td class="px-4 py-3">
-                            <a :href="finding.cve?.cve_id ? '/api/cves/' + finding.cve.cve_id : '#'" target="_blank" class="font-mono text-blue-600 hover:underline" x-text="finding.cve_id"></a>
+                            <a :href="finding.cve?.cve_id ? '/cves?cve_id=' + encodeURIComponent(finding.cve.cve_id) : '/cves'" class="font-mono text-blue-600 hover:underline" x-text="finding.cve_id"></a>
                         </td>
                         <td class="px-4 py-3">
                             <span :class="getSeverityClass(finding.severity)" x-text="finding.severity"></span>
