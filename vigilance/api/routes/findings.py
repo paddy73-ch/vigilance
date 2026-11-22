@@ -63,19 +63,6 @@ async def get_findings_stats(
     return await crud.get_finding_stats(db)
 
 
-@router.get("/findings/{finding_id}", response_model=FindingDetailResponse)
-async def get_finding(
-    finding_id: int,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user_optional),
-):
-    """Get detailed finding with tool, CVE, and inventory info."""
-    finding = await crud.get_findings(db, limit=1, offset=0)
-    # This is simplified - in reality you'd fetch by ID with joins
-    # For now, return a placeholder
-    raise HTTPException(status_code=501, detail="Not fully implemented")
-
-
 @router.patch("/findings/{finding_id}/suppress")
 async def suppress_finding(
     finding_id: int,
@@ -138,6 +125,17 @@ async def unsuppress_finding(
     await db.commit()
 
     return {"message": "Suppression removed"}
+
+
+@router.get("/findings/{finding_id}", response_model=FindingDetailResponse)
+async def get_finding(
+    finding_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user_optional),
+):
+    """Get detailed finding with tool, CVE, and inventory info."""
+    finding = await crud.get_findings(db, limit=1, offset=0)
+    raise HTTPException(status_code=501, detail="Not fully implemented")
 
 
 # Suppressions
