@@ -82,9 +82,9 @@ async def send_gotify_message(
     message: str,
     priority: int = 5,
     extras: Optional[dict] = None,
-) -> bool:
+) -> tuple[bool, Optional[str]]:
     if not config.enabled or not config.url or not config.token:
-        return False
+        return False, "Gotify not configured (enabled, url, or token missing)"
 
     url = f"{config.url.rstrip('/')}/message"
     params = {"token": config.token}
@@ -100,10 +100,16 @@ async def send_gotify_message(
         async with httpx.AsyncClient(timeout=10.0) as client:
             response = await client.post(url, params=params, json=payload)
             response.raise_for_status()
-            return True
+            return True, None
+    except httpx.ConnectError as e:
+        return False, f"Connection failed: {e}"
+    except httpx.TimeoutException as e:
+        return False, f"Timeout: {e}"
+    except httpx.HTTPStatusError as e:
+        return False, f"HTTP {e.response.status_code}: {e.response.text}"
     except Exception as e:
         logger.error(f"Failed to send Gotify notification: {e}")
-        return False
+        return False, f"Error: {type(e).__name__}: {e}"
 
 
 async def notify_finding(finding: VulnerabilityFinding, tool: DiscoveredTool, inventory: Inventory, cve: CVEEntry):
@@ -198,9 +204,9 @@ async def get_digest_queue() -> List[dict]:
     return items
 
 
-async def send_test_gotify(url: Optional[str] = None, token: Optional[str] = None) -> bool:
+async def send_test_gotify(url: Optional[str] = None, token: Optional[str] = None) -> tuple[bool, Optional[str]]:
     if not settings.notifications or not settings.notifications.gotify:
-        return False
+        return False, "Gotify not configured in settings"
 
     config = settings.notifications.gotify
     # Use provided url/token for testing, fallback to configured values
@@ -208,7 +214,7 @@ async def send_test_gotify(url: Optional[str] = None, token: Optional[str] = Non
     test_token = token or config.token
     
     if not test_url or not test_token:
-        return False
+        return False, "No URL or token provided (and none configured)"
 
     test_config = GotifyConfig(
         enabled=True,
