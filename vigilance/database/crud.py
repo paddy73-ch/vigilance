@@ -113,6 +113,12 @@ async def get_discovered_tools(
     return result.scalars().all()
 
 
+async def get_discovered_tool_names(db: AsyncSession) -> List[str]:
+    """Get distinct tool names from discovered tools."""
+    result = await db.execute(select(DiscoveredTool.tool_name).distinct())
+    return [row[0] for row in result.all()]
+
+
 async def upsert_discovered_tool(db: AsyncSession, **kwargs) -> DiscoveredTool:
     inventory_id = kwargs.get("inventory_id")
     tool_name = kwargs.get("tool_name")

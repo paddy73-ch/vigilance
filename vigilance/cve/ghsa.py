@@ -31,15 +31,23 @@ class GHSAClient:
         wait=wait_exponential(multiplier=1, min=2, max=30),
         stop=stop_after_attempt(3),
     )
-    async def fetch_advisories(self, per_page: int = 100, max_pages: int = 10) -> List[CVEData]:
+    async def fetch_advisories(
+        self,
+        per_page: int = 100,
+        max_pages: int = 10,
+        package_names: Optional[List[str]] = None,
+    ) -> List[CVEData]:
         """Fetch GitHub Security Advisories using the public REST API.
         
         Args:
             per_page: Results per page (max 100)
             max_pages: Maximum pages to fetch (0 = no limit, default 10)
+            package_names: Optional list of package names to filter advisories by.
+                           Only advisories affecting these packages are returned.
         """
         all_advisories = []
         page = 1
+        pkg_set = {p.lower() for p in package_names} if package_names else None
         while True:
             if max_pages and page > max_pages:
                 break
@@ -57,7 +65,7 @@ class GHSAClient:
                 break
             for node in advisories:
                 cve = self._parse_advisory(node)
-                if cve:
+                if cve and self._matches_packages(cve, pkg_set):
                     all_advisories.append(cve)
             logger.info(f"GHSA page {page}: fetched {len(advisories)} advisories (total: {len(all_advisories)})")
             if len(advisories) < per_page:
@@ -66,6 +74,16 @@ class GHSAClient:
 
         logger.info(f"Fetched {len(all_advisories)} advisories from GHSA")
         return all_advisories
+
+    def _matches_packages(self, cve: CVEData, pkg_set: Optional[set]) -> bool:
+        """Check if a CVE affects any of the given packages."""
+        if pkg_set is None:
+            return True
+        for r in cve.affected_ranges or []:
+            repo = (r.repo or "").lower()
+            if repo and repo in pkg_set:
+                return True
+        return False
 
     def _parse_advisory(self, node: dict) -> Optional[CVEData]:
         try:
@@ -155,14 +173,15 @@ class GHSAClient:
             return None
 
 
-async def sync_ghsa(max_pages: int = 0) -> List[CVEData]:
-    """Sync all advisories from GitHub Security Advisories.
+async def sync_ghsa(max_pages: int = 1, package_names: Optional[List[str]] = None) -> List[CVEData]:
+    """Sync advisories from GitHub Security Advisories.
     
     Args:
-        max_pages: Maximum pages to fetch (0 = no limit)
+        max_pages: Maximum pages to fetch (default 1 for fast initial sync)
+        package_names: Optional list of package names to filter advisories by.
     """
     client = GHSAClient()
     try:
-        return await client.fetch_advisories(max_pages=max_pages)
+        return await client.fetch_advisories(max_pages=max_pages, package_names=package_names)
     finally:
         await client.close()
