@@ -55,6 +55,23 @@ def upgrade() -> None:
     )
     op.create_index("idx_inventory_node", "inventories", ["proxmox_node_id"], unique=False)
 
+    # Scan Runs
+    op.create_table(
+        "scan_runs",
+        sa.Column("id", sa.Integer(), nullable=False),
+        sa.Column("scan_type", sa.String(length=32), nullable=False),
+        sa.Column("status", sa.String(length=32), nullable=False),
+        sa.Column("started_at", sa.DateTime(), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
+        sa.Column("completed_at", sa.DateTime(), nullable=True),
+        sa.Column("nodes_scanned", sa.Integer(), nullable=False, server_default=sa.text("0")),
+        sa.Column("tools_found", sa.Integer(), nullable=False, server_default=sa.text("0")),
+        sa.Column("new_findings", sa.Integer(), nullable=False, server_default=sa.text("0")),
+        sa.Column("error_message", sa.Text(), nullable=True),
+        sa.PrimaryKeyConstraint("id"),
+    )
+    op.create_index("idx_scan_runs_type", "scan_runs", ["scan_type"], unique=False)
+    op.create_index("idx_scan_runs_status", "scan_runs", ["status"], unique=False)
+
     # Discovered Tools
     op.create_table(
         "discovered_tools",
@@ -76,23 +93,6 @@ def upgrade() -> None:
     op.create_index("idx_discovered_tools_inventory", "discovered_tools", ["inventory_id"], unique=False)
     op.create_index("idx_discovered_tools_tool_name", "discovered_tools", ["tool_name"], unique=False)
     op.create_index("idx_discovered_tools_source_type", "discovered_tools", ["source_type"], unique=False)
-
-    # Scan Runs
-    op.create_table(
-        "scan_runs",
-        sa.Column("id", sa.Integer(), nullable=False),
-        sa.Column("scan_type", sa.String(length=32), nullable=False),
-        sa.Column("status", sa.String(length=32), nullable=False),
-        sa.Column("started_at", sa.DateTime(), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
-        sa.Column("completed_at", sa.DateTime(), nullable=True),
-        sa.Column("nodes_scanned", sa.Integer(), nullable=False, server_default=sa.text("0")),
-        sa.Column("tools_found", sa.Integer(), nullable=False, server_default=sa.text("0")),
-        sa.Column("new_findings", sa.Integer(), nullable=False, server_default=sa.text("0")),
-        sa.Column("error_message", sa.Text(), nullable=True),
-        sa.PrimaryKeyConstraint("id"),
-    )
-    op.create_index("idx_scan_runs_type", "scan_runs", ["scan_type"], unique=False)
-    op.create_index("idx_scan_runs_status", "scan_runs", ["status"], unique=False)
 
     # CVE Entries
     op.create_table(
