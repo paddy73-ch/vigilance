@@ -34,14 +34,14 @@ class GHSAClient:
     async def fetch_advisories(
         self,
         per_page: int = 100,
-        max_pages: int = 10,
+        max_pages: Optional[int] = None,
         package_names: Optional[List[str]] = None,
     ) -> List[CVEData]:
         """Fetch GitHub Security Advisories using the public REST API.
         
         Args:
             per_page: Results per page (max 100)
-            max_pages: Maximum pages to fetch (0 = no limit, default 10)
+            max_pages: Maximum pages to fetch (None = no limit, fetch all pages)
             package_names: Optional list of package names to filter advisories by.
                            Only advisories affecting these packages are returned.
         """
@@ -49,7 +49,7 @@ class GHSAClient:
         page = 1
         pkg_set = {p.lower() for p in package_names} if package_names else None
         while True:
-            if max_pages and page > max_pages:
+            if max_pages is not None and page > max_pages:
                 break
             response = await self.client.get(self.BASE_URL, params={"per_page": per_page, "page": page})
             try:
@@ -177,11 +177,11 @@ class GHSAClient:
             return None
 
 
-async def sync_ghsa(max_pages: int = 1, package_names: Optional[List[str]] = None) -> List[CVEData]:
+async def sync_ghsa(max_pages: Optional[int] = None, package_names: Optional[List[str]] = None) -> List[CVEData]:
     """Sync advisories from GitHub Security Advisories.
     
     Args:
-        max_pages: Maximum pages to fetch (default 1 for fast initial sync)
+        max_pages: Maximum pages to fetch (None = fetch all pages)
         package_names: Optional list of package names to filter advisories by.
     """
     client = GHSAClient()

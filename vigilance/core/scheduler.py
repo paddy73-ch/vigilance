@@ -69,23 +69,22 @@ def init_scheduler() -> AsyncIOScheduler:
     global scheduler
     scheduler = AsyncIOScheduler(timezone="UTC")
 
-    # Scan job
-    scan_interval = settings.scan.interval_hours if settings.scan else 24
+    # Scan job - daily at 02:00 UTC (runs first, discovers tools)
     scheduler.add_job(
         run_scan_job,
-        IntervalTrigger(hours=scan_interval, jitter=300),
+        CronTrigger(hour=2, minute=0, timezone="UTC"),
         id="scan_job",
-        name="Discovery Scan",
-        misfire_grace_time=600,
+        name="Discovery Scan (daily 02:00 UTC)",
+        misfire_grace_time=3600,
         max_instances=1,
     )
 
-    # CVE Sync job - daily at 07:00 UTC
+    # CVE Sync job - daily at 03:00 UTC (after scan, uses discovered tools)
     scheduler.add_job(
         run_cve_sync_job,
-        CronTrigger(hour=7, minute=0, timezone="UTC"),
+        CronTrigger(hour=3, minute=0, timezone="UTC"),
         id="cve_sync_job",
-        name="CVE Sync (daily 07:00 UTC)",
+        name="CVE Sync (daily 03:00 UTC)",
         misfire_grace_time=3600,
         max_instances=1,
     )
@@ -149,14 +148,12 @@ async def trigger_cve_sync_now() -> dict:
 async def lifespan(app):
     # Startup
     await start_scheduler()
-    # Run initial scan if configured
+    # Run initial scan FIRST, then CVE sync (so tools are discovered first)
     if settings.scan and settings.scan.full_scan_on_start:
         logger.info("Running initial scan on startup")
-        # Do not hold the HTTP server healthcheck open while offline guests time out.
-        asyncio.create_task(trigger_scan_now(full=True), name="initial-scan")
-    # Run initial CVE sync on startup
-    logger.info("Running initial CVE sync on startup")
-    asyncio.create_task(trigger_cve_sync_now(), name="initial-cve-sync")
+        await trigger_scan_now(full=True)
+    logger.info("Running initial CVE sync on startup (after scan)")
+    await trigger_cve_sync_now()
     yield
     # Shutdown
     await shutdown_scheduler()

@@ -37,17 +37,16 @@ class CVESyncOrchestrator:
 
         # GHSA
         if settings.cve_sync and settings.cve_sync.ghsa.get("enabled", True):
-            max_pages = settings.cve_sync.ghsa.get("max_pages", 1)
             # Load discovered tool names to filter GHSA advisories
             tool_names = await crud.get_discovered_tool_names(self.db)
             if tool_names:
                 results["ghsa"] = await self._sync_source(
-                    "ghsa", lambda: sync_ghsa(max_pages=max_pages, package_names=tool_names)
+                    "ghsa", lambda: sync_ghsa(package_names=tool_names)
                 )
             else:
-                # No tools discovered yet: fallback to small initial sync
+                # No tools discovered yet: fetch all GHSA advisories (no limit)
                 results["ghsa"] = await self._sync_source(
-                    "ghsa", lambda: sync_ghsa(max_pages=max_pages)
+                    "ghsa", lambda: sync_ghsa()
                 )
 
         # NVD
@@ -197,13 +196,12 @@ async def sync_cve_source(source: str) -> dict:
             )
         if source == "ghsa":
             tool_names = await crud.get_discovered_tool_names(db)
-            max_pages = settings.cve_sync.ghsa.get("max_pages", 1) if settings.cve_sync else 1
             if tool_names:
                 return await orchestrator._sync_source(
-                    source, lambda: sync_ghsa(max_pages=max_pages, package_names=tool_names)
+                    source, lambda: sync_ghsa(package_names=tool_names)
                 )
             return await orchestrator._sync_source(
-                source, lambda: sync_ghsa(max_pages=max_pages)
+                source, lambda: sync_ghsa()
             )
         return await orchestrator._sync_source(source, _get_sync_func(source))
 
