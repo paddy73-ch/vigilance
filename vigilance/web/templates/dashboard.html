@@ -150,16 +150,16 @@
                     Sync Now
                 </button>
             </div>
-            <div class="space-y-3 max-h-64 overflow-y-auto">
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <template x-for="sync in stats.cve_sync_status" :key="sync.source">
-                    <div class="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700 rounded">
+                    <div class="min-h-24 flex items-center justify-between gap-4 p-4 bg-gray-50 dark:bg-gray-700 rounded border border-gray-200 dark:border-gray-600">
                         <div>
                             <p class="font-medium capitalize" x-text="sync.source"></p>
                             <p class="text-sm text-gray-500 dark:text-gray-400"
                                x-text="sync.entries_count + ' entries, Last: ' + (sync.last_success_at ? formatDate(sync.last_success_at) : 'Never')"></p>
                         </div>
-                        <span :class="sync.error_message ? 'text-red-600' : 'text-green-600'"
-                              x-text="sync.error_message ? 'Error' : 'OK'"></span>
+                        <span :class="sync.status === 'running' ? 'text-blue-600' : (sync.status === 'error' || sync.error_message ? 'text-red-600' : 'text-green-600')"
+                              x-text="sync.status === 'running' ? 'Läuft' : (sync.status === 'error' || sync.error_message ? 'Fehler' : (sync.status === 'success' ? 'OK' : 'Noch nicht gestartet'))"></span>
                     </div>
                 </template>
             </div>
