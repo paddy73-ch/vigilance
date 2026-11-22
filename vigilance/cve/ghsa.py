@@ -31,12 +31,12 @@ class GHSAClient:
         wait=wait_exponential(multiplier=1, min=2, max=30),
         stop=stop_after_attempt(3),
     )
-    async def fetch_advisories(self, per_page: int = 100, max_pages: int = 0) -> List[CVEData]:
+    async def fetch_advisories(self, per_page: int = 100, max_pages: int = 10) -> List[CVEData]:
         """Fetch GitHub Security Advisories using the public REST API.
         
         Args:
             per_page: Results per page (max 100)
-            max_pages: Maximum pages to fetch (0 = no limit)
+            max_pages: Maximum pages to fetch (0 = no limit, default 10)
         """
         all_advisories = []
         page = 1
@@ -59,6 +59,7 @@ class GHSAClient:
                 cve = self._parse_advisory(node)
                 if cve:
                     all_advisories.append(cve)
+            logger.info(f"GHSA page {page}: fetched {len(advisories)} advisories (total: {len(all_advisories)})")
             if len(advisories) < per_page:
                 break
             page += 1
