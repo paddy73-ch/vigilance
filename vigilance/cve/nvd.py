@@ -1,6 +1,9 @@
+import asyncio
 import logging
 from datetime import datetime, timedelta
 from typing import List, Optional
+from urllib.parse import urlencode
+from urllib.request import Request, urlopen
 import httpx
 from tenacity import retry, stop_after_attempt, wait_exponential
 
@@ -14,7 +17,7 @@ class NVDClient:
     BASE_URL = "https://services.nvd.nist.gov/rest/json/cves/2.0"
 
     def __init__(self):
-        headers = {"Accept": "application/json"}
+        headers = {"Accept": "application/json", "User-Agent": "Vigilance/1.0"}
         api_key = settings.nvd_api_key if hasattr(settings, 'nvd_api_key') else ""
         if api_key:
             headers["apiKey"] = api_key
@@ -23,6 +26,15 @@ class NVDClient:
 
     async def close(self):
         await self.client.aclose()
+
+    async def _fallback_json(self, params: dict) -> dict:
+        url = f"{self.BASE_URL}?{urlencode(params)}"
+        def fetch():
+            import json
+            request = Request(url, headers={"Accept": "application/json", "User-Agent": "Vigilance/1.0", "apiKey": settings.nvd_api_key})
+            with urlopen(request, timeout=60) as response:
+                return json.loads(response.read())
+        return await asyncio.to_thread(fetch)
 
     @retry(
         wait=wait_exponential(multiplier=1, min=2, max=60),
@@ -53,10 +65,11 @@ class NVDClient:
             response = await self.client.get(self.BASE_URL, params=params)
             if response.status_code == 404 and start_index == 0:
                 logger.warning("NVD returned 404; retrying latest page")
-                response = await self.client.get(self.BASE_URL, params={"startIndex": 0, "resultsPerPage": results_per_page})
+                data = await self._fallback_json({"startIndex": 0, "resultsPerPage": results_per_page})
                 fallback_latest = True
-            response.raise_for_status()
-            data = response.json()
+            else:
+                response.raise_for_status()
+                data = response.json()
 
             vulns = data.get("vulnerabilities", [])
             for vuln in vulns:
