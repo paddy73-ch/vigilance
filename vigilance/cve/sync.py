@@ -152,12 +152,19 @@ async def sync_cve_source(source: str) -> dict:
     from vigilance.database.base import async_session_maker
     async with async_session_maker() as db:
         orchestrator = CVESyncOrchestrator(db)
+        if source == "osv":
+            from sqlalchemy import select
+            from vigilance.database.models import DiscoveredTool
+            result = await db.execute(select(DiscoveredTool))
+            return await orchestrator._sync_source(
+                source, lambda: sync_osv_for_tools(result.scalars().all())
+            )
         return await orchestrator._sync_source(source, _get_sync_func(source))
 
 
 def _get_sync_func(source: str):
     if source == "osv":
-        return sync_osv
+        return sync_osv_for_tools
     elif source == "ghsa":
         return sync_ghsa
     elif source == "nvd":

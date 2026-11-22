@@ -6,6 +6,7 @@ from rich.table import Table
 from vigilance.config import settings
 from vigilance.core.notifications import send_test_gotify
 from vigilance.core.scheduler import trigger_scan_now, trigger_cve_sync_now
+from vigilance.cve.sync import sync_cve_source
 from vigilance.database.base import init_db, async_session_maker
 from vigilance.database import crud
 
@@ -40,7 +41,8 @@ def sync_cves(source: str = typer.Option(None, "--source", help="Specific source
         console.print(f"Syncing CVE data from {source}...")
     else:
         console.print("Syncing CVE data from all enabled sources...")
-    results = asyncio.run(trigger_cve_sync_now())
+    results = asyncio.run(sync_cve_source(source)) if source else asyncio.run(trigger_cve_sync_now())
+    results = {source: results} if source else results
     console.print("[green]✓[/green] CVE sync completed")
     for src, result in results.items():
         status = result.get("status", "unknown")
