@@ -146,14 +146,9 @@ async def trigger_cve_sync_now() -> dict:
 
 @asynccontextmanager
 async def lifespan(app):
-    # Startup
+    # Startup - start scheduler only; scan and CVE sync run on their schedules
     await start_scheduler()
-    # Run initial scan FIRST, then CVE sync (so tools are discovered first)
-    if settings.scan and settings.scan.full_scan_on_start:
-        logger.info("Running initial scan on startup")
-        await trigger_scan_now(full=True)
-    logger.info("Running initial CVE sync on startup (after scan)")
-    await trigger_cve_sync_now()
+    logger.info("Application started. Scan at 02:00 UTC, CVE Sync at 03:00 UTC.")
     yield
     # Shutdown
     await shutdown_scheduler()
