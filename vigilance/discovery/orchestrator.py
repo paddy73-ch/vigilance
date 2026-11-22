@@ -21,6 +21,7 @@ from vigilance.discovery.packages import discover_packages_on_host, PackageInfo
 from vigilance.discovery.services import discover_services_on_host, ServiceInfo
 from vigilance.discovery.custom import run_all_custom_checks, CustomCheckResult
 from vigilance.discovery.ssh import get_ssh_pool
+from vigilance.discovery.proxmox_ssh_setup import auto_distribute_ssh_keys
 from vigilance.cve.matcher import match_tool_against_cves
 
 logger = logging.getLogger(__name__)
@@ -41,6 +42,22 @@ class DiscoveryOrchestrator:
     async def discover_all(self, scan_run_id: int) -> ScanResult:
         result = ScanResult()
         scan_run = await self.db.get(ScanRun, scan_run_id)
+
+        # Auto-distribute SSH key to all running VMs before scanning
+        for node_config in settings.proxmox_nodes:
+            if node_config.url and node_config.token_id and node_config.token_secret:
+                try:
+                    stats = await auto_distribute_ssh_keys(
+                        api_url=node_config.url,
+                        token=f"{node_config.token_id}={node_config.token_secret}",
+                        node_name=node_config.name,
+                    )
+                    logger.info(
+                        f"SSH key auto-distribution on {node_config.name}: "
+                        f"{stats['key_distributed']}/{stats['vms_found']} VMs configured"
+                    )
+                except Exception as e:
+                    logger.error(f"SSH key auto-distribution failed on {node_config.name}: {e}")
 
         # Get or create Proxmox nodes in DB
         for node_config in settings.proxmox_nodes:
