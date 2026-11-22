@@ -18,20 +18,11 @@ from vigilance.config import settings
 
 logger = logging.getLogger(__name__)
 
-VIGILANCE_SSH_PUB_KEY = None  # Will be loaded from file
-
-
-def _load_ssh_pub_key() -> str:
-    """Load Vigilance SSH public key from file."""
-    global VIGILANCE_SSH_PUB_KEY
-    if VIGILANCE_SSH_PUB_KEY is None:
-        try:
-            with open("/app/data/ssh/id_rsa.pub", "r") as f:
-                VIGILANCE_SSH_PUB_KEY = f.read().strip()
-        except FileNotFoundError:
-            logger.warning("SSH public key not found at /app/data/ssh/id_rsa.pub")
-            VIGILANCE_SSH_PUB_KEY = ""
-    return VIGILANCE_SSH_PUB_KEY
+# Vigilance SSH public key (hardcoded to avoid filesystem issues in container)
+VIGILANCE_SSH_PUB_KEY = (
+    "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEjAVtnlc+nFT5Aelji4hpGaWA+ghuOA7NDeovNWU4qu "
+    "root@vigilance"
+)
 
 
 class ProxmoxAPI:
@@ -75,7 +66,7 @@ async def distribute_ssh_key_to_all_vms(api: ProxmoxAPI, node_name: str = "pve")
     """
     stats = {"vms_found": 0, "key_distributed": 0, "failed": 0}
 
-    ssh_pub_key = _load_ssh_pub_key()
+    ssh_pub_key = VIGILANCE_SSH_PUB_KEY
     if not ssh_pub_key:
         logger.error("No SSH public key available, skipping distribution")
         return stats
