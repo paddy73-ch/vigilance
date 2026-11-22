@@ -129,8 +129,24 @@ class CVESyncOrchestrator:
         result = await self.db.execute(select(DiscoveredTool))
         tools = result.scalars().all()
         cves = await crud.get_cve_entries(self.db, limit=10000)
+        # Index CVEs by affected package/CPE instead of testing every CVE against every tool.
+        cves_by_repo = {}
+        for cve in cves:
+            try:
+                ranges = json.loads(cve.affected_ranges or "[]")
+            except json.JSONDecodeError:
+                ranges = []
+            for range_obj in ranges:
+                repo = (range_obj.get("repo") or "").lower()
+                if repo:
+                    cves_by_repo.setdefault(repo, []).append(cve)
         for tool in tools:
-            for cve in cves:
+            tool_name = tool.tool_name.lower()
+            candidates = cves_by_repo.get(tool_name, [])
+            for repo, repo_cves in cves_by_repo.items():
+                if repo != tool_name and (repo in tool_name or tool_name in repo):
+                    candidates.extend(repo_cves)
+            for cve in candidates:
                 if await crud.is_suppressed(self.db, cve.cve_id, tool.tool_name, tool.inventory_id):
                     continue
                 match = match_tool_against_cves(tool, cve)

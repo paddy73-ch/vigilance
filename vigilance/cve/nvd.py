@@ -18,7 +18,8 @@ class NVDClient:
         api_key = settings.nvd_api_key if hasattr(settings, 'nvd_api_key') else ""
         if api_key:
             headers["apiKey"] = api_key
-        self.client = httpx.AsyncClient(timeout=60.0, headers=headers)
+        # NVD/Cloudflare returns misleading 404s through the container's proxy.
+        self.client = httpx.AsyncClient(timeout=60.0, headers=headers, trust_env=False)
 
     async def close(self):
         await self.client.aclose()
