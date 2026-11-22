@@ -168,7 +168,11 @@ class GHSAClient:
 
     def _parse_date(self, date_str: str) -> Optional[datetime]:
         try:
-            return datetime.fromisoformat(date_str.replace("Z", "+00:00"))
+            dt = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
+            # Strip timezone info for PostgreSQL TIMESTAMP WITHOUT TIME ZONE compatibility
+            if dt.tzinfo is not None:
+                dt = dt.replace(tzinfo=None)
+            return dt
         except Exception:
             return None
 
