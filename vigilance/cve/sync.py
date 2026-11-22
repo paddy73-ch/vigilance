@@ -100,6 +100,7 @@ class CVESyncOrchestrator:
                 error_message=None,
                 next_sync_at=datetime.utcnow() + timedelta(hours=6),
             )
+            await self.db.commit()
 
             logger.info(f"Completed CVE sync for {source}: {count} entries")
             return {"status": "success", "count": count, "duration": (datetime.utcnow() - start_time).total_seconds()}
