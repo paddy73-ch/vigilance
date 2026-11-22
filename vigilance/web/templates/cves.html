@@ -44,6 +44,7 @@
                     <div>Entries: <span class="font-medium" x-text="sync.entries_count"></span></div>
                     <div>Last Sync: <span class="font-medium" x-text="sync.last_success_at ? formatDate(sync.last_success_at) : 'Never'"></span></div>
                     <div x-show="sync.error_message" class="text-red-600" x-text="sync.error_message"></div>
+                    <button x-show="sync.status === 'error' || sync.error_message" @click="retrySource(sync)" class="text-blue-600 hover:underline text-xs">Erneut synchronisieren</button>
                 </div>
             </div>
         </template>
@@ -154,6 +155,16 @@ function cvesPage() {
             } catch (e) {
                 alert('Failed to trigger sync');
             }
+        },
+        async retrySource(sync) {
+            sync.status = 'running';
+            sync.error_message = null;
+            const resp = await fetch('/api/cves/sync?source=' + encodeURIComponent(sync.source), { method: 'POST' });
+            if (!resp.ok) {
+                sync.status = 'error';
+                sync.error_message = 'HTTP ' + resp.status;
+            }
+            this.loadSyncStatus();
         },
         async viewDetails(id) {
             try {

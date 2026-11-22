@@ -154,6 +154,7 @@
                     <div class="flex items-center justify-between gap-4 px-3 py-2 bg-gray-50 dark:bg-gray-700 rounded">
                         <span class="font-medium capitalize" x-text="sync.source"></span>
                         <span class="text-sm text-gray-500 dark:text-gray-400" x-text="sync.entries_count + ' entries, Last: ' + (sync.last_success_at ? formatDate(sync.last_success_at) : 'Never')"></span>
+                        <button x-show="sync.status === 'error' || sync.error_message" @click="retryCveSource(sync)" class="text-sm text-blue-600 hover:underline">Erneut synchronisieren</button>
                         <span :class="sync.status === 'running' ? 'text-blue-600' : (sync.status === 'error' || sync.error_message ? 'text-red-600' : 'text-green-600')"
                               x-text="sync.status === 'running' ? 'Läuft' : (sync.status === 'error' || sync.error_message ? 'Fehler' : (sync.status === 'success' ? 'OK' : 'Noch nicht gestartet'))"></span>
                     </div>
@@ -206,6 +207,16 @@ function dashboard() {
                 alert('Failed to trigger CVE sync');
                 this.loadStats();
             }
+        },
+        async retryCveSource(sync) {
+            sync.status = 'running';
+            sync.error_message = null;
+            const resp = await fetch('/api/cves/sync?source=' + encodeURIComponent(sync.source), { method: 'POST' });
+            if (!resp.ok) {
+                sync.status = 'error';
+                sync.error_message = 'HTTP ' + resp.status;
+            }
+            this.loadStats();
         },
         formatDate(dateStr) {
             if (!dateStr) return 'Never';
