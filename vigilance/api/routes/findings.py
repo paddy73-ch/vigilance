@@ -22,28 +22,46 @@ async def inventory_findings(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user_optional),
 ):
-    inventories = (await db.execute(select(Inventory).order_by(Inventory.name))).scalars().all()
-    rows = []
-    for inventory in inventories:
-        node = await db.get(ProxmoxNode, inventory.proxmox_node_id)
-        finding_rows = (await db.execute(
-            select(VulnerabilityFinding, DiscoveredTool, CVEEntry)
-            .join(DiscoveredTool, VulnerabilityFinding.discovered_tool_id == DiscoveredTool.id)
-            .join(CVEEntry, VulnerabilityFinding.cve_entry_id == CVEEntry.id)
-            .where(DiscoveredTool.inventory_id == inventory.id, VulnerabilityFinding.status == "open")
-            .order_by(CVEEntry.severity, DiscoveredTool.tool_name, CVEEntry.cve_id)
-        )).all()
-        counts = {level: 0 for level in ["CRITICAL", "HIGH", "MEDIUM", "LOW", "NONE"]}
-        tools = {}
-        for finding, tool, cve in finding_rows:
-            level = (cve.severity or "NONE").upper()
-            counts[level if level in counts else "NONE"] += 1
-            item = tools.setdefault(tool.id, {"name": tool.tool_name, "version": tool.detected_version, "findings": []})
-            item["findings"].append({"cve_id": cve.cve_id, "severity": level, "title": cve.title, "fixed_version": finding.fixed_version})
-        rows.append({"id": inventory.id, "name": inventory.name, "vmid": inventory.vmid, "type": inventory.type,
-                     "status": inventory.status, "hostname": inventory.hostname, "node": node.name if node else "Unknown",
-                     "counts": counts, "total": len(finding_rows), "tools": list(tools.values())})
-    return sorted(rows, key=lambda row: row["total"], reverse=True)
+    inventories = (await db.execute(
+        select(Inventory, ProxmoxNode.name)
+        .outerjoin(ProxmoxNode, Inventory.proxmox_node_id == ProxmoxNode.id)
+        .order_by(Inventory.name)
+    )).all()
+    rows = {
+        inventory.id: {
+            "id": inventory.id, "name": inventory.name, "vmid": inventory.vmid,
+            "type": inventory.type, "status": inventory.status, "hostname": inventory.hostname,
+            "node": node_name or "Unknown",
+            "counts": {level: 0 for level in ["CRITICAL", "HIGH", "MEDIUM", "LOW", "NONE"]},
+            "total": 0, "tools": {},
+        }
+        for inventory, node_name in inventories
+    }
+    finding_rows = (await db.execute(
+        select(VulnerabilityFinding, DiscoveredTool, CVEEntry)
+        .join(DiscoveredTool, VulnerabilityFinding.discovered_tool_id == DiscoveredTool.id)
+        .join(CVEEntry, VulnerabilityFinding.cve_entry_id == CVEEntry.id)
+        .where(VulnerabilityFinding.status == "open")
+        .order_by(CVEEntry.severity, DiscoveredTool.tool_name, CVEEntry.cve_id)
+    )).all()
+    for finding, tool, cve in finding_rows:
+        host = rows.get(tool.inventory_id)
+        if not host:
+            continue
+        level = (cve.severity or "NONE").upper()
+        host["counts"][level if level in host["counts"] else "NONE"] += 1
+        host["total"] += 1
+        item = host["tools"].setdefault(tool.id, {
+            "name": tool.tool_name, "version": tool.detected_version, "findings": []
+        })
+        item["findings"].append({
+            "cve_id": cve.cve_id, "severity": level,
+            "title": cve.title, "fixed_version": finding.fixed_version,
+        })
+    result = list(rows.values())
+    for host in result:
+        host["tools"] = list(host["tools"].values())
+    return sorted(result, key=lambda row: row["total"], reverse=True)
 
 
 @router.get("/findings", response_model=List[VulnerabilityFindingResponse])

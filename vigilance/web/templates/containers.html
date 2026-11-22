@@ -18,6 +18,7 @@
                     <span class="text-orange-600" x-show="host.counts.HIGH" x-text="host.counts.HIGH + ' High'"></span>
                     <span class="text-yellow-600" x-show="host.counts.MEDIUM" x-text="host.counts.MEDIUM + ' Medium'"></span>
                     <span class="text-blue-600" x-show="host.counts.LOW" x-text="host.counts.LOW + ' Low'"></span>
+                    <span class="text-gray-500" x-show="host.counts.NONE" x-text="host.counts.NONE + ' Unrated'"></span>
                 </button>
                 <div x-show="host.expanded" class="border-t border-gray-200 dark:border-gray-700 px-4 py-3 space-y-3">
                     <template x-for="tool in host.tools" :key="tool.name + tool.version">
