@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 from datetime import datetime
@@ -173,5 +174,41 @@ async def sync_osv() -> List[CVEData]:
     client = OSVClient()
     try:
         return await client.fetch_all_vulns()
+    finally:
+        await client.close()
+
+
+async def sync_osv_for_tools(tools) -> List[CVEData]:
+    """Query OSV for the package versions discovered on the hosts."""
+    client = OSVClient()
+    ecosystems = {"dpkg": "Debian", "apk": "Alpine", "rpm": "Fedora"}
+    found = {}
+    try:
+        seen = set()
+        queries = []
+        for tool in tools:
+            ecosystem = ecosystems.get(tool.package_manager)
+            if not ecosystem or not tool.tool_name or not tool.detected_version:
+                continue
+            key = (tool.tool_name, tool.detected_version, ecosystem)
+            if key in seen:
+                continue
+            seen.add(key)
+            queries.append(key)
+
+        semaphore = asyncio.Semaphore(20)
+
+        async def query(key):
+            async with semaphore:
+                try:
+                    return await client.query_by_package(key[0], key[2], key[1])
+                except Exception as exc:
+                    logger.debug("OSV query failed for %s: %s", key[0], exc)
+                    return []
+
+        for cves in await asyncio.gather(*(query(key) for key in queries)):
+            for cve in cves:
+                found[cve.cve_id] = cve
+        return list(found.values())
     finally:
         await client.close()

@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
@@ -151,7 +152,8 @@ async def lifespan(app):
     # Run initial scan if configured
     if settings.scan and settings.scan.full_scan_on_start:
         logger.info("Running initial scan on startup")
-        await trigger_scan_now(full=True)
+        # Do not hold the HTTP server healthcheck open while offline guests time out.
+        asyncio.create_task(trigger_scan_now(full=True), name="initial-scan")
     yield
     # Shutdown
     await shutdown_scheduler()

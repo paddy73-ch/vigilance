@@ -1,3 +1,4 @@
+import json
 import logging
 import re
 from dataclasses import dataclass
@@ -105,8 +106,17 @@ def match_tool_against_cves(tool, cve: CVEData) -> MatchResult:
     cpe_name = (tool.cpe_name or "").lower()
     package_manager = (tool.package_manager or "").lower()
 
+    # Database CVEs store ranges as JSON; sync results already contain objects.
+    ranges = cve.affected_ranges
+    if isinstance(ranges, str):
+        try:
+            ranges = json.loads(ranges)
+        except json.JSONDecodeError:
+            ranges = []
+
     # Check each affected range
-    for range_obj in cve.affected_ranges:
+    for raw_range in ranges or []:
+        range_obj = raw_range if isinstance(raw_range, AffectedRange) else AffectedRange(**raw_range)
         # Check if this range applies to our tool
         range_repo = (range_obj.repo or "").lower()
 

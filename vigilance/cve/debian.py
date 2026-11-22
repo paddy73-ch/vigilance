@@ -27,24 +27,33 @@ class DebianSecurityTracker:
         """Fetch Debian security data for specific suites."""
         all_cves = []
 
-        for suite in suites:
-            try:
-                url = f"{self.BASE_URL}/{suite}"
-                response = await self.client.get(url)
-                response.raise_for_status()
-                data = response.json()
-
-                for cve_id, cve_data in data.items():
-                    cve = self._parse_cve(cve_id, cve_data, suite)
-                    if cve:
-                        all_cves.append(cve)
-            except Exception as e:
-                logger.error(f"Failed to fetch Debian data for {suite}: {e}")
+        response = await self.client.get(self.BASE_URL)
+        response.raise_for_status()
+        data = response.json()
+        grouped = {}
+        for package, entries in data.items():
+            for cve_id, cve_data in entries.items():
+                ranges = []
+                for suite in suites:
+                    release = cve_data.get("releases", {}).get(suite, {})
+                    if release.get("status") in {"vulnerable", "partial", "undetermined"}:
+                        ranges.append(AffectedRange(
+                            type="DEBIAN",
+                            introduced="0",
+                            fixed=release.get("fixed_version"),
+                            repo=package,
+                        ))
+                if ranges:
+                    grouped.setdefault(cve_id, (cve_data, []))[1].extend(ranges)
+        for cve_id, (cve_data, ranges) in grouped.items():
+            cve = self._parse_cve(cve_id, cve_data, ranges)
+            if cve:
+                all_cves.append(cve)
 
         logger.info(f"Fetched {len(all_cves)} CVE entries from Debian Security Tracker")
         return all_cves
 
-    def _parse_cve(self, cve_id: str, cve_data: dict, suite: str) -> Optional[CVEData]:
+    def _parse_cve(self, cve_id: str, cve_data: dict, ranges: List[AffectedRange]) -> Optional[CVEData]:
         try:
             # Get description
             description = cve_data.get("description", "")
@@ -52,24 +61,6 @@ class DebianSecurityTracker:
             # Get severity from highest severity across packages
             severity = None
             cvss_score = None
-
-            # Parse affected packages
-            ranges = []
-            packages = cve_data.get("packages", {})
-            for pkg_name, pkg_data in packages.items():
-                status = pkg_data.get("status", "")
-                if status in ("fixed", "vulnerable"):
-                    fixed_version = pkg_data.get("fixed_version")
-                    ranges.append(AffectedRange(
-                        type="DEBIAN",
-                        introduced="0",
-                        fixed=fixed_version,
-                        repo=pkg_name,
-                        events=[
-                            {"introduced": "0"},
-                            {"fixed": fixed_version} if fixed_version else {},
-                        ],
-                    ))
 
             # Parse references
             refs = []
@@ -90,7 +81,7 @@ class DebianSecurityTracker:
                 references=refs,
                 published_at=None,
                 modified_at=None,
-                raw_data={"suite": suite, "data": cve_data},
+                raw_data={"data": cve_data},
             )
         except Exception as e:
             logger.error(f"Failed to parse Debian CVE {cve_id}: {e}")

@@ -9,7 +9,7 @@ from vigilance.config import settings
 from vigilance.database import crud
 from vigilance.database.models import CVEEntry, CVESyncStatus
 from vigilance.cve.models import CVEData
-from vigilance.cve.osv import sync_osv
+from vigilance.cve.osv import sync_osv_for_tools
 from vigilance.cve.ghsa import sync_ghsa
 from vigilance.cve.nvd import sync_nvd
 from vigilance.cve.debian import sync_debian
@@ -28,7 +28,12 @@ class CVESyncOrchestrator:
 
         # OSV
         if settings.cve_sync and settings.cve_sync.osv.get("enabled", True):
-            results["osv"] = await self._sync_source("osv", sync_osv)
+            from sqlalchemy import select
+            from vigilance.database.models import DiscoveredTool
+            tool_result = await self.db.execute(select(DiscoveredTool))
+            results["osv"] = await self._sync_source(
+                "osv", lambda: sync_osv_for_tools(tool_result.scalars().all())
+            )
 
         # GHSA
         if settings.cve_sync and settings.cve_sync.ghsa.get("enabled", True):
@@ -113,13 +118,29 @@ class CVESyncOrchestrator:
         from vigilance.cve.matcher import match_tool_against_cves
         from vigilance.core.notifications import notify_finding
 
-        # Get all open findings
-        from vigilance.database.models import VulnerabilityFinding, DiscoveredTool, CVEEntry
+        from vigilance.database.models import DiscoveredTool
         from sqlalchemy import select
+        from vigilance.cve.matcher import match_tool_against_cves
 
-        # This is a simplified version - in production you'd want to do this more efficiently
-        # For now, we just note that re-matching should happen
-        pass
+        result = await self.db.execute(select(DiscoveredTool))
+        tools = result.scalars().all()
+        cves = await crud.get_cve_entries(self.db, limit=10000)
+        for tool in tools:
+            for cve in cves:
+                if await crud.is_suppressed(self.db, cve.cve_id, tool.tool_name, tool.inventory_id):
+                    continue
+                match = match_tool_against_cves(tool, cve)
+                if match.affected:
+                    await crud.upsert_finding(
+                        self.db,
+                        discovered_tool_id=tool.id,
+                        cve_entry_id=cve.id,
+                        status="open",
+                        matched_version=tool.detected_version,
+                        fixed_version=match.fixed_version,
+                        match_details=json.dumps(match.details),
+                    )
+        await self.db.commit()
 
 
 async def sync_cve_source(source: str) -> dict:
