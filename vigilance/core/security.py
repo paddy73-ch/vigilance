@@ -35,18 +35,19 @@ async def get_current_user(
             auth_method="proxy",
         )
 
+    # API token authentication (works regardless of auth_mode)
+    if has_token:
+        return User(
+            username="api-user",
+            is_admin=True,
+            can_write=True,
+            auth_method="token",
+        )
+
     # Built-in authentication (if enabled)
     if auth_mode in ("builtin", "both"):
         # For MVP, we just check token; full built-in auth would need session/JWT
-        if has_token:
-            return User(
-                username="api-user",
-                is_admin=True,
-                can_write=True,
-                auth_method="token",
-            )
-        # Check for session cookie or JWT (to be implemented)
-        # For now, deny if no token
+        # (token check above already covers this case)
         pass
 
     # No valid authentication
