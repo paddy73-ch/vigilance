@@ -3,7 +3,6 @@ import logging
 from datetime import datetime, timedelta
 from typing import List, Optional
 from urllib.parse import urlencode
-from urllib.request import Request, urlopen
 import httpx
 from tenacity import retry, stop_after_attempt, wait_exponential
 
@@ -29,12 +28,23 @@ class NVDClient:
 
     async def _fallback_json(self, params: dict) -> dict:
         url = f"{self.BASE_URL}?{urlencode(params)}"
-        def fetch():
-            import json
-            request = Request(url, headers={"Accept": "application/json", "User-Agent": "Vigilance/1.0", "apiKey": settings.nvd_api_key})
-            with urlopen(request, timeout=60) as response:
-                return json.loads(response.read())
-        return await asyncio.to_thread(fetch)
+        import json, tempfile, os
+        with tempfile.NamedTemporaryFile(mode="w", delete=False) as header_file:
+            header_file.write("header = Accept: application/json\n")
+            header_file.write("header = User-Agent: Vigilance/1.0\n")
+            header_file.write(f"header = apiKey: {settings.nvd_api_key}\n")
+            header_path = header_file.name
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                "curl", "-fsS", "-K", header_path, url,
+                stdout=asyncio.subprocess.PIPE,
+            )
+            output, _ = await proc.communicate()
+            if proc.returncode:
+                raise RuntimeError(f"NVD fallback failed with curl exit {proc.returncode}")
+            return json.loads(output)
+        finally:
+            os.unlink(header_path)
 
     @retry(
         wait=wait_exponential(multiplier=1, min=2, max=60),
