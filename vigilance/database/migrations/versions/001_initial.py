@@ -27,7 +27,7 @@ def upgrade() -> None:
         sa.Column("url", sa.String(length=512), nullable=False),
         sa.Column("token_id", sa.String(length=255), nullable=False),
         sa.Column("token_secret", sa.String(length=512), nullable=False),
-        sa.Column("verify_tls", sa.Boolean(), nullable=False, server_default=sa.text("1")),
+        sa.Column("verify_tls", sa.Boolean(), nullable=False, server_default=sa.text("true")),
         sa.Column("created_at", sa.DateTime(), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
         sa.Column("updated_at", sa.DateTime(), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
         sa.PrimaryKeyConstraint("id"),
