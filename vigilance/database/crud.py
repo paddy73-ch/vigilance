@@ -319,9 +319,16 @@ async def get_finding_stats(db: AsyncSession) -> dict:
     # Count by severity
     severity_counts = {}
     for severity in ["CRITICAL", "HIGH", "MEDIUM", "LOW", "NONE"]:
-        stmt = select(func.count(VulnerabilityFinding.id)).join(CVEEntry).where(
-            func.upper(CVEEntry.severity) == severity.upper(), VulnerabilityFinding.status == "open"
-        )
+        if severity == "NONE":
+            # NONE includes NULL severity
+            stmt = select(func.count(VulnerabilityFinding.id)).join(CVEEntry).where(
+                (CVEEntry.severity.is_(None)) | (func.upper(CVEEntry.severity) == "NONE"),
+                VulnerabilityFinding.status == "open"
+            )
+        else:
+            stmt = select(func.count(VulnerabilityFinding.id)).join(CVEEntry).where(
+                func.upper(CVEEntry.severity) == severity.upper(), VulnerabilityFinding.status == "open"
+            )
         result = await db.execute(stmt)
         severity_counts[severity] = result.scalar_one()
 
