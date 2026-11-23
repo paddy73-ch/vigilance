@@ -40,7 +40,10 @@ class SSHClient:
             try:
                 self._client = paramiko.SSHClient()
                 self._client.load_host_keys(self.known_hosts)
-                self._client.set_missing_host_key_policy(paramiko.RejectPolicy())
+                if settings.discovery and settings.discovery.ssh_strict_host_key_checking:
+                    self._client.set_missing_host_key_policy(paramiko.RejectPolicy())
+                else:
+                    self._client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
 
                 key = paramiko.Ed25519Key.from_private_key_file(self.key_path)
                 self._client.connect(
