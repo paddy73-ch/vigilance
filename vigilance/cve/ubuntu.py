@@ -13,7 +13,7 @@ class UbuntuSecurityTracker:
     BASE_URL = "https://api.launchpad.net/1.0"
 
     def __init__(self):
-        self.client = httpx.AsyncClient(timeout=60.0)
+        self.client = httpx.AsyncClient(timeout=60.0, follow_redirects=True)
 
     async def close(self):
         await self.client.aclose()
