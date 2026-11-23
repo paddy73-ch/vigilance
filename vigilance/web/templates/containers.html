@@ -12,7 +12,7 @@
                 <button class="w-full flex flex-wrap items-center gap-4 px-4 py-4 text-left" @click="host.expanded = !host.expanded">
                     <span class="text-lg" x-text="host.expanded ? '⌄' : '›'"></span>
                     <span class="font-semibold" x-text="host.name"></span>
-                    <span class="text-sm text-gray-500" x-text="host.node + ' · ' + host.type.toUpperCase() + ' · VMID ' + host.vmid"></span>
+                    <span class="text-sm text-gray-500" x-text="host.node + ' · ' + (host.type === 'qemu' ? 'VM · VMID ' : 'LXC · ID ') + host.vmid"></span>
                     <span class="ml-auto font-semibold" x-text="host.total + ' offene Findings'"></span>
                     <span class="text-red-600" x-show="host.counts.CRITICAL" x-text="host.counts.CRITICAL + ' Critical'"></span>
                     <span class="text-orange-600" x-show="host.counts.HIGH" x-text="host.counts.HIGH + ' High'"></span>
