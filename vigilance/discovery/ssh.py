@@ -114,9 +114,13 @@ class SSHClient:
 
 class SSHClientPool:
     def __init__(self, max_workers: int = 10):
-        self.max_workers = max_workers
+        self._max_workers = max_workers
         self._clients: Dict[str, SSHClient] = {}
         self._lock = threading.Lock()
+
+    @property
+    def max_workers(self) -> int:
+        return settings.ssh_parallel_jobs or self._max_workers
 
     def get_client(self, host: str, port: int, user: str, key_path: str, known_hosts: str, timeout: int) -> SSHClient:
         key = f"{host}:{port}:{user}"
@@ -132,6 +136,7 @@ class SSHClientPool:
         timeout: Optional[int] = None,
     ) -> Dict[str, CommandResult]:
         results = {}
+        effective_timeout = timeout or settings.ssh_timeout or 30
 
         def run_on_target(target):
             client = self.get_client(
@@ -140,7 +145,7 @@ class SSHClientPool:
                 target.get("user", "root"),
                 target["key_path"],
                 target["known_hosts"],
-                target.get("timeout", 30),
+                target.get("timeout", effective_timeout),
             )
             return client.run_command(command, timeout)
 

@@ -10,36 +10,60 @@
         <!-- General Settings -->
         <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6 border border-gray-200 dark:border-gray-700">
             <h2 class="text-lg font-semibold mb-4">General</h2>
-            <dl class="space-y-3 text-sm">
-                <div class="flex justify-between">
-                    <dt class="text-gray-500 dark:text-gray-400">Auth Mode</dt>
-                    <dd class="font-medium" x-text="settings.auth_mode"></dd>
+            
+            <!-- Editable Settings -->
+            <form @submit.prevent="saveSettings()" class="space-y-4 mb-6">
+                <div class="flex items-center justify-between gap-4">
+                    <label class="text-sm text-gray-500 dark:text-gray-400">Scan Interval</label>
+                    <div class="flex items-center gap-2">
+                        <input type="number" x-model.number="settings.scan_interval_hours" min="1" max="168" class="w-24 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-right">
+                        <span class="text-sm text-gray-500 dark:text-gray-400">hours</span>
+                    </div>
                 </div>
-                <div class="flex justify-between">
-                    <dt class="text-gray-500 dark:text-gray-400">Scan Interval</dt>
-                    <dd class="font-medium" x-text="settings.scan_interval_hours + ' hours'"></dd>
+                <div class="flex items-center justify-between gap-4">
+                    <label class="text-sm text-gray-500 dark:text-gray-400">CVE Sync Interval</label>
+                    <div class="flex items-center gap-2">
+                        <input type="number" x-model.number="settings.cve_sync_interval_hours" min="1" max="168" class="w-24 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-right">
+                        <span class="text-sm text-gray-500 dark:text-gray-400">hours</span>
+                    </div>
                 </div>
-                <div class="flex justify-between">
-                    <dt class="text-gray-500 dark:text-gray-400">CVE Sync Interval</dt>
-                    <dd class="font-medium" x-text="settings.cve_sync_interval_hours + ' hours'"></dd>
+                <div class="flex items-center justify-between gap-4">
+                    <label class="text-sm text-gray-500 dark:text-gray-400">SSH Timeout</label>
+                    <select x-model.number="settings.ssh_timeout" class="w-32 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100">
+                        <option value="10">10 seconds</option>
+                        <option value="30">30 seconds</option>
+                        <option value="60">60 seconds</option>
+                        <option value="120">120 seconds</option>
+                    </select>
                 </div>
-                <div class="flex justify-between">
-                    <dt class="text-gray-500 dark:text-gray-400">SSH Timeout</dt>
-                    <dd class="font-medium" x-text="settings.ssh_timeout + ' seconds'"></dd>
+                <div class="flex items-center justify-between gap-4">
+                    <label class="text-sm text-gray-500 dark:text-gray-400">SSH Parallel Jobs</label>
+                    <input type="number" x-model.number="settings.ssh_parallel_jobs" min="1" max="50" class="w-24 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-right">
                 </div>
-                <div class="flex justify-between">
-                    <dt class="text-gray-500 dark:text-gray-400">SSH Parallel Jobs</dt>
-                    <dd class="font-medium" x-text="settings.ssh_parallel_jobs"></dd>
-                </div>
-                <div class="flex justify-between">
-                    <dt class="text-gray-500 dark:text-gray-400">Proxmox Nodes Configured</dt>
-                    <dd class="font-medium" x-text="settings.proxmox_nodes_configured"></dd>
-                </div>
-                <div class="flex justify-between">
-                    <dt class="text-gray-500 dark:text-gray-400">Gotify Configured</dt>
-                    <dd class="font-medium" x-text="settings.gotify_configured ? 'Yes' : 'No'"></dd>
-                </div>
-            </dl>
+                <button type="submit" class="btn-primary w-full" :disabled="savingSettings">
+                    <span x-text="savingSettings ? 'Saving...' : 'Save Settings'"></span>
+                </button>
+                <div x-show="settingsSaveMessage" class="p-3 rounded text-sm" :class="settingsSaveSuccess ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'" x-text="settingsSaveMessage"></div>
+            </form>
+
+            <!-- Read-only Settings -->
+            <div class="border-t border-gray-200 dark:border-gray-700 pt-4">
+                <h3 class="text-sm font-medium text-gray-500 dark:text-gray-400 mb-3">Configuration Info</h3>
+                <dl class="space-y-3 text-sm">
+                    <div class="flex justify-between">
+                        <dt class="text-gray-500 dark:text-gray-400">Auth Mode</dt>
+                        <dd class="font-medium" x-text="settings.auth_mode"></dd>
+                    </div>
+                    <div class="flex justify-between">
+                        <dt class="text-gray-500 dark:text-gray-400">Proxmox Nodes Configured</dt>
+                        <dd class="font-medium" x-text="settings.proxmox_nodes_configured"></dd>
+                    </div>
+                    <div class="flex justify-between">
+                        <dt class="text-gray-500 dark:text-gray-400">Gotify Configured</dt>
+                        <dd class="font-medium" x-text="settings.gotify_configured ? 'Yes' : 'No'"></dd>
+                    </div>
+                </dl>
+            </div>
         </div>
 
         <!-- Gotify Settings -->
@@ -209,6 +233,9 @@ function settingsPage() {
         showSyncEntries: {},
         loadingSyncEntries: {},
         syncEntries: {},
+        savingSettings: false,
+        settingsSaveMessage: '',
+        settingsSaveSuccess: true,
 
         async loadSettings() {
             try {
@@ -260,6 +287,31 @@ function settingsPage() {
                 this.syncEntries[source] = [];
             } finally {
                 this.loadingSyncEntries[source] = false;
+            }
+        },
+        async saveSettings() {
+            this.savingSettings = true;
+            this.settingsSaveMessage = '';
+            try {
+                const resp = await fetch('/api/settings', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        scan_interval_hours: this.settings.scan_interval_hours,
+                        cve_sync_interval_hours: this.settings.cve_sync_interval_hours,
+                        ssh_timeout: this.settings.ssh_timeout,
+                        ssh_parallel_jobs: this.settings.ssh_parallel_jobs,
+                    })
+                });
+                if (!resp.ok) throw new Error('HTTP ' + resp.status);
+                this.settingsSaveSuccess = true;
+                this.settingsSaveMessage = 'Settings saved successfully';
+            } catch (e) {
+                this.settingsSaveSuccess = false;
+                this.settingsSaveMessage = 'Failed to save settings: ' + e.message;
+            } finally {
+                this.savingSettings = false;
+                setTimeout(() => this.settingsSaveMessage = '', 3000);
             }
         },
         async triggerCveSync() {

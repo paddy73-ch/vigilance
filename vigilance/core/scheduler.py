@@ -146,9 +146,17 @@ async def trigger_cve_sync_now() -> dict:
 
 @asynccontextmanager
 async def lifespan(app):
-    # Startup - start scheduler only; scan and CVE sync run on their schedules
+    # Startup - load persisted settings from DB
+    async with async_session_maker() as db:
+        for key, attr in [("scan_interval_hours", "scan_interval_hours"), ("cve_sync_interval_hours", "cve_sync_interval_hours"), ("ssh_timeout", "ssh_timeout"), ("ssh_parallel_jobs", "ssh_parallel_jobs")]:
+            val = await crud.get_setting(db, key)
+            if val is not None:
+                try:
+                    setattr(settings, attr, int(val))
+                except (ValueError, TypeError):
+                    pass
     await start_scheduler()
-    logger.info("Application started. Scan at 02:00 UTC, CVE Sync at 03:00 UTC.")
+    logger.info(f"Application started. Scan interval: {settings.scan_interval_hours}h, CVE sync: {settings.cve_sync_interval_hours}h, SSH timeout: {settings.ssh_timeout}s, SSH parallel: {settings.ssh_parallel_jobs}")
     yield
     # Shutdown
     await shutdown_scheduler()
