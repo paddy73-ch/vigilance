@@ -1,7 +1,7 @@
 import json
 import logging
 from datetime import datetime, timedelta
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -26,23 +26,25 @@ class CVESyncOrchestrator:
         """Sync CVE data from all enabled sources."""
         results = {}
 
+        # Load discovered tool names once for filtering
+        tool_names = await crud.get_discovered_tool_names(self.db)
+        tool_names_lower = {name.lower() for name in tool_names} if tool_names else set()
+
         # OSV
         if settings.cve_sync and settings.cve_sync.osv.get("enabled", True):
             from sqlalchemy import select
             from vigilance.database.models import DiscoveredTool
             tool_result = await self.db.execute(select(DiscoveredTool))
             results["osv"] = await self._sync_source(
-                "osv", lambda: sync_osv_for_tools(tool_result.scalars().all())
+                "osv", lambda: sync_osv_for_tools(tool_result.scalars().all()), tool_names_lower
             )
 
         # GHSA
         if settings.cve_sync and settings.cve_sync.ghsa.get("enabled", True):
-            # Load discovered tool names to filter GHSA advisories
-            tool_names = await crud.get_discovered_tool_names(self.db)
             max_pages = settings.cve_sync.ghsa.get("max_pages") if settings.cve_sync else None
             if tool_names:
                 results["ghsa"] = await self._sync_source(
-                    "ghsa", lambda: sync_ghsa(max_pages=max_pages, package_names=tool_names)
+                    "ghsa", lambda: sync_ghsa(max_pages=max_pages, package_names=tool_names), tool_names_lower
                 )
             else:
                 # No tools discovered yet: do NOT fetch GHSA advisories
@@ -51,31 +53,54 @@ class CVESyncOrchestrator:
         # NVD
         if settings.cve_sync and settings.cve_sync.nvd.get("enabled", False):
             max_pages = settings.cve_sync.nvd.get("max_pages", 0)
-            results["nvd"] = await self._sync_source("nvd", lambda: sync_nvd(30, max_pages=max_pages))
+            results["nvd"] = await self._sync_source(
+                "nvd", lambda: sync_nvd(30, max_pages=max_pages), tool_names_lower
+            )
 
         # Debian
         if settings.cve_sync and settings.cve_sync.debian.get("enabled", True):
             suites = settings.cve_sync.debian.get("suites", ["bookworm", "bullseye", "trixie"])
-            results["debian"] = await self._sync_source("debian", lambda: sync_debian(suites))
+            results["debian"] = await self._sync_source(
+                "debian", lambda: sync_debian(suites), tool_names_lower
+            )
 
         # Ubuntu
         if settings.cve_sync and settings.cve_sync.ubuntu.get("enabled", True):
             releases = settings.cve_sync.ubuntu.get("releases", ["noble", "jammy", "focal"])
-            results["ubuntu"] = await self._sync_source("ubuntu", lambda: sync_ubuntu(releases))
+            results["ubuntu"] = await self._sync_source(
+                "ubuntu", lambda: sync_ubuntu(releases), tool_names_lower
+            )
 
         # After sync, re-match findings
         await self._rematch_findings()
 
         return results
 
-    async def _sync_source(self, source: str, sync_func) -> dict:
-        """Sync a single source and update database."""
+    async def _sync_source(self, source: str, sync_func, tool_names: Optional[set] = None) -> dict:
+        """Sync a single source and update database.
+        
+        Args:
+            source: Source name (e.g., 'osv', 'ghsa')
+            sync_func: Async function that returns List[CVEData]
+            tool_names: Set of lowercase tool names to filter CVEs (None = no filtering)
+        """
         start_time = datetime.utcnow()
         try:
             await crud.update_sync_status(self.db, source, status="running", error_message=None)
             await self.db.commit()
             logger.info(f"Starting CVE sync for {source}")
             cve_data_list = await sync_func()
+
+            # Filter CVEs by tool names if provided
+            if tool_names:
+                filtered = []
+                for cve_data in cve_data_list:
+                    if self._cve_matches_tools(cve_data, tool_names):
+                        filtered.append(cve_data)
+                filtered_count = len(cve_data_list) - len(filtered)
+                if filtered_count > 0:
+                    logger.info(f"Filtered out {filtered_count} CVEs not matching discovered tools")
+                cve_data_list = filtered
 
             # Upsert into database
             count = 0
@@ -134,6 +159,29 @@ class CVESyncOrchestrator:
             await self.db.commit()
             return {"status": "error", "error": error_msg, "duration": (datetime.utcnow() - start_time).total_seconds()}
 
+    def _cve_matches_tools(self, cve_data, tool_names: set) -> bool:
+        """Check if a CVE affects any of the discovered tools.
+        
+        Args:
+            cve_data: CVEData object with affected_ranges
+            tool_names: Set of lowercase tool names
+            
+        Returns:
+            True if the CVE affects any tool, False otherwise
+        """
+        for affected_range in cve_data.affected_ranges or []:
+            repo = (affected_range.repo or "").lower()
+            if not repo:
+                continue
+            # Check exact match
+            if repo in tool_names:
+                return True
+            # Check partial match (e.g., "openssl" matches "openssl1.1")
+            for tool_name in tool_names:
+                if tool_name in repo or repo in tool_name:
+                    return True
+        return False
+
     async def _rematch_findings(self):
         """Re-match all open findings against updated CVE database."""
         logger.info("Re-matching findings after CVE sync")
@@ -186,22 +234,28 @@ async def sync_cve_source(source: str) -> dict:
     from vigilance.database.base import async_session_maker
     async with async_session_maker() as db:
         orchestrator = CVESyncOrchestrator(db)
+        
+        # Load tool names for filtering
+        tool_names = await crud.get_discovered_tool_names(db)
+        tool_names_lower = {name.lower() for name in tool_names} if tool_names else set()
+        
         if source == "osv":
             from sqlalchemy import select
             from vigilance.database.models import DiscoveredTool
             result = await db.execute(select(DiscoveredTool))
             return await orchestrator._sync_source(
-                source, lambda: sync_osv_for_tools(result.scalars().all())
+                source, lambda: sync_osv_for_tools(result.scalars().all()), tool_names_lower
             )
         if source == "ghsa":
-            tool_names = await crud.get_discovered_tool_names(db)
             max_pages = settings.cve_sync.ghsa.get("max_pages") if settings.cve_sync else None
             if tool_names:
                 return await orchestrator._sync_source(
-                    source, lambda: sync_ghsa(max_pages=max_pages, package_names=tool_names)
+                    source, lambda: sync_ghsa(max_pages=max_pages, package_names=tool_names), tool_names_lower
                 )
             return {"status": "skipped", "count": 0, "message": "No discovered tools, skipping GHSA sync"}
-        return await orchestrator._sync_source(source, _get_sync_func(source))
+        
+        # For NVD, Debian, Ubuntu - use filtering
+        return await orchestrator._sync_source(source, _get_sync_func(source), tool_names_lower)
 
 
 def _get_sync_func(source: str):
