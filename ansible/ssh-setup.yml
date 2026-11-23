@@ -1,0 +1,73 @@
+---
+- name: Distribute Vigilance SSH key to all Proxmox VMs
+  hosts: proxmox
+  gather_facts: false
+  vars:
+    vigilance_ssh_pub_key: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEjAVtnlc+nFT5Aelji4hpGaWA+ghuOA7NDeovNWU4qu root@vigilance"
+    vigilance_ssh_key_path: "/app/data/ssh/id_rsa.pub"
+
+  tasks:
+    - name: Ensure .ssh directory exists on Proxmox host
+      ansible.builtin.file:
+        path: "/root/.ssh"
+        state: directory
+        mode: "0700"
+
+    - name: Add Vigilance SSH public key to Proxmox host
+      ansible.builtin.lineinfile:
+        path: "/root/.ssh/authorized_keys"
+        line: "{{ vigilance_ssh_pub_key }}"
+        create: true
+        mode: "0600"
+
+    - name: Get all VMs via Proxmox API
+      ansible.builtin.uri:
+        url: "https://{{ ansible_host }}:8006/api2/json/nodes/{{ ansible_host | replace('pve-', '') }}/qemu"
+        method: GET
+        headers:
+          Authorization: "PVEAPIToken=vigilance@pam!vigilance-ct123=***REMOVED***"
+        validate_certs: false
+      register: proxmox_vms
+      delegate_to: localhost
+
+    - name: Extract VM IPs
+      ansible.builtin.set_fact:
+        vm_ips: "{{ proxmox_vms.json.data | map(attribute='vmid') | list }}"
+      delegate_to: localhost
+
+    - name: Get VM config to find IP addresses
+      ansible.builtin.uri:
+        url: "https://{{ ansible_host }}:8006/api2/json/nodes/{{ ansible_host | replace('pve-', '') }}/qemu/{{ item }}/config"
+        method: GET
+        headers:
+          Authorization: "PVEAPIToken=vigilance@pam!vigilance-ct123=***REMOVED***"
+        validate_certs: false
+      loop: "{{ vm_ips }}"
+      register: vm_configs
+      delegate_to: localhost
+
+    - name: Extract IP addresses from VM configs
+      ansible.builtin.set_fact:
+        vm_targets: "{{ vm_targets | default([]) + [{'vmid': item.item, 'ip': (item.json.data | selectattr('value', 'search', 'ip=') | map(attribute='value') | first | regex_search('ip=([^,/]+)') | first | default('unknown'))}] }}"
+      loop: "{{ vm_configs.results }}"
+      delegate_to: localhost
+
+    - name: Distribute SSH key to each VM via Proxmox guest agent
+      ansible.builtin.uri:
+        url: "https://{{ ansible_host }}:8006/api2/json/nodes/{{ ansible_host | replace('pve-', '') }}/qemu/{{ item.vmid }}/agent/exec"
+        method: POST
+        headers:
+          Authorization: "PVEAPIToken=vigilance@pam!vigilance-ct123=***REMOVED***"
+          Content-Type: "application/json"
+        body:
+          command: ["bash", "-c", "mkdir -p /root/.ssh && echo '{{ vigilance_ssh_pub_key }}' >> /root/.ssh/authorized_keys && chmod 600 /root/.ssh/authorized_keys"]
+        validate_certs: false
+      loop: "{{ vm_targets }}"
+      when: item.ip != "unknown"
+      delegate_to: localhost
+
+    - name: Display discovered VMs
+      ansible.builtin.debug:
+        msg: "VM {{ item.vmid }} at {{ item.ip }} - SSH key distributed"
+      loop: "{{ vm_targets }}"
+      delegate_to: localhost

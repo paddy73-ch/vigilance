@@ -61,7 +61,7 @@ async def delete_proxmox_node(db: AsyncSession, node_id: int) -> bool:
 
 # Inventories
 async def get_inventories(db: AsyncSession, node_id: Optional[int] = None) -> Sequence[Inventory]:
-    stmt = select(Inventory).options(selectinload(Inventory.discovered_tools))
+    stmt = select(Inventory).options(selectinload(Inventory.node), selectinload(Inventory.discovered_tools))
     if node_id:
         stmt = stmt.where(Inventory.proxmox_node_id == node_id)
     stmt = stmt.order_by(Inventory.name)
@@ -71,7 +71,7 @@ async def get_inventories(db: AsyncSession, node_id: Optional[int] = None) -> Se
 
 async def get_inventory(db: AsyncSession, inventory_id: int) -> Optional[Inventory]:
     result = await db.execute(
-        select(Inventory).options(selectinload(Inventory.discovered_tools)).where(Inventory.id == inventory_id)
+        select(Inventory).options(selectinload(Inventory.node), selectinload(Inventory.discovered_tools)).where(Inventory.id == inventory_id)
     )
     return result.scalar_one_or_none()
 
@@ -101,7 +101,7 @@ async def get_discovered_tools(
     tool_name: Optional[str] = None,
     source_type: Optional[str] = None,
 ) -> Sequence[DiscoveredTool]:
-    stmt = select(DiscoveredTool).options(selectinload(DiscoveredTool.findings))
+    stmt = select(DiscoveredTool).options(selectinload(DiscoveredTool.inventory), selectinload(DiscoveredTool.findings))
     if inventory_id:
         stmt = stmt.where(DiscoveredTool.inventory_id == inventory_id)
     if tool_name:
@@ -124,7 +124,7 @@ async def upsert_discovered_tool(db: AsyncSession, **kwargs) -> DiscoveredTool:
     tool_name = kwargs.get("tool_name")
     source_type = kwargs.get("source_type")
     result = await db.execute(
-        select(DiscoveredTool).where(
+        select(DiscoveredTool).options(selectinload(DiscoveredTool.inventory)).where(
             DiscoveredTool.inventory_id == inventory_id,
             DiscoveredTool.tool_name == tool_name,
             DiscoveredTool.source_type == source_type,
