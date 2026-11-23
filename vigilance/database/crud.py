@@ -274,7 +274,11 @@ async def get_findings(
     if tool_name:
         stmt = stmt.where(DiscoveredTool.tool_name == tool_name)
     if severity:
-        stmt = stmt.join(CVEEntry).where(func.upper(CVEEntry.severity) == severity.upper())
+        stmt = stmt.join(CVEEntry)
+        if severity.upper() == "NONE":
+            stmt = stmt.where((CVEEntry.severity.is_(None)) | (func.upper(CVEEntry.severity) == "NONE"))
+        else:
+            stmt = stmt.where(func.upper(CVEEntry.severity) == severity.upper())
     result = await db.execute(stmt)
     return result.scalars().all()
 
@@ -298,7 +302,11 @@ async def count_filtered_findings(
     if status:
         stmt = stmt.where(VulnerabilityFinding.status == status)
     if severity:
-        stmt = stmt.join(CVEEntry).where(func.upper(CVEEntry.severity) == severity.upper())
+        stmt = stmt.join(CVEEntry)
+        if severity.upper() == "NONE":
+            stmt = stmt.where((CVEEntry.severity.is_(None)) | (func.upper(CVEEntry.severity) == "NONE"))
+        else:
+            stmt = stmt.where(func.upper(CVEEntry.severity) == severity.upper())
     if inventory_id or tool_name:
         stmt = stmt.join(DiscoveredTool)
         if inventory_id:
