@@ -14,7 +14,7 @@ Vigilance automatically discovers webapps, services, Docker images, and tools on
 - **Tool Overrides**: Map tool names to CPE/package names for better matching
 - **Gotify Notifications**: Rich Markdown notifications with severity-based priority and digest mode
 - **Web Dashboard**: Modern UI built with Jinja2, HTMX, and Alpine.js
-- **Docker Deployment**: Single-container deployment with docker-compose
+- **Docker Deployment**: Docker Compose with PostgreSQL database
 
 ## Architecture
 
@@ -26,7 +26,7 @@ Vigilance automatically discovers webapps, services, Docker images, and tools on
                                  │               │   Ubuntu)       │
                                  ▼               └─────────────────┘
                         ┌──────────────────┐
-                        │   SQLite (WAL)   │
+                        │   PostgreSQL     │
                         │   + SQLAlchemy   │
                         └────────┬─────────┘
                                  │
@@ -48,8 +48,11 @@ cp .env.example .env
 # Edit .env with your settings
 ```
 
-### 2. Generate SSH Key
+### 2. SSH Key Setup
 
+Vigilance uses a hardcoded SSH key pair for consistency across container restarts. The key is automatically generated and distributed to all running VMs/LXCs on first scan.
+
+For manual setup (optional):
 ```bash
 mkdir -p data/ssh
 ssh-keygen -t ed25519 -f data/ssh/id_rsa -N ""
@@ -114,6 +117,10 @@ docker compose logs -f vigilance
 curl http://localhost:8000/api/health
 ```
 
+The docker-compose setup includes:
+- `vigilance`: The main application container
+- `vigilance-postgres`: PostgreSQL 16 database container
+
 ### 7. Access Dashboard
 
 Open http://localhost:8000/ in your browser.
@@ -126,7 +133,7 @@ For production, put behind a reverse proxy (nginx, Traefik, Caddy) with authenti
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `VIGILANCE_DB_PATH` | SQLite database path | `/app/data/vigilance.db` |
+| `VIGILANCE_DATABASE_URL` | PostgreSQL connection URL | `postgresql+asyncpg://vigilance:vigilance@postgres:5432/vigilance` |
 | `VIGILANCE_CONFIG_PATH` | Config YAML path | `/app/data/config.yaml` |
 | `VIGILANCE_PROXMOX_URL` | Proxmox API URL | - |
 | `VIGILANCE_PROXMOX_TOKEN_ID` | Proxmox API token ID | - |
@@ -199,7 +206,7 @@ docker compose exec vigilance python -m vigilance list-overrides
 
 Vigilance reads the `Remote-User` header (configurable) set by your reverse proxy/SSO.
 - Read access: Any authenticated user
-- Write access: Requires `Authorization: Bearer <API_TOKEN>` header
+- Write access: Authenticated users (in proxy mode) or `Authorization: Bearer <API_TOKEN>` header (API token mode)
 
 ### Built-in Auth (Optional)
 
@@ -217,7 +224,7 @@ pip install -e ".[dev]"
 
 ```bash
 # Set environment variables
-export VIGILANCE_DB_PATH=./data/vigilance.db
+export VIGILANCE_DATABASE_URL=postgresql+asyncpg://vigilance:vigilance@localhost:5432/vigilance
 export VIGILANCE_CONFIG_PATH=./config/config.yaml.example
 # ... other vars
 
@@ -227,6 +234,8 @@ alembic upgrade head
 # Start server
 uvicorn vigilance.main:app --reload --host 0.0.0.0 --port 8000
 ```
+
+Note: Requires PostgreSQL to be running locally or via Docker.
 
 ### Run Tests
 
@@ -246,8 +255,9 @@ mypy vigilance/
 
 ```
 vigilance/
+├── ansible/                # Ansible playbooks for SSH key distribution
 ├── config/                 # Configuration files
-├── docker/                 # Docker files
+├── docker/                 # Docker files (Dockerfile, docker-compose.yml)
 ├── vigilance/              # Python package
 │   ├── api/                # FastAPI routes
 │   ├── cli/                # CLI commands
@@ -259,7 +269,7 @@ vigilance/
 ├── tests/                  # Unit and integration tests
 ├── .env.example            # Example environment variables
 ├── config.yaml.example     # Example config YAML
-├── docker-compose.yml      # Docker Compose
+├── docker-compose.yml      # Docker Compose (symlink to docker/docker-compose.yml)
 ├── pyproject.toml          # Python project config
 └── README.md               # This file
 ```
