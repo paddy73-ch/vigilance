@@ -79,14 +79,18 @@ async def distribute_ssh_key_to_all_vms(api: ProxmoxAPI, node_name: str = "pve")
         logger.error(f"Failed to fetch VM list from Proxmox: {e}")
         return stats
 
-    all_targets = vms.get("data", []) + lxcs.get("data", [])
+    all_targets = []
+    for vm in vms.get("data", []):
+        all_targets.append(("qemu", vm))
+    for lxc in lxcs.get("data", []):
+        all_targets.append(("lxc", vm))
     stats["vms_found"] = len(all_targets)
 
-    # 2. For each running VM, distribute SSH key via Guest Agent
-    for vm in all_targets:
-        vmid = vm["vmid"]
-        name = vm.get("name", f"vm{vmid}")
-        status = vm.get("status", "unknown")
+    # 2. For each running VM/LXC, distribute SSH key via Guest Agent
+    for vtype, target in all_targets:
+        vmid = target["vmid"]
+        name = target.get("name", f"vm{vmid}")
+        status = target.get("status", "unknown")
 
         if status != "running":
             logger.debug(f"Skipping {name} (vmid={vmid}) - status: {status}")
@@ -94,7 +98,7 @@ async def distribute_ssh_key_to_all_vms(api: ProxmoxAPI, node_name: str = "pve")
 
         # Try to get IP from config (optional, for logging)
         try:
-            config = api.get(f"/api2/json/nodes/{node_name}/qemu/{vmid}/config")
+            config = api.get(f"/api2/json/nodes/{node_name}/{vtype}/{vmid}/config")
             ip = None
             for key, value in config.get("data", {}).items():
                 if isinstance(value, str) and "ip=" in value:
@@ -114,7 +118,7 @@ async def distribute_ssh_key_to_all_vms(api: ProxmoxAPI, node_name: str = "pve")
 
         try:
             api.post(
-                f"/api2/json/nodes/{node_name}/qemu/{vmid}/agent/exec",
+                f"/api2/json/nodes/{node_name}/{vtype}/{vmid}/agent/exec",
                 {"command": ["bash", "-c", cmd]},
             )
             logger.info(f"SSH key distributed to {name} (vmid={vmid}) at {ip or 'unknown'}")
