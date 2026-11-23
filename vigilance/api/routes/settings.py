@@ -91,6 +91,9 @@ async def update_settings(
         await crud.set_setting(db, "ssh_parallel_jobs", str(update.ssh_parallel_jobs), "SSH parallel jobs")
         settings.ssh_parallel_jobs = update.ssh_parallel_jobs
     await db.commit()
+    if update.scan_interval_hours is not None or update.cve_sync_interval_hours is not None:
+        from vigilance.core.scheduler import reschedule_jobs
+        reschedule_jobs()
     return {"message": "Settings saved successfully"}
 
 

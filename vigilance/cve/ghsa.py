@@ -1,22 +1,123 @@
+"""GitHub Security Advisories (global advisory database, REST API).
+
+Advisories are requested per ecosystem with the ``affects`` parameter
+(``name@version``), so GitHub only returns advisories that affect exactly
+the discovered package versions. GHSA covers language ecosystems (pip, npm,
+Go, Maven, ...), not distribution packages such as dpkg/apk.
+"""
+
 import logging
+from collections import defaultdict
+from dataclasses import dataclass, field
 from datetime import datetime
-from typing import List, Optional
+from typing import Dict, Iterable, List, Optional, Set, Tuple
+
 import httpx
 from tenacity import retry, stop_after_attempt, wait_exponential
 
-from vigilance.cve.models import CVEData, AffectedRange, Reference
 from vigilance.config import settings
+from vigilance.cve.cvss import cvss3_base_score, score_to_severity
+from vigilance.cve.ecosystems import ghsa_ecosystem
+from vigilance.cve.models import AffectedRange, CVEData, Reference
 
 logger = logging.getLogger(__name__)
+
+# (GHSA ecosystem, package name, version)
+QueryKey = Tuple[str, str, str]
+
+# Keep URLs short; each chunk lists a package name at most once so that a
+# returned advisory can be attributed to exactly one name@version.
+AFFECTS_CHUNK = 100
+
+
+def tool_query_key(tool) -> Optional[QueryKey]:
+    ecosystem = ghsa_ecosystem(tool.package_manager)
+    if not ecosystem or not tool.tool_name or not tool.detected_version:
+        return None
+    return ecosystem, tool.tool_name, tool.detected_version
+
+
+@dataclass
+class GHSASyncOutcome:
+    cves: List[CVEData] = field(default_factory=list)
+    matches: Dict[QueryKey, Set[str]] = field(default_factory=dict)  # query key -> GHSA ids
+    queried: int = 0
+
+
+def _parse_date(date_str: Optional[str]) -> Optional[datetime]:
+    if not date_str:
+        return None
+    try:
+        dt = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
+        return dt.replace(tzinfo=None) if dt.tzinfo is not None else dt
+    except ValueError:
+        return None
+
+
+def parse_advisory(node: dict) -> Optional[CVEData]:
+    """Convert a REST global advisory into CVEData (id = GHSA id, CVE id in the title)."""
+    ghsa_id = node.get("ghsa_id")
+    if not ghsa_id:
+        return None
+
+    cvss_vector = None
+    cvss_score = None
+    for key in ("cvss_v3", "cvss"):
+        data = (node.get("cvss_severities") or {}).get(key) if key == "cvss_v3" else node.get(key)
+        if data and data.get("vector_string"):
+            cvss_vector = data["vector_string"]
+            cvss_score = data.get("score") or cvss3_base_score(cvss_vector)
+            break
+    severity = score_to_severity(cvss_score) if cvss_score else None
+    if not severity and node.get("severity"):
+        severity = {"moderate": "MEDIUM"}.get(node["severity"].lower(), node["severity"].upper())
+
+    ranges = []
+    for vuln in node.get("vulnerabilities", []) or []:
+        pkg = vuln.get("package") or {}
+        first_patched = vuln.get("first_patched_version")
+        if isinstance(first_patched, dict):  # GraphQL shape
+            first_patched = first_patched.get("identifier")
+        ranges.append(AffectedRange(
+            type="ECOSYSTEM",
+            introduced="0",
+            fixed=first_patched,
+            repo=pkg.get("name"),
+            ecosystem=pkg.get("ecosystem"),
+            events=[{"vulnerable_version_range": vuln.get("vulnerable_version_range")}],
+        ))
+
+    refs = [Reference(url=ref, type="ADVISORY") for ref in node.get("references", []) or [] if isinstance(ref, str)]
+    if node.get("html_url"):
+        refs.insert(0, Reference(url=node["html_url"], type="ADVISORY"))
+
+    cve_id = node.get("cve_id")
+    summary = node.get("summary")
+    title = f"{cve_id}: {summary}" if cve_id and summary else (summary or cve_id)
+
+    return CVEData(
+        cve_id=ghsa_id,
+        source="ghsa",
+        title=title[:512] if title else None,
+        description=node.get("description"),
+        severity=severity,
+        cvss_score=cvss_score,
+        cvss_vector=cvss_vector,
+        affected_ranges=ranges,
+        references=refs,
+        published_at=_parse_date(node.get("published_at")),
+        modified_at=_parse_date(node.get("updated_at")),
+        raw_data=node,
+    )
 
 
 class GHSAClient:
     BASE_URL = "https://api.github.com/advisories"
 
     def __init__(self):
-        # GitHub Advisory API doesn't require auth for public data, but token helps with rate limits
         headers = {
             "Accept": "application/vnd.github+json",
+            "X-GitHub-Api-Version": "2022-11-28",
             "User-Agent": "vigilance-cve-sync",
         }
         github_token = getattr(settings, "github_token", "") or getattr(settings, "ghsa_token", "")
@@ -27,165 +128,78 @@ class GHSAClient:
     async def close(self):
         await self.client.aclose()
 
-    @retry(
-        wait=wait_exponential(multiplier=1, min=2, max=30),
-        stop=stop_after_attempt(3),
-    )
-    async def fetch_advisories(
-        self,
-        per_page: int = 100,
-        max_pages: Optional[int] = None,
-        package_names: Optional[List[str]] = None,
-    ) -> List[CVEData]:
-        """Fetch GitHub Security Advisories using the public REST API.
-        
-        Args:
-            per_page: Results per page (max 100)
-            max_pages: Maximum pages to fetch (None = no limit, fetch all pages)
-            package_names: Optional list of package names to filter advisories by.
-                           Only advisories affecting these packages are returned.
-        """
-        all_advisories = []
-        page = 1
-        pkg_set = {p.lower() for p in package_names} if package_names else None
-        while True:
-            if max_pages is not None and page > max_pages:
-                break
-            response = await self.client.get(self.BASE_URL, params={"per_page": per_page, "page": page})
-            try:
-                response.raise_for_status()
-            except httpx.HTTPStatusError as e:
-                status = e.response.status_code
-                body = e.response.text[:200]
-                logger.error(f"GitHub API returned HTTP {status}: {body}")
-                raise
-            advisories = response.json()
-            if not isinstance(advisories, list):
-                logger.error("GitHub advisories returned a non-list response; stopping pagination")
-                break
-            for node in advisories:
-                cve = self._parse_advisory(node)
-                if cve and self._matches_packages(cve, pkg_set):
-                    all_advisories.append(cve)
-            logger.info(f"GHSA page {page}: fetched {len(advisories)} advisories (total: {len(all_advisories)})")
-            if len(advisories) < per_page:
-                break
-            page += 1
+    @retry(wait=wait_exponential(multiplier=1, min=2, max=30), stop=stop_after_attempt(3), reraise=True)
+    async def _get(self, url: str, params: Optional[dict] = None) -> httpx.Response:
+        response = await self.client.get(url, params=params)
+        if response.status_code >= 400:
+            logger.error("GitHub API returned HTTP %s: %s", response.status_code, response.text[:200])
+        response.raise_for_status()
+        return response
 
-        logger.info(f"Fetched {len(all_advisories)} advisories from GHSA")
-        return all_advisories
-
-    def _matches_packages(self, cve: CVEData, pkg_set: Optional[set]) -> bool:
-        """Check if a CVE affects any of the given packages."""
-        if pkg_set is None:
-            return True
-        for r in cve.affected_ranges or []:
-            repo = (r.repo or "").lower()
-            if repo and repo in pkg_set:
-                return True
-        return False
-
-    def _parse_advisory(self, node: dict) -> Optional[CVEData]:
-        try:
-            ghsa_id = node.get("ghsa_id", node.get("ghsaId", ""))
-            if not ghsa_id:
-                return None
-
-            # Get CVE ID if available
-            cve_id = ghsa_id
-            for ident in node.get("identifiers", []):
-                if isinstance(ident, dict) and ident.get("type") == "CVE":
-                    cve_id = ident.get("value")
-                    break
-
-            severity = node.get("severity")
-            cvss_score = None
-            cvss_vector = None
-            cvss = node.get("cvss") or {}
-            if cvss:
-                cvss_score = cvss.get("score")
-                cvss_vector = cvss.get("vectorString")
-
-            # Parse vulnerabilities for affected ranges
-            ranges = []
-            vulnerabilities = node.get("vulnerabilities", [])
-            if isinstance(vulnerabilities, dict):
-                vulnerabilities = vulnerabilities.get("nodes", [])
-            for vuln in vulnerabilities:
-                if not isinstance(vuln, dict):
-                    continue
-                pkg = vuln.get("package", {})
-                if not isinstance(pkg, dict):
-                    pkg = {}
-                version_range = vuln.get("vulnerable_version_range", vuln.get("vulnerableVersionRange", ""))
-                first_patched = vuln.get("first_patched_version") or vuln.get("firstPatchedVersion") or {}
-                if not isinstance(first_patched, dict):
-                    first_patched = {}
-
-                ranges.append(AffectedRange(
-                    type="ECOSYSTEM",
-                    introduced="0",
-                    fixed=first_patched.get("identifier") if first_patched else None,
-                    last_affected=version_range if version_range else None,
-                    repo=pkg.get("name"),
-                    events=[
-                        {"introduced": "0"},
-                        {"fixed": first_patched.get("identifier")} if first_patched else {},
-                    ],
-                ))
-
-            # Parse references
-            refs = []
-            for ref in node.get("references", []):
-                if isinstance(ref, str):
-                    refs.append(Reference(url=ref, type="ADVISORY"))
-                    continue
-                refs.append(Reference(
-                    url=ref.get("url", ""),
-                    type="ADVISORY",
-                ))
-
-            published = node.get("published_at", node.get("publishedAt"))
-            updated = node.get("updated_at", node.get("updatedAt"))
-
-            return CVEData(
-                cve_id=cve_id,
-                source="ghsa",
-                title=node.get("summary"),
-                description=node.get("description"),
-                severity=severity,
-                cvss_score=cvss_score,
-                cvss_vector=cvss_vector,
-                affected_ranges=ranges,
-                references=refs,
-                published_at=self._parse_date(published) if published else None,
-                modified_at=self._parse_date(updated) if updated else None,
-                raw_data=node,
-            )
-        except Exception as e:
-            logger.error(f"Failed to parse GHSA advisory {node.get('ghsaId', 'unknown')}: {e}")
-            return None
-
-    def _parse_date(self, date_str: str) -> Optional[datetime]:
-        try:
-            dt = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
-            # Strip timezone info for PostgreSQL TIMESTAMP WITHOUT TIME ZONE compatibility
-            if dt.tzinfo is not None:
-                dt = dt.replace(tzinfo=None)
-            return dt
-        except Exception:
-            return None
+    async def advisories_affecting(self, ecosystem: str, packages: List[Tuple[str, str]]) -> List[dict]:
+        """List advisories affecting any of the given (name, version) pairs (follows Link pagination)."""
+        params: Optional[dict] = {
+            "ecosystem": ecosystem,
+            "affects": ",".join(f"{name}@{version}" for name, version in packages),
+            "per_page": 100,
+        }
+        url: Optional[str] = self.BASE_URL
+        advisories: List[dict] = []
+        while url:
+            response = await self._get(url, params)
+            data = response.json()
+            if not isinstance(data, list):
+                raise RuntimeError("GitHub advisories returned a non-list response")
+            advisories.extend(data)
+            url = response.links.get("next", {}).get("url")
+            params = None  # the next link already carries all query parameters
+        return advisories
 
 
-async def sync_ghsa(max_pages: Optional[int] = None, package_names: Optional[List[str]] = None) -> List[CVEData]:
-    """Sync advisories from GitHub Security Advisories.
-    
-    Args:
-        max_pages: Maximum pages to fetch (None = fetch all pages)
-        package_names: Optional list of package names to filter advisories by.
-    """
+def _chunks(keys: List[QueryKey]) -> Iterable[List[QueryKey]]:
+    """Group keys per ecosystem into chunks with unique package names."""
+    by_ecosystem: Dict[str, List[QueryKey]] = defaultdict(list)
+    for key in keys:
+        by_ecosystem[key[0]].append(key)
+    for eco_keys in by_ecosystem.values():
+        remaining = sorted(eco_keys)
+        while remaining:
+            chunk, rest, names = [], [], set()
+            for key in remaining:
+                if key[1] not in names and len(chunk) < AFFECTS_CHUNK:
+                    chunk.append(key)
+                    names.add(key[1])
+                else:
+                    rest.append(key)
+            yield chunk
+            remaining = rest
+
+
+async def sync_ghsa_for_tools(tools: Iterable) -> GHSASyncOutcome:
+    """Query GHSA only for discovered packages of GHSA-covered ecosystems."""
+    outcome = GHSASyncOutcome()
+    keys = sorted({k for k in (tool_query_key(t) for t in tools) if k})
+    outcome.queried = len(keys)
+    if not keys:
+        return outcome
+
     client = GHSAClient()
     try:
-        return await client.fetch_advisories(max_pages=max_pages, package_names=package_names)
+        found: Dict[str, CVEData] = {}
+        for chunk in _chunks(keys):
+            ecosystem = chunk[0][0]
+            by_name = {name.lower(): (ecosystem, name, version) for _, name, version in chunk}
+            for node in await client.advisories_affecting(ecosystem, [(n, v) for _, n, v in chunk]):
+                cve = parse_advisory(node)
+                if not cve:
+                    continue
+                found[cve.cve_id] = cve
+                for r in cve.affected_ranges:
+                    key = by_name.get((r.repo or "").lower())
+                    if key and (r.ecosystem or ecosystem) == ecosystem:
+                        outcome.matches.setdefault(key, set()).add(cve.cve_id)
+        outcome.cves = list(found.values())
+        logger.info("GHSA: %d package versions queried, %d advisories", outcome.queried, len(outcome.cves))
+        return outcome
     finally:
         await client.close()

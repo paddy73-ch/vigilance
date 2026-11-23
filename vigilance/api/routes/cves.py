@@ -7,7 +7,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from vigilance.api.deps import get_db, get_current_user_optional, require_write_access
 from vigilance.api.schemas import CVEEntryResponse, CVESyncStatusResponse, CVESyncTriggerResponse, CVESyncStatusWithEntriesResponse
 from vigilance.database import crud
-from vigilance.cve.sync import sync_cve_source
 from vigilance.core.security import User
 
 logger = logging.getLogger(__name__)
@@ -82,26 +81,18 @@ async def trigger_cve_sync(
     db: AsyncSession = Depends(get_db),
     current_user: Optional[User] = Depends(get_current_user_optional),
 ):
-    """Trigger CVE sync for all or specific source."""
+    """Trigger CVE sync (+ re-match) for all enabled sources or one specific source."""
+    from vigilance.core.scheduler import _spawn, run_pipeline
+    from vigilance.cve.sync import ALL_SOURCES
+
+    if source and source not in ALL_SOURCES:
+        raise HTTPException(status_code=400, detail=f"Unknown source: {source}")
+
     async def run() -> None:
         try:
-            if source:
-                await sync_cve_source(source)
-            else:
-                from vigilance.cve.sync import CVESyncOrchestrator
-                from vigilance.database.base import async_session_maker
-                async with async_session_maker() as sync_db:
-                    await CVESyncOrchestrator(sync_db).sync_all()
+            await run_pipeline(with_scan=False, sources=[source] if source else None)
         except Exception as e:
             logger.error(f"CVE sync failed for {source or 'all'}: {e}")
-            # Update sync status to error
-            from vigilance.database.base import async_session_maker
-            from vigilance.database import crud
-            async with async_session_maker() as sync_db:
-                src = source or "all"
-                await crud.update_sync_status(sync_db, src, status="error", error_message=str(e))
-                await sync_db.commit()
 
-    task = asyncio.create_task(run(), name=f"cve-sync-{source or 'all'}")
-    task.add_done_callback(lambda t: t.exception() if t.exception() else None)
+    _spawn(run(), name=f"cve-sync-{source or 'all'}")
     return CVESyncTriggerResponse(results={}, message="CVE sync started in background")

@@ -1,0 +1,2 @@
+[console_scripts]
+vigilance = vigilance.__main__:app

@@ -42,9 +42,12 @@ class CVESyncConfig:
     def __init__(self, data: dict):
         sources = data.get("sources", {})
         self.osv = sources.get("osv", {"enabled": True, "interval_hours": 6})
-        self.ghsa = sources.get("ghsa", {"enabled": True, "interval_hours": 6, "max_pages": 10})
-        self.nvd = sources.get("nvd", {"enabled": True, "interval_hours": 24, "api_key": "", "max_pages": 0})
-        self.debian = sources.get("debian", {"enabled": True, "interval_hours": 12, "suites": ["bookworm", "bullseye", "trixie"]})
+        self.ghsa = sources.get("ghsa", {"enabled": True, "interval_hours": 6})
+        # NVD has no package-level query for distro packages; matching is name based only.
+        self.nvd = sources.get("nvd", {"enabled": False, "interval_hours": 24, "api_key": "", "max_pages": 0})
+        # OSV's Debian:N data is generated from the Debian Security Tracker, so the
+        # tracker itself is off by default to avoid duplicate findings.
+        self.debian = sources.get("debian", {"enabled": False, "interval_hours": 12, "suites": ["bookworm", "trixie"]})
         self.ubuntu = sources.get("ubuntu", {"enabled": False, "interval_hours": 12, "releases": ["noble", "jammy", "focal"]})
 
 

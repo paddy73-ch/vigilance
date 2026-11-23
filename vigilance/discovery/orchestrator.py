@@ -21,8 +21,8 @@ from vigilance.discovery.packages import discover_packages_on_host, PackageInfo
 from vigilance.discovery.services import discover_services_on_host, ServiceInfo
 from vigilance.discovery.custom import run_all_custom_checks, CustomCheckResult
 from vigilance.discovery.ssh import get_ssh_pool
+from vigilance.discovery.osinfo import discover_os_on_host
 from vigilance.discovery.proxmox_ssh_setup import auto_distribute_ssh_keys, ensure_ssh_key
-from vigilance.cve.matcher import match_tool_against_cves
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 class ScanResult:
     nodes_scanned: int = 0
     tools_found: int = 0
-    new_findings: int = 0
+    new_findings: int = 0  # filled in by the CVE match step after the sync
 
 
 class DiscoveryOrchestrator:
@@ -182,6 +182,13 @@ class DiscoveryOrchestrator:
         key_path = ssh_config["key_path"]
         known_hosts = ssh_config["known_hosts"]
 
+        # 0. OS release (needed for release-specific CVE lookups, e.g. OSV "Debian:13")
+        os_info = await discover_os_on_host(host, port, user, key_path, known_hosts)
+        if os_info:
+            inventory.os_id = os_info.id or None
+            inventory.os_version_id = os_info.version_id or None
+            inventory.os_codename = os_info.codename or None
+
         # 1. Docker Discovery
         if settings.discovery and settings.discovery.docker_enabled:
             docker_result = await discover_docker_on_host(host, port, user, key_path, known_hosts)
@@ -231,7 +238,6 @@ class DiscoveryOrchestrator:
                 scan_run_id=scan_run_id,
             )
             result.tools_found += 1
-            await self._match_and_save_findings(tool, scan_run_id, result)
 
         for image in docker_result.get("images", []):
             if image.repository == "<none>":
@@ -252,7 +258,6 @@ class DiscoveryOrchestrator:
                 scan_run_id=scan_run_id,
             )
             result.tools_found += 1
-            await self._match_and_save_findings(tool, scan_run_id, result)
 
     async def _save_package_discovery(
         self,
@@ -277,6 +282,8 @@ class DiscoveryOrchestrator:
                 cpe_name=cpe_name,
                 cpe_version=pkg.version,
                 package_manager=pkg.manager,
+                source_name=pkg.source_name,
+                source_version=pkg.source_version,
                 raw_data=json.dumps({
                     "architecture": pkg.architecture,
                     "description": pkg.description,
@@ -284,7 +291,6 @@ class DiscoveryOrchestrator:
                 scan_run_id=scan_run_id,
             )
             result.tools_found += 1
-            await self._match_and_save_findings(tool, scan_run_id, result)
 
     async def _save_service_discovery(
         self,
@@ -314,7 +320,6 @@ class DiscoveryOrchestrator:
                 scan_run_id=scan_run_id,
             )
             result.tools_found += 1
-            await self._match_and_save_findings(tool, scan_run_id, result)
 
     async def _save_custom_discovery(
         self,
@@ -348,40 +353,6 @@ class DiscoveryOrchestrator:
                 scan_run_id=scan_run_id,
             )
             result.tools_found += 1
-            await self._match_and_save_findings(tool, scan_run_id, result)
-
-    async def _match_and_save_findings(
-        self,
-        tool: DiscoveredTool,
-        scan_run_id: int,
-        result: ScanResult,
-    ):
-        """Match tool against CVE database and save findings."""
-        # Get all CVE entries
-        cve_entries = await crud.get_cve_entries(self.db, limit=10000)
-
-        for cve in cve_entries:
-            # Check suppression
-            if await crud.is_suppressed(self.db, cve.cve_id, tool.tool_name, tool.inventory_id):
-                continue
-
-            match_result = match_tool_against_cves(tool, cve)
-            if match_result.affected:
-                finding = await crud.upsert_finding(
-                    self.db,
-                    discovered_tool_id=tool.id,
-                    cve_entry_id=cve.id,
-                    status="open",
-                    matched_version=tool.detected_version,
-                    fixed_version=match_result.fixed_version,
-                    match_details=json.dumps(match_result.details),
-                    scan_run_id=scan_run_id,
-                )
-                if finding.first_seen_at == finding.last_seen_at:
-                    result.new_findings += 1
-                    # Send notification
-                    from vigilance.core.notifications import notify_finding
-                    await notify_finding(finding, tool, tool.inventory, cve)
 
     def _parse_image_name(self, image: str) -> tuple[str, str]:
         """Parse Docker image name into (name, tag)."""

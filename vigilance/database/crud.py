@@ -176,6 +176,7 @@ async def upsert_cve_entry(db: AsyncSession, **kwargs) -> CVEEntry:
     else:
         cve = CVEEntry(**kwargs)
         db.add(cve)
+    await db.flush()
     return cve
 
 

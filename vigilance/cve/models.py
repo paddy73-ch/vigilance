@@ -12,6 +12,7 @@ class AffectedRange:
     last_affected: Optional[str] = None
     repo: Optional[str] = None
     events: List[dict] = field(default_factory=list)
+    ecosystem: Optional[str] = None  # e.g. "Debian:13", "pip"
 
 
 @dataclass
