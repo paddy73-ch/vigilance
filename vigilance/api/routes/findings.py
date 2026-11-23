@@ -25,6 +25,7 @@ async def inventory_findings(
     inventories = (await db.execute(
         select(Inventory, ProxmoxNode.name)
         .outerjoin(ProxmoxNode, Inventory.proxmox_node_id == ProxmoxNode.id)
+        .where(Inventory.status == "running")
         .order_by(Inventory.name)
     )).all()
     rows = {
