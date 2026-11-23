@@ -188,13 +188,13 @@ class CVESyncOrchestrator:
         from vigilance.cve.matcher import match_tool_against_cves
         from vigilance.core.notifications import notify_finding
 
-        from vigilance.database.models import DiscoveredTool
-        from sqlalchemy import select
-        from vigilance.cve.matcher import match_tool_against_cves
+        from vigilance.database.models import DiscoveredTool, VulnerabilityFinding
+        from sqlalchemy import select, delete
 
         result = await self.db.execute(select(DiscoveredTool))
         tools = result.scalars().all()
         cves = await crud.get_cve_entries(self.db, limit=10000)
+        
         # Index CVEs by affected package/CPE instead of testing every CVE against every tool.
         cves_by_repo = {}
         for cve in cves:
@@ -206,6 +206,10 @@ class CVESyncOrchestrator:
                 repo = (range_obj.get("repo") or "").lower()
                 if repo:
                     cves_by_repo.setdefault(repo, []).append(cve)
+        
+        # Track which findings we keep (discovered_tool_id, cve_entry_id) tuples
+        kept_findings = set()
+        
         for tool in tools:
             tool_name = tool.tool_name.lower()
             candidates = cves_by_repo.get(tool_name, [])
@@ -217,6 +221,7 @@ class CVESyncOrchestrator:
                     continue
                 match = match_tool_against_cves(tool, cve)
                 if match.affected:
+                    kept_findings.add((tool.id, cve.id))
                     await crud.upsert_finding(
                         self.db,
                         discovered_tool_id=tool.id,
@@ -226,6 +231,16 @@ class CVESyncOrchestrator:
                         fixed_version=match.fixed_version,
                         match_details=json.dumps(match.details),
                     )
+        
+        # Delete findings that no longer match (not in kept_findings)
+        # Only delete open findings that weren't matched in this run
+        existing_findings = await self.db.execute(
+            select(VulnerabilityFinding).where(VulnerabilityFinding.status == "open")
+        )
+        for finding in existing_findings.scalars().all():
+            if (finding.discovered_tool_id, finding.cve_entry_id) not in kept_findings:
+                await self.db.delete(finding)
+        
         await self.db.commit()
 
 
@@ -239,23 +254,30 @@ async def sync_cve_source(source: str) -> dict:
         tool_names = await crud.get_discovered_tool_names(db)
         tool_names_lower = {name.lower() for name in tool_names} if tool_names else set()
         
+        result = None
         if source == "osv":
             from sqlalchemy import select
             from vigilance.database.models import DiscoveredTool
-            result = await db.execute(select(DiscoveredTool))
-            return await orchestrator._sync_source(
-                source, lambda: sync_osv_for_tools(result.scalars().all()), tool_names_lower
+            tool_result = await db.execute(select(DiscoveredTool))
+            result = await orchestrator._sync_source(
+                source, lambda: sync_osv_for_tools(tool_result.scalars().all()), tool_names_lower
             )
-        if source == "ghsa":
+        elif source == "ghsa":
             max_pages = settings.cve_sync.ghsa.get("max_pages") if settings.cve_sync else None
             if tool_names:
-                return await orchestrator._sync_source(
+                result = await orchestrator._sync_source(
                     source, lambda: sync_ghsa(max_pages=max_pages, package_names=tool_names), tool_names_lower
                 )
-            return {"status": "skipped", "count": 0, "message": "No discovered tools, skipping GHSA sync"}
+            else:
+                result = {"status": "skipped", "count": 0, "message": "No discovered tools, skipping GHSA sync"}
+        else:
+            # For NVD, Debian, Ubuntu - use filtering
+            result = await orchestrator._sync_source(source, _get_sync_func(source), tool_names_lower)
         
-        # For NVD, Debian, Ubuntu - use filtering
-        return await orchestrator._sync_source(source, _get_sync_func(source), tool_names_lower)
+        # Re-match findings after sync
+        await orchestrator._rematch_findings()
+        
+        return result
 
 
 def _get_sync_func(source: str):

@@ -61,6 +61,14 @@ def check_version_in_range(detected_version: str, range_obj: AffectedRange) -> V
     if not detected:
         return VersionMatch(affected=False, details={"error": "Could not parse detected version"})
 
+    # If no fixed version and no last_affected, we can't determine if version is affected
+    # Skip this range (return not affected)
+    if fixed is None and last_affected is None:
+        return VersionMatch(
+            affected=False,
+            details={"reason": "No fixed or last_affected version specified, cannot determine if affected"}
+        )
+
     # Check if version >= introduced
     if introduced and detected < introduced:
         return VersionMatch(affected=False, details={"reason": f"Version {detected_version} < introduced {introduced}"})
@@ -103,6 +111,17 @@ def _extract_package_from_cpe(cpe: str) -> str:
     return cpe.lower()
 
 
+def _extract_version_from_cpe(cpe: str) -> Optional[str]:
+    """Extract version from CPE string (e.g., cpe:2.3:a:gnu:wget:1.5.3 -> 1.5.3)."""
+    # CPE format: cpe:2.3:part:vendor:product:version:...
+    parts = cpe.split(":")
+    if len(parts) >= 6:
+        version = parts[5]
+        if version and version != "*":
+            return version
+    return None
+
+
 def match_tool_against_cves(tool, cve: CVEData) -> MatchResult:
     """Match a discovered tool against a CVE entry."""
     detected_version = tool.detected_version
@@ -136,8 +155,18 @@ def match_tool_against_cves(tool, cve: CVEData) -> MatchResult:
             if range_obj.type == "CPE":
                 # Extract package name from CPE
                 cpe_package = _extract_package_from_cpe(range_repo)
+                cpe_version = _extract_version_from_cpe(range_repo)
+                
+                # Check package name match
                 if cpe_package == tool_name or cpe_package in cpe_name:
-                    matched = True
+                    # If CPE has a specific version, check if detected version matches
+                    if cpe_version:
+                        # CPE version is specific - only match if detected version equals it
+                        if cpe_version == detected_version or cpe_version in detected_version:
+                            matched = True
+                    else:
+                        # CPE version is * (any) or not specified - match any version
+                        matched = True
             elif range_obj.type in ("DEBIAN", "UBUNTU", "ECOSYSTEM"):
                 # Exact match for package name
                 if range_repo == tool_name:
