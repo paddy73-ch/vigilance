@@ -62,7 +62,7 @@ async def inventory_findings(
     result = list(rows.values())
     for host in result:
         host["tools"] = list(host["tools"].values())
-    return sorted(result, key=lambda row: row["total"], reverse=True)
+    return sorted(result, key=lambda row: row["vmid"])
 
 
 @router.get("/findings", response_model=List[VulnerabilityFindingResponse])
