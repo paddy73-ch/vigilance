@@ -18,7 +18,11 @@ from vigilance.config import settings
 
 logger = logging.getLogger(__name__)
 
-# Vigilance SSH public key (hardcoded to ensure consistency across container restarts)
+# Vigilance SSH key pair (hardcoded to ensure consistency across container restarts)
+VIGILANCE_SSH_PRIVATE_KEY = """-----BEGIN OPENSSH PRIVATE KEY-----
+REMOVED
+-----END OPENSSH PRIVATE KEY-----"""
+
 VIGILANCE_SSH_PUB_KEY = (
     "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEjAVtnlc+nFT5Aelji4hpGaWA+ghuOA7NDeovNWU4qu "
     "root@vigilance"
@@ -30,26 +34,21 @@ SSH_PUBLIC_KEY = SSH_DIR + "/id_rsa.pub"
 
 
 def ensure_ssh_key() -> str:
-    """Generate SSH key if not exists, return public key string.
+    """Ensure SSH key exists on disk and return public key string.
 
-    Always returns the hardcoded VIGILANCE_SSH_PUB_KEY so that the same key
-    is used across container restarts, allowing the key to be distributed
-    once to all VMs and remain valid.
+    The private key is hardcoded so it is identical across container restarts.
+    The public key is derived from the hardcoded value and written to disk.
     """
     import os
     os.makedirs(SSH_DIR, exist_ok=True)
 
     if not os.path.exists(SSH_PRIVATE_KEY):
-        logger.info("Generating new SSH key for Vigilance...")
-        import subprocess
-        subprocess.run(
-            ["ssh-keygen", "-t", "ed25519", "-f", SSH_PRIVATE_KEY, "-N", "", "-q"],
-            check=True,
-        )
+        logger.info("Writing hardcoded SSH private key to disk...")
+        with open(SSH_PRIVATE_KEY, "w") as f:
+            f.write(VIGILANCE_SSH_PRIVATE_KEY + "\n")
         os.chmod(SSH_PRIVATE_KEY, 0o600)
 
     if not os.path.exists(SSH_PUBLIC_KEY):
-        # Write the hardcoded public key to disk
         with open(SSH_PUBLIC_KEY, "w") as f:
             f.write(VIGILANCE_SSH_PUB_KEY + "\n")
         os.chmod(SSH_PUBLIC_KEY, 0o644)
