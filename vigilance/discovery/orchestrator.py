@@ -83,12 +83,12 @@ class DiscoveryOrchestrator:
         return result
 
     async def _discover_proxmox_node(self, node: ProxmoxNode, scan_run_id: int, result: ScanResult):
-        """Discover VMs/LXCs on a Proxmox node via API, then SSH into each."""
+        """Discover LXC containers on a Proxmox node via API, then SSH into each."""
         async with ProxmoxClient(node) as client:
-            # Get VMs and LXCs
-            vms = await client.get_vms(node.name)
+            # Get LXCs only (skip QEMU VMs)
             lxcs = await client.get_lxcs(node.name)
 
+            all_targets = []
             for lxc in lxcs:
                 try:
                     config = await client.get_lxc_config(node.name, lxc.vmid)
@@ -96,17 +96,17 @@ class DiscoveryOrchestrator:
                 except Exception as exc:
                     logger.warning("Could not read LXC network config for %s: %s", lxc.vmid, exc)
 
-            all_targets = []
-            for vm in vms:
-                all_targets.append(("qemu", vm))
+            # Filter: only LXCs with a known IP address
             for lxc in lxcs:
-                all_targets.append(("lxc", lxc))
+                ip = getattr(lxc, "ip", None) or getattr(lxc, "ip_address", None)
+                if ip:
+                    all_targets.append(("lxc", lxc))
 
             result.nodes_scanned += len(all_targets)
 
-            # Process each VM/LXC
-            for vtype, target in all_targets:
-                await self._process_inventory_target(node, vtype, target, scan_run_id, result)
+            # Process each LXC with IP
+            for lxc in all_targets:
+                await self._process_inventory_target(node, "lxc", lxc, scan_run_id, result)
 
     @staticmethod
     def _ip_from_lxc_config(config: dict) -> Optional[str]:
