@@ -15,9 +15,14 @@ def upgrade() -> None:
     op.add_column("discovered_tools", sa.Column("source_name", sa.String(length=255), nullable=True))
     op.add_column("discovered_tools", sa.Column("source_version", sa.String(length=128), nullable=True))
     op.create_index("idx_discovered_tools_source_name", "discovered_tools", ["source_name"])
+    # Findings of the previous matcher (bare "Debian" ecosystem, substring matching) are
+    # mostly false positives and must not show up as "fixed" later: start clean.
+    # OSV/GHSA records are re-downloaded with the new parser on the next sync.
+    op.execute("DELETE FROM vulnerability_findings")
+    op.execute("DELETE FROM cve_entries WHERE source IN ('osv', 'ghsa')")
 
 
-def downgrade() -> None:
+def downgrade() -> None:  # findings deleted by upgrade() are not restored
     op.drop_index("idx_discovered_tools_source_name", table_name="discovered_tools")
     op.drop_column("discovered_tools", "source_version")
     op.drop_column("discovered_tools", "source_name")

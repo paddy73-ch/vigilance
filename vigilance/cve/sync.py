@@ -28,6 +28,7 @@ from vigilance.database.models import CVEEntry, DiscoveredTool
 logger = logging.getLogger(__name__)
 
 ALL_SOURCES = ("osv", "ghsa", "nvd", "debian", "ubuntu")
+MAX_INDIVIDUAL_NOTIFICATIONS = 20
 
 
 def _source_enabled(source: str) -> bool:
@@ -213,12 +214,36 @@ class CVESyncOrchestrator:
                     "duration": (datetime.utcnow() - start_time).total_seconds()}
 
     async def _notify(self, stats: MatchStats):
+        """Notify new findings; many at once (e.g. first run) are sent as one summary."""
         if not stats or not stats.new_findings:
             return
-        from vigilance.core.notifications import notify_finding
-        for finding in stats.new_findings:
+        from vigilance.core import notifications as notif
+        config = settings.notifications.gotify if settings.notifications else None
+        if not config:
+            return
+        relevant = [f for f in stats.new_findings
+                    if notif.severity_meets_threshold(f.cve.severity or "NONE", config.min_severity)]
+        if len(relevant) > MAX_INDIVIDUAL_NOTIFICATIONS and not config.digest_mode:
+            by_sev: Dict[str, int] = {}
+            hosts = set()
+            for f in relevant:
+                by_sev[f.cve.severity or "NONE"] = by_sev.get(f.cve.severity or "NONE", 0) + 1
+                hosts.add(f.tool.inventory.name if f.tool.inventory else "?")
+            lines = [f"- **{sev}**: {n}" for sev, n in sorted(by_sev.items())]
             try:
-                await notify_finding(finding, finding.tool, finding.tool.inventory, finding.cve)
+                await notif.send_gotify_message(
+                    config=config,
+                    title=f"[Vigilance] {len(relevant)} new findings on {len(hosts)} hosts",
+                    message="\n".join(lines),
+                    priority=max(notif.SEVERITY_PRIORITY.get(s, 5) for s in by_sev),
+                    extras={"client::display": {"contentType": "text/markdown"}},
+                )
+            except Exception as exc:
+                logger.warning("Summary notification failed: %s", exc)
+            return
+        for finding in relevant:
+            try:
+                await notif.notify_finding(finding, finding.tool, finding.tool.inventory, finding.cve)
             except Exception as exc:
                 logger.warning("Notification failed for finding %s: %s", finding.id, exc)
 

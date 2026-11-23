@@ -153,3 +153,26 @@ async def test_orchestrator_end_to_end(monkeypatch, db_session):
     assert f.status == "open" and f.fixed_version == "3.5.9-1~deb13u3"
     # Stored with the current parser -> counted as known for the next run
     assert "DEBIAN-CVE-2026-50" in await orch._known_osv_records()
+
+
+@pytest.mark.asyncio
+async def test_one_finding_per_source_package(db_session):
+    db = db_session
+    tools, osv_cve, _ = await _setup(db)
+    inv_id = tools[0].inventory_id
+    for name in ("openssl", "libssl-dev"):
+        await crud.upsert_discovered_tool(db, inventory_id=inv_id, source_type="ssh_pkg", tool_name=name,
+                                          detected_version="3.5.9-1~deb13u1", package_manager="dpkg",
+                                          source_name="openssl", source_version="3.5.9-1~deb13u1")
+    await db.commit()
+    tools = (await db.execute(select(DiscoveredTool).options(selectinload(DiscoveredTool.inventory)))).scalars().all()
+    key = ("Debian:13", "openssl", "3.5.9-1~deb13u1")
+    await match_findings(db, tools, {"osv": DirectMatches(tool_query_key, {key: {"DEBIAN-CVE-2026-1"}})}, {"osv"})
+    await db.commit()
+    rows = (await db.execute(select(VulnerabilityFinding).options(selectinload(VulnerabilityFinding.tool)).where(
+        VulnerabilityFinding.cve_entry_id == osv_cve.id))).scalars().all()
+    assert len(rows) == 1
+    assert rows[0].tool.tool_name == "openssl"  # binary named like the source package is the representative
+    details = json.loads(rows[0].match_details)
+    assert details["binaries"] == ["libssl-dev", "libssl3t64", "openssl"]
+    assert details["fix_available"] is True

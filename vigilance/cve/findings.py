@@ -4,6 +4,10 @@
   server-side; their query results are turned into findings as they are.
 * Range-based sources (NVD, Debian/Ubuntu trackers) are matched locally, on
   exact package names only (source package first, then binary name).
+* Binary packages built from the same source (e.g. util-linux -> mount,
+  bsdutils, libblkid1, ...) share their advisories. One finding is recorded
+  per host and source package, on a representative tool; the other binary
+  packages are listed in ``match_details["binaries"]``.
 * Findings that no longer match are set to ``fixed`` (with ``resolved_at``)
   instead of being deleted — but only for sources that synced successfully in
   this run, so a failed sync never marks everything as fixed.
@@ -75,6 +79,36 @@ def fixed_version_for(cve: CVEEntry, ecosystem: Optional[str], package: str) -> 
         if r.get("fixed"):
             fixed = r["fixed"]
     return fixed
+
+
+def group_by_source_package(tools: Sequence[DiscoveredTool]) -> List[Tuple[DiscoveredTool, List[str]]]:
+    """Return (representative tool, binary package names) per host + source package/version."""
+    groups: Dict[tuple, List[DiscoveredTool]] = {}
+    for tool in tools:
+        if tool.source_name:
+            key = (tool.inventory_id, tool.package_manager, tool.source_name,
+                   tool.source_version or tool.detected_version)
+        else:
+            key = (tool.inventory_id, tool.source_type, tool.tool_name, tool.id)
+        groups.setdefault(key, []).append(tool)
+    result = []
+    for members in groups.values():
+        members.sort(key=lambda t: (t.tool_name != t.source_name, t.tool_name))
+        result.append((members[0], sorted(t.tool_name for t in members)))
+    return result
+
+
+def urgency_for(cve: CVEEntry, ecosystem: Optional[str], package: str) -> Optional[str]:
+    """Distribution urgency (Debian: unimportant/low/medium/high/not yet assigned) from the raw OSV record."""
+    try:
+        raw = json.loads(cve.raw_data or "{}")
+    except json.JSONDecodeError:
+        return None
+    for affected in raw.get("affected", []) or []:
+        pkg = affected.get("package") or {}
+        if pkg.get("name") == package and (not ecosystem or pkg.get("ecosystem") == ecosystem):
+            return (affected.get("ecosystem_specific") or {}).get("urgency")
+    return None
 
 
 def _suppressed(suppressions: Sequence[Suppression], cve_id: str, tool: DiscoveredTool, now: datetime) -> bool:
@@ -157,7 +191,8 @@ async def match_findings(
         if scan_run_id:
             finding.scan_run_id = scan_run_id
 
-    for tool in tools:
+    for tool, binaries in group_by_source_package(tools):
+        extra = {"binaries": binaries} if len(binaries) > 1 else {}
         # 1. Direct sources: the advisory database already evaluated this exact version
         for source, dm in direct.items():
             qkey = dm.key_for(tool)
@@ -168,8 +203,10 @@ async def match_findings(
                 if not cve:
                     continue
                 ecosystem, package, version = qkey
-                record(tool, cve, fixed_version_for(cve, ecosystem, package), {
+                fixed = fixed_version_for(cve, ecosystem, package)
+                record(tool, cve, fixed, {
                     "source": source, "ecosystem": ecosystem, "package": package, "version": version,
+                    "fix_available": bool(fixed), "urgency": urgency_for(cve, ecosystem, package), **extra,
                 })
 
         # 2. Range-based sources: exact name match, source package before binary name
@@ -191,7 +228,8 @@ async def match_findings(
                 match = match_tool_against_cves(proxy, cve)
                 if match.affected:
                     details = dict(match.details or {})
-                    details.update({"source": cve.source, "package": name, "version": version})
+                    details.update({"source": cve.source, "package": name, "version": version,
+                                    "fix_available": bool(match.fixed_version), **extra})
                     record(tool, cve, match.fixed_version, details)
 
     # 3. Lifecycle: no longer matching -> fixed (only for sources that synced successfully)
