@@ -118,7 +118,7 @@
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6 border border-gray-200 dark:border-gray-700">
             <div class="flex items-center justify-between mb-4">
-                <h3 class="text-lg font-semibold">Recent Tool Scans</h3>
+                <h3 class="text-lg font-semibold">Tool Scan</h3>
                 <button @click="triggerScan()" class="btn-primary text-sm">
                     <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
@@ -126,17 +126,38 @@
                     Scan Now
                 </button>
             </div>
-            <div class="space-y-2">
-                <template x-for="scan in stats.recent_scans" :key="scan.id">
-                    <div class="flex items-center justify-between gap-4 px-3 py-2 bg-gray-50 dark:bg-gray-700 rounded">
-                        <div>
-                            <span class="font-medium" x-text="scan.scan_type + ' - ' + formatDate(scan.started_at)"></span>
-                            <span class="ml-3 text-sm text-gray-500 dark:text-gray-400" x-text="'Nodes: ' + scan.nodes_scanned + ', Tools: ' + scan.tools_found + ', New: ' + scan.new_findings"></span>
-                        </div>
-                        <span :class="getStatusClass(scan.status)" x-text="scan.status"></span>
+            <!-- Latest Scan -->
+            <template x-if="stats.recent_scans.length > 0">
+                <div class="flex items-center justify-between gap-4 px-3 py-2 bg-gray-50 dark:bg-gray-700 rounded mb-2">
+                    <div>
+                        <span class="font-medium" x-text="stats.recent_scans[0].scan_type + ' - ' + formatDate(stats.recent_scans[0].started_at)"></span>
+                        <span class="ml-3 text-sm text-gray-500 dark:text-gray-400" x-text="'Nodes: ' + stats.recent_scans[0].nodes_scanned + ', Tools: ' + stats.recent_scans[0].tools_found + ', New: ' + stats.recent_scans[0].new_findings"></span>
                     </div>
-                </template>
-            </div>
+                    <span :class="getStatusClass(stats.recent_scans[0].status)" x-text="stats.recent_scans[0].status"></span>
+                </div>
+            </template>
+            <!-- Collapsible Older Scans -->
+            <template x-if="stats.recent_scans.length > 1">
+                <div>
+                    <button @click="showOlderScans = !showOlderScans" class="flex items-center gap-1 text-sm text-blue-600 hover:text-blue-800 mb-2">
+                        <svg class="w-4 h-4 transition-transform" :class="showOlderScans ? 'rotate-90' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
+                        </svg>
+                        <span x-text="'Ältere Scans (' + (stats.recent_scans.length - 1) + ')'"></span>
+                    </button>
+                    <div x-show="showOlderScans" class="space-y-2">
+                        <template x-for="scan in stats.recent_scans.slice(1)" :key="scan.id">
+                            <div class="flex items-center justify-between gap-4 px-3 py-2 bg-gray-50 dark:bg-gray-700 rounded">
+                                <div>
+                                    <span class="font-medium" x-text="scan.scan_type + ' - ' + formatDate(scan.started_at)"></span>
+                                    <span class="ml-3 text-sm text-gray-500 dark:text-gray-400" x-text="'Nodes: ' + scan.nodes_scanned + ', Tools: ' + scan.tools_found + ', New: ' + scan.new_findings"></span>
+                                </div>
+                                <span :class="getStatusClass(scan.status)" x-text="scan.status"></span>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+            </template>
         </div>
 
         <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6 border border-gray-200 dark:border-gray-700">
@@ -172,10 +193,14 @@
 function dashboard() {
     return {
         stats: {findings_by_severity: {}, findings_by_status: {}, recent_scans: [], cve_sync_status: []},
+        showOlderScans: false,
         async loadStats() {
             try {
                 const resp = await fetch('/api/dashboard/stats');
-                this.stats = await resp.json();
+                const data = await resp.json();
+                // Filter out disabled sources (ubuntu)
+                data.cve_sync_status = (data.cve_sync_status || []).filter(s => s.source !== 'ubuntu');
+                this.stats = data;
                 if (this.stats.cve_sync_status.some(sync => sync.status === 'running')) {
                     setTimeout(() => this.loadStats(), 2000);
                 }
