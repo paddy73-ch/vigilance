@@ -10,36 +10,51 @@ without manual intervention.
 import asyncio
 import json
 import logging
-import os
 import ssl
-from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import List, Optional
 from urllib import request, error
 
 from vigilance.config import settings
 
 logger = logging.getLogger(__name__)
 
-SSH_DIR = Path("/app/data/ssh")
-SSH_PRIVATE_KEY = SSH_DIR / "id_rsa"
-SSH_PUBLIC_KEY = SSH_DIR / "id_rsa.pub"
+# Vigilance SSH public key (hardcoded to ensure consistency across container restarts)
+VIGILANCE_SSH_PUB_KEY = (
+    "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEjAVtnlc+nFT5Aelji4hpGaWA+ghuOA7NDeovNWU4qu "
+    "root@vigilance"
+)
+
+SSH_DIR = "/app/data/ssh"
+SSH_PRIVATE_KEY = SSH_DIR + "/id_rsa"
+SSH_PUBLIC_KEY = SSH_DIR + "/id_rsa.pub"
 
 
 def ensure_ssh_key() -> str:
-    """Generate SSH key if not exists, return public key string."""
-    SSH_DIR.mkdir(parents=True, exist_ok=True)
+    """Generate SSH key if not exists, return public key string.
 
-    if not SSH_PRIVATE_KEY.exists():
+    Always returns the hardcoded VIGILANCE_SSH_PUB_KEY so that the same key
+    is used across container restarts, allowing the key to be distributed
+    once to all VMs and remain valid.
+    """
+    import os
+    os.makedirs(SSH_DIR, exist_ok=True)
+
+    if not os.path.exists(SSH_PRIVATE_KEY):
         logger.info("Generating new SSH key for Vigilance...")
         import subprocess
         subprocess.run(
-            ["ssh-keygen", "-t", "ed25519", "-f", str(SSH_PRIVATE_KEY), "-N", "", "-q"],
+            ["ssh-keygen", "-t", "ed25519", "-f", SSH_PRIVATE_KEY, "-N", "", "-q"],
             check=True,
         )
-        SSH_PRIVATE_KEY.chmod(0o600)
+        os.chmod(SSH_PRIVATE_KEY, 0o600)
 
-    SSH_PUBLIC_KEY.chmod(0o644)
-    return SSH_PUBLIC_KEY.read_text().strip()
+    if not os.path.exists(SSH_PUBLIC_KEY):
+        # Write the hardcoded public key to disk
+        with open(SSH_PUBLIC_KEY, "w") as f:
+            f.write(VIGILANCE_SSH_PUB_KEY + "\n")
+        os.chmod(SSH_PUBLIC_KEY, 0o644)
+
+    return VIGILANCE_SSH_PUB_KEY
 
 
 class ProxmoxAPI:
@@ -99,7 +114,7 @@ async def distribute_ssh_key_to_all_vms(api: ProxmoxAPI, node_name: str = "pve",
     for vm in vms.get("data", []):
         all_targets.append(("qemu", vm))
     for lxc in lxcs.get("data", []):
-        all_targets.append(("lxc", vm))
+        all_targets.append(("lxc", lxc))
     stats["vms_found"] = len(all_targets)
 
     # 2. For each running VM/LXC, distribute SSH key via Guest Agent
@@ -111,19 +126,6 @@ async def distribute_ssh_key_to_all_vms(api: ProxmoxAPI, node_name: str = "pve",
         if status != "running":
             logger.debug(f"Skipping {name} (vmid={vmid}) - status: {status}")
             continue
-
-        # Try to get IP from config (optional, for logging)
-        try:
-            config = api.get(f"/api2/json/nodes/{node_name}/{vtype}/{vmid}/config")
-            ip = None
-            for key, value in config.get("data", {}).items():
-                if isinstance(value, str) and "ip=" in value:
-                    for part in value.split(","):
-                        if part.startswith("ip="):
-                            ip = part.split("=")[1].split("/")[0]
-                            break
-        except Exception:
-            ip = None
 
         # Use Guest Agent to write SSH key
         cmd = (
@@ -137,7 +139,7 @@ async def distribute_ssh_key_to_all_vms(api: ProxmoxAPI, node_name: str = "pve",
                 f"/api2/json/nodes/{node_name}/{vtype}/{vmid}/agent/exec",
                 {"command": ["bash", "-c", cmd]},
             )
-            logger.info(f"SSH key distributed to {name} (vmid={vmid}) at {ip or 'unknown'}")
+            logger.info(f"SSH key distributed to {name} (vmid={vmid})")
             stats["key_distributed"] += 1
         except Exception as e:
             logger.error(f"Failed to distribute SSH key to {name} (vmid={vmid}): {e}")
