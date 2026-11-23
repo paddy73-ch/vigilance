@@ -38,20 +38,19 @@ def ensure_ssh_key() -> str:
 
     The private key is hardcoded so it is identical across container restarts.
     The public key is derived from the hardcoded value and written to disk.
+    Always overwrites existing key files to ensure consistency.
     """
     import os
     os.makedirs(SSH_DIR, exist_ok=True)
 
-    if not os.path.exists(SSH_PRIVATE_KEY):
-        logger.info("Writing hardcoded SSH private key to disk...")
-        with open(SSH_PRIVATE_KEY, "w") as f:
-            f.write(VIGILANCE_SSH_PRIVATE_KEY + "\n")
-        os.chmod(SSH_PRIVATE_KEY, 0o600)
+    # Always write the hardcoded private key to ensure consistency
+    with open(SSH_PRIVATE_KEY, "w") as f:
+        f.write(VIGILANCE_SSH_PRIVATE_KEY + "\n")
+    os.chmod(SSH_PRIVATE_KEY, 0o600)
 
-    if not os.path.exists(SSH_PUBLIC_KEY):
-        with open(SSH_PUBLIC_KEY, "w") as f:
-            f.write(VIGILANCE_SSH_PUB_KEY + "\n")
-        os.chmod(SSH_PUBLIC_KEY, 0o644)
+    with open(SSH_PUBLIC_KEY, "w") as f:
+        f.write(VIGILANCE_SSH_PUB_KEY + "\n")
+    os.chmod(SSH_PUBLIC_KEY, 0o644)
 
     return VIGILANCE_SSH_PUB_KEY
 
