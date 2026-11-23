@@ -28,9 +28,9 @@ async def get_dashboard_stats(
     # Count nodes
     total_nodes = await db.scalar(select(func.count(ProxmoxNode.id)))
 
-    # Count VMs and LXCs
-    total_vms = await db.scalar(select(func.count(Inventory.id)).where(Inventory.type == "qemu"))
-    total_lxcs = await db.scalar(select(func.count(Inventory.id)).where(Inventory.type == "lxc"))
+    # Count VMs and LXCs (only running)
+    total_vms = await db.scalar(select(func.count(Inventory.id)).where(Inventory.type == "qemu", Inventory.status == "running"))
+    total_lxcs = await db.scalar(select(func.count(Inventory.id)).where(Inventory.type == "lxc", Inventory.status == "running"))
 
     # Count tools
     total_tools = await db.scalar(select(func.count(DiscoveredTool.id)))
