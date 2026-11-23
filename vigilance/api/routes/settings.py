@@ -75,7 +75,7 @@ class SettingsUpdate(BaseModel):
 async def update_settings(
     update: SettingsUpdate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_write_access),
+    current_user: User = Depends(get_current_user_optional),
 ):
     """Update editable settings. Values are persisted in the database."""
     if update.scan_interval_hours is not None:
