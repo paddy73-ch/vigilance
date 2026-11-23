@@ -105,8 +105,8 @@ class DiscoveryOrchestrator:
             result.nodes_scanned += len(all_targets)
 
             # Process each LXC with IP
-            for lxc in all_targets:
-                await self._process_inventory_target(node, "lxc", lxc, scan_run_id, result)
+            for vtype, lxc in all_targets:
+                await self._process_inventory_target(node, vtype, lxc, scan_run_id, result)
 
     @staticmethod
     def _ip_from_lxc_config(config: dict) -> Optional[str]:
