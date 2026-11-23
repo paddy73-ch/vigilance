@@ -82,10 +82,14 @@ class NVDClient:
                 })
 
             response = await self.client.get(self.BASE_URL, params=params)
-            if response.status_code == 404 and start_index == 0:
-                logger.warning("NVD returned 404; retrying latest page")
-                data = await self._fallback_json({"startIndex": 0, "resultsPerPage": results_per_page})
-                fallback_latest = True
+            if response.status_code == 404:
+                if start_index == 0:
+                    logger.warning("NVD returned 404; retrying latest page")
+                    data = await self._fallback_json({"startIndex": 0, "resultsPerPage": results_per_page})
+                    fallback_latest = True
+                else:
+                    logger.info(f"NVD returned 404 at startIndex={start_index}; no more results")
+                    break
             else:
                 response.raise_for_status()
                 data = response.json()
