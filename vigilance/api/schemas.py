@@ -51,6 +51,9 @@ class InventoryResponse(BaseModel):
     status: Optional[str] = None
     ip_address: Optional[str] = None
     hostname: Optional[str] = None
+    os_id: Optional[str] = None
+    os_version_id: Optional[str] = None
+    os_codename: Optional[str] = None
     tags: Optional[str] = None
     last_seen: Optional[datetime] = None
     created_at: datetime
@@ -71,6 +74,8 @@ class DiscoveredToolResponse(BaseModel):
     cpe_name: Optional[str] = None
     cpe_version: Optional[str] = None
     package_manager: Optional[str] = None
+    source_name: Optional[str] = None
+    source_version: Optional[str] = None
     raw_data: Optional[str] = None
     discovered_at: datetime
     inventory: Optional[InventoryResponse] = None
@@ -124,6 +129,8 @@ class VulnerabilityFindingResponse(BaseModel):
     matched_version: Optional[str] = None
     fixed_version: Optional[str] = None
     match_details: Optional[str] = None
+    fix_available: Optional[bool] = None
+    urgency: Optional[str] = None
     first_seen_at: datetime
     last_seen_at: datetime
     resolved_at: Optional[datetime] = None
@@ -263,5 +270,8 @@ class DashboardStats(BaseModel):
     open_findings: int
     findings_by_severity: dict
     findings_by_status: dict
+    open_with_fix: int = 0
+    open_unimportant: int = 0
+    open_with_fix_by_severity: dict = {}
     recent_scans: List[ScanRunResponse]
     cve_sync_status: List[CVESyncStatusResponse]

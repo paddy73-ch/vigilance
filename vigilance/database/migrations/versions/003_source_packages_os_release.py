@@ -15,6 +15,9 @@ def upgrade() -> None:
     op.add_column("discovered_tools", sa.Column("source_name", sa.String(length=255), nullable=True))
     op.add_column("discovered_tools", sa.Column("source_version", sa.String(length=128), nullable=True))
     op.create_index("idx_discovered_tools_source_name", "discovered_tools", ["source_name"])
+    op.add_column("vulnerability_findings", sa.Column("fix_available", sa.Boolean(), nullable=True))
+    op.add_column("vulnerability_findings", sa.Column("urgency", sa.String(length=32), nullable=True))
+    op.create_index("idx_vuln_findings_fix_available", "vulnerability_findings", ["fix_available"])
     # Findings of the previous matcher (bare "Debian" ecosystem, substring matching) are
     # mostly false positives and must not show up as "fixed" later: start clean.
     # OSV/GHSA records are re-downloaded with the new parser on the next sync.
@@ -23,6 +26,9 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:  # findings deleted by upgrade() are not restored
+    op.drop_index("idx_vuln_findings_fix_available", table_name="vulnerability_findings")
+    op.drop_column("vulnerability_findings", "urgency")
+    op.drop_column("vulnerability_findings", "fix_available")
     op.drop_index("idx_discovered_tools_source_name", table_name="discovered_tools")
     op.drop_column("discovered_tools", "source_version")
     op.drop_column("discovered_tools", "source_name")

@@ -52,6 +52,9 @@ async def get_dashboard_stats(
         open_findings=finding_stats["by_status"].get("open", 0),
         findings_by_severity=finding_stats["by_severity"],
         findings_by_status=finding_stats["by_status"],
+        open_with_fix=finding_stats["open_with_fix"],
+        open_unimportant=finding_stats["open_unimportant"],
+        open_with_fix_by_severity=finding_stats["open_with_fix_by_severity"],
         recent_scans=recent_scans,
         cve_sync_status=cve_sync_status,
     )

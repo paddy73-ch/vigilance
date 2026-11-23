@@ -71,22 +71,25 @@ async def list_findings(
     severity: Optional[str] = Query(None),
     inventory_id: Optional[int] = Query(None),
     tool_name: Optional[str] = Query(None),
+    fix_available: Optional[bool] = Query(None, description="true = fix available, false = no fix yet"),
+    hide_unimportant: bool = Query(False, description="Hide findings the distribution rates 'unimportant'"),
     limit: int = Query(100, le=1000),
     offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user_optional),
 ):
     """List vulnerability findings with filters."""
-    findings = await crud.get_findings(
+    return await crud.get_findings(
         db,
-        status=status,
-        severity=severity,
+        status=status or None,
+        severity=severity or None,
         inventory_id=inventory_id,
-        tool_name=tool_name,
+        tool_name=tool_name or None,
+        fix_available=fix_available,
+        hide_unimportant=hide_unimportant,
         limit=limit,
         offset=offset,
     )
-    return findings
 
 
 @router.get("/findings/count")
@@ -95,11 +98,14 @@ async def count_filtered_findings(
     severity: Optional[str] = Query(None),
     inventory_id: Optional[int] = Query(None),
     tool_name: Optional[str] = Query(None),
+    fix_available: Optional[bool] = Query(None),
+    hide_unimportant: bool = Query(False),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user_optional),
 ):
     return {"total": await crud.count_filtered_findings(
-        db, status=status, severity=severity, inventory_id=inventory_id, tool_name=tool_name
+        db, status=status or None, severity=severity or None, inventory_id=inventory_id,
+        tool_name=tool_name or None, fix_available=fix_available, hide_unimportant=hide_unimportant,
     )}
 
 
@@ -176,15 +182,17 @@ async def unsuppress_finding(
     return {"message": "Suppression removed"}
 
 
-@router.get("/findings/{finding_id}", response_model=FindingDetailResponse)
+@router.get("/findings/{finding_id}", response_model=VulnerabilityFindingResponse)
 async def get_finding(
     finding_id: int,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user_optional),
 ):
-    """Get detailed finding with tool, CVE, and inventory info."""
-    finding = await crud.get_findings(db, limit=1, offset=0)
-    raise HTTPException(status_code=501, detail="Not fully implemented")
+    """Get one finding with tool (incl. inventory) and CVE."""
+    finding = await crud.get_finding(db, finding_id)
+    if not finding:
+        raise HTTPException(status_code=404, detail="Finding not found")
+    return finding
 
 
 # Suppressions

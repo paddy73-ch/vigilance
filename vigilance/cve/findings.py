@@ -168,6 +168,8 @@ async def match_findings(
                 matched_version=tool.detected_version,
                 fixed_version=fixed,
                 match_details=json.dumps(details),
+                fix_available=bool(fixed),
+                urgency=details.get("urgency"),
                 first_seen_at=now,
                 last_seen_at=now,
                 scan_run_id=scan_run_id,
@@ -187,6 +189,8 @@ async def match_findings(
         finding.matched_version = tool.detected_version
         finding.fixed_version = fixed
         finding.match_details = json.dumps(details)
+        finding.fix_available = bool(fixed)
+        finding.urgency = details.get("urgency")
         finding.last_seen_at = now
         if scan_run_id:
             finding.scan_run_id = scan_run_id

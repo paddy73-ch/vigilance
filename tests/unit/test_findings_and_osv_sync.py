@@ -176,3 +176,32 @@ async def test_one_finding_per_source_package(db_session):
     details = json.loads(rows[0].match_details)
     assert details["binaries"] == ["libssl-dev", "libssl3t64", "openssl"]
     assert details["fix_available"] is True
+
+
+@pytest.mark.asyncio
+async def test_fix_and_urgency_filters(db_session):
+    db = db_session
+    tools, osv_cve, tracker_cve = await _setup(db)
+    # osv: fix available; second osv advisory: no fix, Debian "unimportant"
+    await crud.upsert_cve_entry(db, cve_id="DEBIAN-CVE-2026-7", source="osv", severity="CRITICAL",
+                                affected_ranges=json.dumps([{"type": "ECOSYSTEM", "repo": "openssl",
+                                                             "ecosystem": "Debian:13", "introduced": "0"}]),
+                                raw_data=json.dumps({"affected": [{"package": {"name": "openssl", "ecosystem": "Debian:13"},
+                                                                   "ecosystem_specific": {"urgency": "unimportant"}}]}))
+    await db.commit()
+    key = tool_query_key(tools[0])
+    await match_findings(db, tools, {"osv": DirectMatches(tool_query_key, {key: {"DEBIAN-CVE-2026-1", "DEBIAN-CVE-2026-7"}})},
+                         {"osv", "debian"})
+    await db.commit()
+
+    assert await crud.count_filtered_findings(db, status="open") == 3
+    assert await crud.count_filtered_findings(db, status="open", fix_available=True) == 2  # osv + tracker
+    assert await crud.count_filtered_findings(db, status="open", fix_available=False) == 1
+    assert await crud.count_filtered_findings(db, status="open", hide_unimportant=True) == 2
+    assert await crud.count_filtered_findings(db, status="open", severity="CRITICAL", fix_available=False) == 1
+    found = await crud.get_findings(db, status="open", tool_name="openssl", hide_unimportant=True)
+    assert {f.cve.cve_id for f in found} == {"DEBIAN-CVE-2026-1", "CVE-2026-2"}
+    stats = await crud.get_finding_stats(db)
+    assert stats["open_with_fix"] == 2 and stats["open_unimportant"] == 1
+    single = await crud.get_finding(db, found[0].id)
+    assert single.tool.inventory.os_codename == "trixie"

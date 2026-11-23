@@ -138,6 +138,8 @@ class VulnerabilityFinding(Base):
     matched_version: Mapped[Optional[str]] = mapped_column(String(128))
     fixed_version: Mapped[Optional[str]] = mapped_column(String(128))
     match_details: Mapped[Optional[str]] = mapped_column(Text)  # JSON
+    fix_available: Mapped[Optional[bool]] = mapped_column(Boolean)  # a fixed version exists for this release
+    urgency: Mapped[Optional[str]] = mapped_column(String(32))  # distro urgency, e.g. Debian "unimportant"
     first_seen_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     last_seen_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     resolved_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
@@ -151,6 +153,7 @@ class VulnerabilityFinding(Base):
         Index("idx_vuln_findings_tool", "discovered_tool_id"),
         Index("idx_vuln_findings_cve", "cve_entry_id"),
         Index("idx_vuln_findings_status", "status"),
+        Index("idx_vuln_findings_fix_available", "fix_available"),
     )
 
 
