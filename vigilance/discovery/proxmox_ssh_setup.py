@@ -10,19 +10,36 @@ without manual intervention.
 import asyncio
 import json
 import logging
+import os
 import ssl
-from typing import List, Optional
+from pathlib import Path
+from typing import List, Optional, Tuple
 from urllib import request, error
 
 from vigilance.config import settings
 
 logger = logging.getLogger(__name__)
 
-# Vigilance SSH public key (hardcoded to avoid filesystem issues in container)
-VIGILANCE_SSH_PUB_KEY = (
-    "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEjAVtnlc+nFT5Aelji4hpGaWA+ghuOA7NDeovNWU4qu "
-    "root@vigilance"
-)
+SSH_DIR = Path("/app/data/ssh")
+SSH_PRIVATE_KEY = SSH_DIR / "id_rsa"
+SSH_PUBLIC_KEY = SSH_DIR / "id_rsa.pub"
+
+
+def ensure_ssh_key() -> str:
+    """Generate SSH key if not exists, return public key string."""
+    SSH_DIR.mkdir(parents=True, exist_ok=True)
+
+    if not SSH_PRIVATE_KEY.exists():
+        logger.info("Generating new SSH key for Vigilance...")
+        import subprocess
+        subprocess.run(
+            ["ssh-keygen", "-t", "ed25519", "-f", str(SSH_PRIVATE_KEY), "-N", "", "-q"],
+            check=True,
+        )
+        SSH_PRIVATE_KEY.chmod(0o600)
+
+    SSH_PUBLIC_KEY.chmod(0o644)
+    return SSH_PUBLIC_KEY.read_text().strip()
 
 
 class ProxmoxAPI:
@@ -59,14 +76,13 @@ class ProxmoxAPI:
             return resp.read().decode()
 
 
-async def distribute_ssh_key_to_all_vms(api: ProxmoxAPI, node_name: str = "pve") -> dict:
+async def distribute_ssh_key_to_all_vms(api: ProxmoxAPI, node_name: str = "pve", ssh_pub_key: str = "") -> dict:
     """Distribute Vigilance SSH public key to all running VMs via Guest Agent.
 
     Returns a dict with stats: {"vms_found": int, "key_distributed": int, "failed": int}
     """
     stats = {"vms_found": 0, "key_distributed": 0, "failed": 0}
 
-    ssh_pub_key = VIGILANCE_SSH_PUB_KEY
     if not ssh_pub_key:
         logger.error("No SSH public key available, skipping distribution")
         return stats
@@ -130,7 +146,7 @@ async def distribute_ssh_key_to_all_vms(api: ProxmoxAPI, node_name: str = "pve")
     return stats
 
 
-async def auto_distribute_ssh_keys(api_url: str, token: str, node_name: str = "pve") -> dict:
+async def auto_distribute_ssh_keys(api_url: str, token: str, node_name: str = "pve", ssh_pub_key: str = "") -> dict:
     """Auto-distribute SSH keys to all running VMs on a Proxmox node."""
     api = ProxmoxAPI(api_url, token)
-    return await distribute_ssh_key_to_all_vms(api, node_name)
+    return await distribute_ssh_key_to_all_vms(api, node_name, ssh_pub_key)
