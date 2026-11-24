@@ -234,6 +234,24 @@ ID is sent to the API. One batch runs at a time; output and exit code of every r
 package sources offer (`apt list --upgradable`, without `apt update`), so a fix that apt cannot
 install is shown as such instead of a command that does nothing.
 
+### Packages from vendor repositories
+
+Debian has no advisories for software installed from a vendor's own apt repository (the Debian
+tracker marks it NOT-FOR-US). Each scan records where every installed package comes from
+(`apt-cache policy`), and the host detail lists packages from non-Debian sources. Some of them are
+checked against the Go vulnerability data on OSV instead, by their Go module:
+
+| deb package | Go module |
+|---|---|
+| `tailscale` | `tailscale.com` |
+| `crowdsec` | `github.com/crowdsecurity/crowdsec` |
+| `containerd.io` | `github.com/containerd/containerd` (`/v2` for 2.x) |
+
+`docker-ce` is deliberately not mapped: the advisories on `github.com/docker/docker` carry no fixed
+version (every release would match), and Docker 29 releases do not map onto the
+`github.com/moby/moby/v2` module versions. Go advisories do not say which operating system is
+affected, so a FreeBSD-only issue can show up for a Linux host; use an exception for those.
+
 ### Scanning the Proxmox host
 
 The containers are scanned as root. The Proxmox host itself is optional and uses its own

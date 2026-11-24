@@ -185,6 +185,38 @@ async def newer_versions(db: AsyncSession, pairs: set) -> Dict[tuple, dict]:
     return out
 
 
+_DISTRO_URL = re.compile(r"(^|[/.])(debian\.org|ubuntu\.com)(/|$)")
+
+
+def foreign_sources(check_json: Optional[str], tools: Dict[str, str]) -> List[dict]:
+    """Installed packages from package sources other than Debian/Ubuntu, grouped by source.
+
+    tools: {package name: installed version}. Packages that Vigilance checks through the Go
+    vulnerability data (VENDOR_GO_MODULES) are marked as covered.
+    """
+    from vigilance.cve.ecosystems import vendor_go_module
+
+    try:
+        origins = (json.loads(check_json or "null") or {}).get("origins") or {}
+    except ValueError:
+        return []
+    groups: Dict[str, dict] = {}
+    for pkg, urls in origins.items():
+        if any(_DISTRO_URL.search(u) for u in urls):
+            continue
+        url = urls[0]
+        host = url.split("://", 1)[-1].split("/", 1)[0]
+        g = groups.setdefault(host, {"source": host, "url": url, "covered": [], "uncovered": []})
+        vendor = vendor_go_module(pkg, tools.get(pkg))
+        if vendor:
+            g["covered"].append({"package": pkg, "module": vendor[0]})
+        else:
+            g["uncovered"].append(pkg)
+    for g in groups.values():
+        g["uncovered"].sort()
+    return sorted(groups.values(), key=lambda g: (-len(g["uncovered"]), g["source"]))
+
+
 def upgrade_availability(check_json: Optional[str], binaries: List[str], fixed: Optional[str]) -> dict:
     """Does the host's package source offer the fix? From the scan's `apt list --upgradable`.
 
@@ -459,6 +491,10 @@ async def get_host(inventory_id: int, db: AsyncSession = Depends(get_db),
         "remove_command": remove_command(remove) if remove else None,
         "remove_simulation": f"apt-get -s purge {' '.join(remove)}" if remove else None,
         "remove_risk": removal_risk(inv.removal_check if inv else None, remove) if remove else None,
+        "foreign_sources": foreign_sources(inv.upgrade_check if inv else None, {
+            n: v for n, v in (await db.execute(
+                select(T.tool_name, T.detected_version).where(T.inventory_id == inventory_id, T.removed_at.is_(None))
+            )).all()}),
     }
 
 

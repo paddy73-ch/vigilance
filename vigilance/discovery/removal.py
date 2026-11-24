@@ -138,12 +138,19 @@ UPGRADE_SCRIPT = r"""LC_ALL=C; export LC_ALL
 f=$(ls -t /var/lib/apt/lists/*Release 2>/dev/null | head -n 1)
 [ -n "$f" ] && echo "##LISTS $(stat -c %Y "$f")"
 apt list --upgradable 2>/dev/null | awk '/upgradable from/ { split($1, a, "/"); print "##UPG " a[1] " " $2 }'
+# Where each installed version comes from (package sources listed under *** in apt-cache policy)
+apt-cache policy $(dpkg-query -W -f='${db:Status-Abbrev} ${Package}\n' 2>/dev/null | awk '$1 ~ /^[ih]i/ {print $2}') 2>/dev/null | awk '
+  /^[^ ].*:$/ { pkg = substr($0, 1, length($0) - 1); inst = 0; next }
+  /^ \*\*\* / { inst = 1; next }
+  inst && /^        -?[0-9]+ / { if ($2 != "/var/lib/dpkg/status") print "##ORIGIN " pkg " " $2; next }
+  inst && /^     [^ ]/ { inst = 0 }'
 """
 
 
 def parse_upgrade_output(output: str) -> dict:
     lists_at = None
     candidates = {}
+    origins: dict = {}
     for line in output.splitlines():
         if line.startswith("##LISTS "):
             ts = line[8:].strip()
@@ -153,7 +160,11 @@ def parse_upgrade_output(output: str) -> dict:
             parts = line.split()
             if len(parts) >= 3:
                 candidates[parts[1]] = parts[2]
-    return {"lists_at": lists_at, "candidates": candidates}
+        elif line.startswith("##ORIGIN "):
+            parts = line.split()
+            if len(parts) >= 3 and parts[2] not in origins.setdefault(parts[1], []):
+                origins[parts[1]].append(parts[2])
+    return {"lists_at": lists_at, "candidates": candidates, "origins": origins}
 
 
 async def check_upgrades(host: str, port: int, user: str, key_path: str, known_hosts: str) -> Optional[dict]:
