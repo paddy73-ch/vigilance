@@ -25,7 +25,7 @@
                 <a href="/admin/sources" {% if path.startswith('/admin') %}aria-current="page"{% endif %}>Verwaltung</a>
             </nav>
             <div class="topbar-end">
-                <a href="/admin/limits" class="limits-link" {% if path == '/admin/limits' %}aria-current="page"{% endif %} title="Was Vigilance nicht prüft oder nur ungenau beurteilt">
+                <a href="/admin/limits" class="limits-link" {% if path == '/admin/limits' %}aria-current="page" title="Zurück zur Seite, von der du gekommen bist"{% else %}title="Was Vigilance nicht prüft oder nur ungenau beurteilt"{% endif %}>
                     <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="10" cy="10" r="7.5"/><path d="M10 9v5M10 6.2v.1"/></svg>
                     <span>Grenzen</span>
                 </a>

@@ -2,6 +2,7 @@ import asyncio
 import logging
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from vigilance.api.deps import get_db, get_current_user_optional, require_write_access
@@ -97,3 +98,53 @@ async def trigger_cve_sync(
 
     _spawn(run(), name=f"cve-sync-{source or 'all'}")
     return CVESyncTriggerResponse(results={}, message="CVE sync started in background")
+
+
+# ---------------------------------------------------------------- sources on/off (Verwaltung, CVE-Quellen)
+
+
+class SourceSwitch(BaseModel):
+    enabled: bool
+
+
+@router.get("/cve-sources")
+async def list_sources(db: AsyncSession = Depends(get_db), _: Optional[User] = Depends(get_current_user_optional)):
+    """All CVE sources with on/off state and the last sync."""
+    from vigilance.core.runtime_settings import SOURCE_OVERRIDES
+    from vigilance.cve.sync import ALL_SOURCES, _source_enabled
+    status = {s.source: s for s in await crud.get_all_sync_status(db)}
+    out = []
+    for src in ALL_SOURCES:
+        st = status.get(src)
+        out.append({
+            "source": src, "enabled": _source_enabled(src), "origin": "ui" if src in SOURCE_OVERRIDES else "config",
+            "status": st.status if st else None, "entries_count": st.entries_count if st else 0,
+            "last_success_at": st.last_success_at.isoformat() + "Z" if st and st.last_success_at else None,
+            "error_message": st.error_message if st else None,
+        })
+    return out
+
+
+@router.put("/cve-sources/{source}")
+async def switch_source(source: str, body: SourceSwitch, db: AsyncSession = Depends(get_db),
+                        _: User = Depends(require_write_access)):
+    """Switch a source on or off. Off hides its findings at once (kept, with their status); on
+    restores them and starts a sync for the source."""
+    from vigilance.core import runtime_settings as rs
+    from vigilance.core import scheduler as sched
+    from vigilance.cve.findings import set_source_findings_hidden
+    from vigilance.cve.sync import ALL_SOURCES
+    if source not in ALL_SOURCES:
+        raise HTTPException(status_code=404, detail="Unbekannte Quelle")
+    await rs.set_source_enabled(db, source, body.enabled)
+    changed = await set_source_findings_hidden(db, source, hidden=not body.enabled)
+    await db.commit()
+    result = {"source": source, "enabled": body.enabled, "hidden": 0, "restored": 0, "sync_started": False}
+    if body.enabled:
+        result["restored"] = changed
+        sched._spawn(sched.trigger_cve_sync_now(sources=[source]), name=f"sync-{source}")
+        await asyncio.sleep(0)  # let the task start
+        result["sync_started"] = True
+    else:
+        result["hidden"] = changed
+    return result

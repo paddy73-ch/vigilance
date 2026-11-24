@@ -139,18 +139,31 @@ def init_scheduler() -> AsyncIOScheduler:
         max_instances=1,
     )
 
-    if settings.notifications and settings.notifications.gotify and settings.notifications.gotify.digest_mode:
-        digest_interval = settings.notifications.gotify.digest_interval_minutes
-        scheduler.add_job(
+    _add_digest_job(scheduler)
+    return scheduler
+
+
+def _add_digest_job(sched):
+    g = settings.notifications.gotify if settings.notifications else None
+    if g and g.enabled and g.digest_mode:
+        sched.add_job(
             run_digest_job,
-            IntervalTrigger(minutes=digest_interval, jitter=60),
+            IntervalTrigger(minutes=max(5, int(g.digest_interval_minutes or 60)), jitter=60),
             id="digest_job",
             name="Gotify Digest",
             misfire_grace_time=300,
             max_instances=1,
+            replace_existing=True,
         )
 
-    return scheduler
+
+def apply_digest_job():
+    """Add, change or remove the digest job after the Gotify settings changed."""
+    if not scheduler:
+        return
+    if scheduler.get_job("digest_job"):
+        scheduler.remove_job("digest_job")
+    _add_digest_job(scheduler)
 
 
 def reschedule_jobs():
@@ -222,6 +235,8 @@ async def lifespan(app):
                     setattr(settings, key, int(val))
                 except (ValueError, TypeError):
                     pass
+        from vigilance.core import runtime_settings
+        await runtime_settings.load(db)  # Gotify and CVE sources as set in the UI
     # Remediation runs that were cut off by a restart
     from vigilance.actions.runner import mark_interrupted
     async with async_session_maker() as db:

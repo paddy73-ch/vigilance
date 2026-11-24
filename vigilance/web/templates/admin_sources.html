@@ -11,12 +11,19 @@
     </div>
     <p class="panel-pad muted">Vigilance fragt nur Daten zu den Paketen ab, die auf deinen Hosts installiert sind, passend zum jeweiligen Debian-Release.</p>
     <table class="rows">
-      <thead><tr><th>Quelle</th><th>Zustand</th><th class="num">Einträge</th><th>Letzter Abgleich</th><th>Hinweis</th></tr></thead>
+      <thead><tr><th>Aktiv</th><th>Quelle</th><th>Zustand</th><th class="num">Einträge</th><th>Letzter Abgleich</th><th>Hinweis</th></tr></thead>
       <tbody>
         <template x-for="s in sources" :key="s.source">
-          <tr>
-            <td class="pkg" x-text="name(s.source)"></td>
-            <td data-label="Zustand"><span class="tag" :class="tagClass(s)" x-text="stateText(s)"></span></td>
+          <tr :class="{ off: !s.enabled }">
+            <td data-label="Aktiv">
+              <label class="switch" :title="s.enabled ? 'Ausschalten' : 'Einschalten'">
+                <input type="checkbox" :checked="s.enabled" :disabled="switching === s.source" @change="toggle(s, $event)"
+                       :aria-label="name(s.source) + (s.enabled ? ' ausschalten' : ' einschalten')">
+                <span class="track"></span>
+              </label>
+            </td>
+            <td><span class="pkg" x-text="name(s.source)"></span><div class="faint small" x-text="about(s.source)"></div></td>
+            <td data-label="Zustand"><span class="tag" :class="s.enabled ? tagClass(s) : ''" x-text="s.enabled ? stateText(s) : 'Ausgeschaltet'"></span></td>
             <td class="num" data-label="Einträge" x-text="V.n(s.entries_count)"></td>
             <td data-label="Letzter Abgleich" x-text="s.last_success_at ? V.ago(s.last_success_at) : 'nie'" :title="V.date(s.last_success_at)"></td>
             <td data-label="Hinweis" class="faint" x-text="s.error_message || ''"></td>
@@ -24,7 +31,7 @@
         </template>
       </tbody>
     </table>
-    <p class="panel-pad faint" x-show="disabled.length" x-text="'Ausgeschaltet: ' + disabled.map(name).join(', ') + '. Einschalten in config.yaml unter cve_sync.sources.'"></p>
+    <p class="panel-pad faint">Ausschalten blendet die Befunde der Quelle sofort aus, sie bleiben aber gespeichert. Einschalten holt sie mit ihrem Status zurück und startet einen Abgleich für die Quelle. Die Wahl hier gilt vor <code>config.yaml</code>.</p>
   </section>
 </div>
 {% endblock %}

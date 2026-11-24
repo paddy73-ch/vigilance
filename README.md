@@ -97,8 +97,9 @@ VIGILANCE_PROXMOX_TOKEN_SECRET=your-token-secret
 
 ### 5. Configure Gotify (Optional)
 
-In Gotify Web UI: Apps → Create Application → Name: "Vigilance"
-Copy the token to `.env`:
+In Gotify Web UI: Apps → Create Application → Name: "Vigilance". Enter address and app token in
+Vigilance under Verwaltung > Einstellungen > Benachrichtigungen (stored in the database, takes precedence
+over `.env`; the token is never shown again), or put them into `.env`:
 ```bash
 VIGILANCE_GOTIFY_URL=https://gotify.example.com
 VIGILANCE_GOTIFY_TOKEN=your-app-token

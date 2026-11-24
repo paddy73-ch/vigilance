@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Literal, Optional
 import json
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -37,16 +37,48 @@ async def _load_db_settings(db: AsyncSession) -> dict:
 
 
 def _gotify_info() -> dict:
+    """Gotify settings for the UI. The token itself is never returned."""
+    from vigilance.core import runtime_settings as rs
     g = settings.notifications.gotify if settings.notifications else None
-    if not g:
-        return {"enabled": False}
     return {
-        "enabled": bool(g.enabled and g.url and g.token),
-        "url": g.url or "",
-        "min_severity": g.min_severity,
-        "digest_mode": g.digest_mode,
-        "digest_interval_minutes": g.digest_interval_minutes,
+        "enabled": bool(g and g.enabled),
+        "ready": rs.gotify_ready(),
+        "url": (g.url if g else "") or "",
+        "token_set": bool(g and g.token),
+        "min_severity": (g.min_severity if g else "HIGH") or "HIGH",
+        "digest_mode": bool(g and g.digest_mode),
+        "digest_interval_minutes": (g.digest_interval_minutes if g else 60) or 60,
+        "origin": rs.gotify_origin,
     }
+
+
+class GotifyUpdate(BaseModel):
+    enabled: bool = True
+    url: str = Field("", max_length=500)
+    token: Optional[str] = Field(None, max_length=200)  # None or "" = keep the current token
+    min_severity: Literal["CRITICAL", "HIGH", "MEDIUM", "LOW"] = "HIGH"
+    digest_mode: bool = False
+    digest_interval_minutes: int = Field(60, ge=5, le=1440)
+
+
+@router.put("/settings/gotify")
+async def update_gotify(update: GotifyUpdate, db: AsyncSession = Depends(get_db),
+                        current_user: User = Depends(require_write_access)):
+    """Gotify settings from the UI; they take precedence over .env and config.yaml."""
+    from vigilance.core import runtime_settings as rs
+    url = update.url.strip().rstrip("/")
+    if url and not url.startswith(("http://", "https://")):
+        raise HTTPException(status_code=400, detail="Die Adresse muss mit http:// oder https:// beginnen.")
+    if update.enabled and not url:
+        raise HTTPException(status_code=400, detail="Für aktive Meldungen braucht es die Adresse des Gotify-Servers.")
+    token = (update.token or "").strip() or None
+    if update.enabled and not token and not (settings.notifications and settings.notifications.gotify.token):
+        raise HTTPException(status_code=400, detail="Für aktive Meldungen braucht es den App-Token aus Gotify.")
+    await rs.save_gotify(db, update.enabled, url, token, update.min_severity, update.digest_mode,
+                         update.digest_interval_minutes)
+    from vigilance.core.scheduler import apply_digest_job
+    apply_digest_job()
+    return _gotify_info()
 
 
 def _source_on(source: str) -> bool:
@@ -137,11 +169,11 @@ async def test_gotify(
     if success:
         return GotifyTestResponse(
             success=True,
-            message="Test notification sent successfully",
+            message="Testnachricht gesendet.",
         )
     return GotifyTestResponse(
         success=False,
-        message=f"Failed to send test notification: {error}",
+        message=f"Testnachricht nicht gesendet: {error}",
     )
 
 

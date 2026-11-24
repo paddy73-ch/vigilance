@@ -37,17 +37,30 @@
   <div class="grid-2">
     <section class="panel">
       <div class="panel-head"><h2>Benachrichtigungen (Gotify)</h2></div>
-      <div class="panel-pad stack">
-        <template x-if="!s.gotify || !s.gotify.enabled"><p class="muted">Gotify ist nicht eingerichtet. URL und Token in <code>.env</code> setzen: <code>VIGILANCE_GOTIFY_URL</code>, <code>VIGILANCE_GOTIFY_TOKEN</code>.</p></template>
-        <template x-if="s.gotify && s.gotify.enabled">
-          <dl class="kv">
-            <dt>Server</dt><dd x-text="s.gotify.url"></dd>
-            <dt>Ab Schwere</dt><dd x-text="V.sevLabel(s.gotify.min_severity)"></dd>
-            <dt>Sammelmeldung</dt><dd x-text="s.gotify.digest_mode ? 'alle ' + s.gotify.digest_interval_minutes + ' Minuten' : 'aus, einzelne Meldungen'"></dd>
-          </dl>
-        </template>
-        <div x-show="s.gotify && s.gotify.enabled"><button class="btn" @click="testGotify()" :disabled="testing">Testnachricht senden</button></div>
-      </div>
+      <form class="panel-pad stack" @submit.prevent="saveGotify()">
+        <p class="muted" x-text="gotifyState()"></p>
+        <label class="check"><input type="checkbox" x-model="g.enabled"> Meldungen bei neuen Befunden senden</label>
+        <div class="field"><label for="g-url">Adresse des Gotify-Servers</label>
+          <input id="g-url" class="input" type="url" placeholder="https://gotify.example.ch" x-model.trim="g.url" autocomplete="off"></div>
+        <div class="field"><label for="g-token">App-Token</label>
+          <input id="g-token" class="input" type="password" autocomplete="new-password" x-model="g.token"
+                 :placeholder="s.gotify && s.gotify.token_set ? 'gespeichert, leer lassen zum Behalten' : 'Token der App in Gotify'">
+          <span class="hint">Wird nie angezeigt. In Gotify unter Apps eine App für Vigilance anlegen und deren Token hier eintragen.</span></div>
+        <div class="form-row">
+          <div class="field"><label for="g-sev">Ab Schwere</label>
+            <select id="g-sev" class="input" x-model="g.min_severity">
+              <option value="CRITICAL">Kritisch</option><option value="HIGH">Hoch</option><option value="MEDIUM">Mittel</option><option value="LOW">Niedrig</option>
+            </select></div>
+          <div class="field"><label for="g-int">Sammelmeldung alle … Minuten</label>
+            <input id="g-int" class="input" type="number" min="5" max="1440" x-model.number="g.digest_interval_minutes" :disabled="!g.digest_mode"></div>
+        </div>
+        <label class="check"><input type="checkbox" x-model="g.digest_mode"> Sammelmeldung statt einzelner Meldungen</label>
+        <div class="row-gap">
+          <button class="btn btn-primary" type="submit" :disabled="savingGotify">Speichern</button>
+          <button class="btn" type="button" @click="testGotify()" :disabled="testing">Testnachricht senden</button>
+        </div>
+        <p class="faint">Die Testnachricht nutzt die Werte im Formular, auch ungespeicherte. Gespeicherte Werte gelten vor <code>.env</code> und <code>config.yaml</code>.</p>
+      </form>
     </section>
 
     <section class="panel">
