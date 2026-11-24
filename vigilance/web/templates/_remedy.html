@@ -1,0 +1,25 @@
+{# Solution for one finding group. Needs `rem` (remedy object from the API) in the Alpine scope. #}
+<div class="remedy">
+  <template x-if="rem.action === 'upgrade'">
+    <div>
+      <p class="remedy-title" x-text="'Lösung: Update' + (rem.target ? ' auf ' + rem.target : '')"></p>
+      <div class="cmd"><code x-text="rem.command"></code><button class="btn btn-sm" @click.stop="V.copy(rem.command)">Kopieren</button></div>
+      <p class="faint mt-6">Danach Dienste neu starten, die das Paket benutzen. <code>needrestart</code> zeigt, welche.</p>
+    </div>
+  </template>
+  <template x-if="rem.action === 'remove'">
+    <div>
+      <p class="remedy-title">Lösung: alte Version entfernen</p>
+      <p class="muted" x-text="V.replacementText(rem)"></p>
+      <div class="cmd mt-6"><code x-text="rem.command"></code><button class="btn btn-sm" @click.stop="V.copy(rem.command)">Kopieren</button></div>
+      <div class="risk" :data-status="rem.risk ? rem.risk.status : 'unknown'">
+        <p class="risk-head" x-text="V.riskHead(rem.risk)"></p>
+        <ul><template x-for="line in V.riskLines(rem.risk)" :key="line"><li x-text="line"></li></template></ul>
+        <p class="faint" x-show="V.reinstallText(rem.risk)" x-text="V.reinstallText(rem.risk)"></p>
+      </div>
+    </div>
+  </template>
+  <template x-if="rem.action === 'none'">
+    <p class="muted">Debian hat noch keinen Fix veröffentlicht. Beobachten oder eine Ausnahme mit Begründung anlegen.</p>
+  </template>
+</div>

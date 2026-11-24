@@ -310,3 +310,21 @@ ul.plain { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
 .chip-select { width: auto; padding: 5px 10px; border-radius: 999px; font-size: 13px; }
 .rows .rows { margin: 4px 0; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); }
 .rows tr.sub > td { padding: 8px 14px 12px 40px; }
+
+/* ---------- solution and removal risk ---------- */
+.remedy { display: grid; gap: 6px; max-width: 90ch; }
+.remedy-title { font-weight: 600; color: var(--ink); }
+.remedy + .remedy { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--line); }
+.remedy-host { font-weight: 600; margin-bottom: 4px; }
+.risk { margin-top: 10px; padding: 10px 14px; border-radius: var(--radius); border-left: 3px solid var(--none); background: var(--surface); font-size: 14px; }
+.risk[data-status="ok"] { border-left-color: var(--ok); }
+.risk[data-status="check"] { border-left-color: var(--high); background: var(--high-soft); }
+.risk-head { font-weight: 600; margin-bottom: 4px; }
+.risk[data-status="ok"] .risk-head { color: var(--ok); }
+.risk[data-status="check"] .risk-head { color: var(--high); }
+.risk ul { margin: 0 0 6px; padding-left: 18px; display: grid; gap: 4px; }
+.mt-6 { margin-top: 6px; }
+.src-hint { color: var(--faint); font-size: 13px; }
+.also { color: var(--faint); font-size: 13px; }
+.mb-16 { margin-bottom: 16px; }
+.remedy-block + .remedy-block { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--line); }

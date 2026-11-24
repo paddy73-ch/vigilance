@@ -105,7 +105,8 @@ async def test_host_detail_commands(client):
     h = (await client.get(f"/api/hosts/{client.hosts['adguard'].id}")).json()
     assert h["upgrade_command"] == "apt-get update && apt-get install --only-upgrade curl libcurl4t64"
     # only the old binary is purged, never the current libglib2.0-0t64
-    assert h["remove_command"] == "apt-get -s purge libglib2.0-0"
+    assert h["remove_command"] == "apt-get purge libglib2.0-0"
+    assert h["remove_simulation"] == "apt-get -s purge libglib2.0-0"
     pkgs = {p["package"]: p for p in h["patchable_list"]}
     assert pkgs["glib2.0"]["obsolete"] is True and pkgs["curl"]["obsolete"] is False
     assert pkgs["curl"]["fixed_version"] == "8.14.1-2+deb13u8"
@@ -166,3 +167,96 @@ async def test_snapshot(any_engine):
         await db.commit()
         assert (snap.patchable, snap.without_fix, snap.fixed_total) == (3, 2, 1)
         assert json.loads(snap.patchable_by_severity) == {"CRITICAL": 1, "MEDIUM": 2}
+
+
+async def _add_dsa_and_check(any_engine, hosts, check):
+    """A DSA for the same CVE as DEBIAN-CVE-2026-2001 on adguard's curl, plus a removal check."""
+    from sqlalchemy import select
+    from vigilance.database.models import CVEEntry, DiscoveredTool, Inventory
+    maker = async_sessionmaker(any_engine, class_=AsyncSession, expire_on_commit=False)
+    async with maker() as db:
+        dsa = await crud.upsert_cve_entry(db, cve_id="DSA-6001-1", source="osv", severity="MEDIUM",
+                                          upstream_ids="CVE-2026-2001,DEBIAN-CVE-2026-2001")
+        curl = (await db.execute(select(DiscoveredTool).where(
+            DiscoveredTool.inventory_id == hosts["adguard"].id, DiscoveredTool.tool_name == "curl"))).scalar_one()
+        db.add(VulnerabilityFinding(discovered_tool_id=curl.id, cve_entry_id=dsa.id, status="open", fix_available=True,
+                                    fixed_version="8.14.1-2+deb13u8", match_details=json.dumps({"binaries": ["curl"]}),
+                                    first_seen_at=datetime.utcnow(), last_seen_at=datetime.utcnow()))
+        inv = await db.get(Inventory, hosts["adguard"].id)
+        inv.removal_check = json.dumps(check)
+        await db.commit()
+
+
+CHECK_OK = {"checked_at": "2026-11-24T08:00:00Z", "packages": {
+    "libglib2.0-0": {"would_remove": ["libglib2.0-0"], "in_use": [], "external": [], "error": None,
+                     "libraries": 3, "reinstallable": False}}}
+
+
+@pytest.mark.asyncio
+async def test_same_cve_is_one_vulnerability(client, any_engine):
+    await _add_dsa_and_check(any_engine, client.hosts, CHECK_OK)
+    # package list counts vulnerabilities, not advisories
+    curl = next(i for i in (await client.get("/api/packages?fix=true")).json()["items"] if i["package"] == "curl")
+    assert curl["advisories"] == 1
+    # advisory list: one row with the DSA as additional ID
+    d = (await client.get("/api/vulnerabilities?package=curl&fix=true")).json()
+    assert d["total"] == 1 and d["items"][0]["label"] == "CVE-2026-2001"
+    assert d["items"][0]["also"] in (["DSA-6001-1"], ["DEBIAN-CVE-2026-2001"])
+    # host detail
+    h = (await client.get(f"/api/hosts/{client.hosts['adguard'].id}")).json()
+    g = next(g for g in h["patchable_list"] if g["package"] == "curl")
+    assert g["count"] == 1 and g["findings"] == 2
+    # drawer lists the other advisory
+    v = (await client.get(f"/api/vulnerabilities/{d['items'][0]['cve_entry_id']}")).json()
+    assert v["label"] == "CVE-2026-2001" and len(v["also"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_exception_covers_all_advisories_of_a_cve(client, any_engine):
+    await _add_dsa_and_check(any_engine, client.hosts, CHECK_OK)
+    body = {"cve_id": "DEBIAN-CVE-2026-2001", "inventory_id": client.hosts["adguard"].id, "reason": "intern"}
+    r = await client.post("/api/exceptions", json=body, headers=AUTH)
+    assert r.json()["changed_findings"] == 2  # DEBIAN-CVE and DSA on adguard
+    ex = (await client.get("/api/exceptions")).json()
+    assert ex[0]["suppressed_findings"] == 2
+    await client.delete(f"/api/exceptions/{ex[0]['id']}", headers=AUTH)
+    assert (await client.get("/api/overview")).json()["kpis"]["suppressed"] == 0
+
+
+@pytest.mark.asyncio
+async def test_remedy_and_removal_risk(client, any_engine):
+    await _add_dsa_and_check(any_engine, client.hosts, CHECK_OK)
+    h = (await client.get(f"/api/hosts/{client.hosts['adguard'].id}")).json()
+    glib = next(g for g in h["patchable_list"] if g["package"] == "glib2.0")
+    assert glib["display_name"] == "libglib2.0-0"
+    assert glib["remedy"]["action"] == "remove" and glib["remedy"]["command"] == "apt-get purge libglib2.0-0"
+    assert glib["remedy"]["replacement"] == {"version": "2.84.4-3~deb13u5", "packages": ["libglib2.0-0t64 2.84.4-3~deb13u5"]}
+    assert glib["remedy"]["risk"]["status"] == "ok" and glib["remedy"]["risk"]["libraries_checked"] is True
+    assert glib["remedy"]["risk"]["not_reinstallable"] == ["libglib2.0-0"]
+    curl = next(g for g in h["patchable_list"] if g["package"] == "curl")
+    assert curl["remedy"] == {"action": "upgrade", "target": "8.14.1-2+deb13u8",
+                              "command": "apt-get update && apt-get install --only-upgrade curl libcurl4t64"}
+    p = next(i for i in (await client.get("/api/packages?fix=true")).json()["items"] if i["package"] == "glib2.0")
+    assert p["display_name"] == "libglib2.0-0" and p["remedy"]["hosts"][0]["risk"]["status"] == "ok"
+    top = {t["package"]: t for t in (await client.get("/api/overview")).json()["top_packages"]}
+    assert top["glib2.0"]["display_name"] == "libglib2.0-0"
+
+
+@pytest.mark.asyncio
+async def test_removal_risk_flags_dependents_and_users(client, any_engine):
+    check = {"checked_at": "2026-11-24T08:00:00Z", "packages": {"libglib2.0-0": {
+        "would_remove": ["libglib2.0-0", "some-tool"], "in_use": [{"pid": 42, "command": "/usr/bin/old"}],
+        "external": ["/opt/app/bin/x"], "error": None}}}
+    await _add_dsa_and_check(any_engine, client.hosts, check)
+    h = (await client.get(f"/api/hosts/{client.hosts['adguard'].id}")).json()
+    risk = next(g for g in h["patchable_list"] if g["package"] == "glib2.0")["remedy"]["risk"]
+    assert risk["status"] == "check" and risk["extra"] == ["some-tool"]
+    assert risk["in_use"][0]["pid"] == 42 and risk["external"] == ["/opt/app/bin/x"]
+    assert h["remove_risk"]["status"] == "check"
+
+
+@pytest.mark.asyncio
+async def test_removal_risk_unknown_without_check(client):
+    h = (await client.get(f"/api/hosts/{client.hosts['adguard'].id}")).json()
+    risk = next(g for g in h["patchable_list"] if g["package"] == "glib2.0")["remedy"]["risk"]
+    assert risk["status"] == "unknown"

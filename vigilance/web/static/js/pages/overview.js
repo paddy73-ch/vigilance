@@ -37,7 +37,7 @@ document.addEventListener("alpine:init", () => {
       const hostsUp = this.active().filter((h) => h.upgrade_packages).length;
       const hostsRm = this.active().filter((h) => h.remove_packages).length;
       if (k.patchable_upgrade) parts.push(V.n(k.patchable_upgrade) + " per Update auf " + V.plural(hostsUp, "Host", "Hosts"));
-      if (k.patchable_remove) parts.push(V.n(k.patchable_remove) + " durch Entfernen alter Pakete aus dem früheren Debian-Release auf " + V.plural(hostsRm, "Host", "Hosts"));
+      if (k.patchable_remove) parts.push(V.n(k.patchable_remove) + " durch Entfernen alter Paketversionen auf " + V.plural(hostsRm, "Host", "Hosts"));
       let s = parts.length ? parts.join(", ") + "." : "";
       if (k.without_fix) s += (s ? " " : "") + V.n(k.without_fix) + " weitere sind bekannt, für das installierte Release aber noch ohne Fix.";
       return s;

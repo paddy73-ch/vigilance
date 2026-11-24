@@ -36,27 +36,37 @@
           </template>
           <template x-if="h.remove_command">
             <div>
-              <p class="cmd-label">Alte Pakete aus dem früheren Debian-Release entfernen. Der Befehl simuliert nur (<code>-s</code>): Prüfe die Liste, dann ohne <code>-s</code> ausführen.</p>
+              <p class="cmd-label">Ältere Versionen entfernen, die neben neueren installiert sind. Zuerst simulieren (<code>-s</code> ändert nichts), dann ausführen.</p>
+              <div class="cmd"><code x-text="h.remove_simulation"></code><button class="btn btn-sm" @click="V.copy(h.remove_simulation)">Kopieren</button></div>
               <div class="cmd"><code x-text="h.remove_command"></code><button class="btn btn-sm" @click="V.copy(h.remove_command)">Kopieren</button></div>
+              <div class="risk" :data-status="h.remove_risk ? h.remove_risk.status : 'unknown'">
+                <p class="risk-head" x-text="V.riskHead(h.remove_risk)"></p>
+                <ul><template x-for="line in V.riskLines(h.remove_risk)" :key="line"><li x-text="line"></li></template></ul>
+                <p class="faint" x-show="V.reinstallText(h.remove_risk)" x-text="V.reinstallText(h.remove_risk)"></p>
+              </div>
             </div>
           </template>
         </div>
         <table class="rows" x-show="h.patchable_list.length">
-          <thead><tr><th></th><th>Paket</th><th>Aktion</th><th>Schwere</th><th class="num">Advisories</th><th>Betroffene Pakete</th></tr></thead>
+          <thead><tr><th></th><th>Paket</th><th>Aktion</th><th>Schwere</th><th class="num">Lücken</th><th>Betroffene Pakete</th></tr></thead>
           <template x-for="g in h.patchable_list" :key="g.package + g.installed_version">
             <tbody>
               <tr class="clickable" @click="toggle(g)">
                 <td class="hide-sm"><span class="caret" :class="{ open: isOpen(g) }">›</span></td>
-                <td><span class="pkg" x-text="g.package"></span><div class="ver" x-text="g.installed_version + (g.obsolete ? '' : ' → ' + (g.fixed_version || '?'))"></div></td>
+                <td><span class="pkg" x-text="g.display_name"></span><div class="ver" x-text="g.installed_version + (g.obsolete ? '' : ' → ' + (g.fixed_version || '?'))"></div>
+                  <div class="src-hint" x-show="g.display_name !== g.package" x-text="'Quellpaket ' + g.package"></div></td>
                 <td data-label="Aktion"><span class="tag" :class="g.obsolete ? 'tag-remove' : 'tag-upgrade'" x-text="g.obsolete ? 'Entfernen' : 'Update'"></span></td>
                 <td data-label="Schwere"><span class="sev" :class="'sev-' + g.severity" x-text="V.sevLabel(g.severity)"></span></td>
-                <td class="num" data-label="Advisories" x-text="g.count"></td>
+                <td class="num" data-label="Lücken" x-text="g.count"></td>
                 <td data-label="Pakete" class="ver" x-text="g.binaries.join(', ')"></td>
               </tr>
+              <template x-if="isOpen(g)">
+                <tr class="sub"><td class="hide-sm"></td><td colspan="5"><div x-data="{ rem: g.remedy }">{% include "_remedy.html" %}</div></td></tr>
+              </template>
               <template x-for="a in (isOpen(g) ? g.advisories : [])" :key="a.finding_id">
                 <tr class="sub clickable" @click="$dispatch('open-vuln', { id: a.cve_entry_id })">
                   <td class="hide-sm"></td>
-                  <td colspan="2"><a href="#" @click.prevent x-text="a.upstream[0] || a.id"></a> <span class="faint" x-text="a.title && a.title !== a.upstream[0] ? a.title : ''"></span></td>
+                  <td colspan="2"><a href="#" @click.prevent x-text="a.label"></a> <span class="also" x-show="a.also.length" x-text="'auch ' + a.also.join(', ')"></span></td>
                   <td><span class="sev" :class="'sev-' + a.severity" x-text="V.sevLabel(a.severity)"></span></td>
                   <td class="num" x-text="a.cvss ? 'CVSS ' + a.cvss : ''"></td>
                   <td class="ver" x-text="a.fixed_version ? 'Fix ' + a.fixed_version : ''"></td>
@@ -73,18 +83,18 @@
             <summary x-text="sec.title"></summary>
             <p class="muted panel-pad" x-show="!sec.list.length" x-text="sec.empty"></p>
             <table class="rows" x-show="sec.list.length">
-              <thead><tr><th>Paket</th><th>Schwere</th><th class="num">Advisories</th><th>Hinweis</th></tr></thead>
+              <thead><tr><th>Paket</th><th>Schwere</th><th class="num">Lücken</th><th>Hinweis</th></tr></thead>
               <template x-for="g in sec.list" :key="g.package + g.installed_version">
                 <tbody>
                   <tr class="clickable" @click="toggle(g)">
-                    <td><span class="caret" :class="{ open: isOpen(g) }">›</span> <span class="pkg" x-text="g.package"></span> <span class="ver" x-text="g.installed_version"></span></td>
+                    <td><span class="caret" :class="{ open: isOpen(g) }">›</span> <span class="pkg" x-text="g.display_name"></span> <span class="ver" x-text="g.installed_version"></span></td>
                     <td data-label="Schwere"><span class="sev" :class="'sev-' + g.severity" x-text="V.sevLabel(g.severity)"></span></td>
-                    <td class="num" data-label="Advisories" x-text="g.count"></td>
+                    <td class="num" data-label="Lücken" x-text="g.count"></td>
                     <td data-label="Hinweis" class="faint" x-text="hint(sec.key, g)"></td>
                   </tr>
                   <template x-for="a in (isOpen(g) ? g.advisories : [])" :key="a.finding_id">
                     <tr class="sub clickable" @click="$dispatch('open-vuln', { id: a.cve_entry_id })">
-                      <td><a href="#" @click.prevent x-text="a.upstream[0] || a.id"></a></td>
+                      <td><a href="#" @click.prevent x-text="a.label"></a> <span class="also" x-show="a.also.length" x-text="'auch ' + a.also.join(', ')"></span></td>
                       <td><span class="sev" :class="'sev-' + a.severity" x-text="V.sevLabel(a.severity)"></span></td>
                       <td class="num" x-text="a.cvss ? 'CVSS ' + a.cvss : ''"></td>
                       <td class="faint" x-text="sec.key === 'fixed' ? 'behoben ' + V.day(a.resolved_at) : (a.urgency === 'unimportant' ? 'Debian: unwichtig' : '')"></td>

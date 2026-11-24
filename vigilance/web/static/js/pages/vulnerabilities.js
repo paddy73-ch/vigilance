@@ -86,7 +86,7 @@ document.addEventListener("alpine:init", () => {
     },
     summary() {
       if (this.loading && !this.items.length) return "Lädt …";
-      const unit = this.f.view === "cve" ? ["Advisory", "Advisories"] : ["Paket", "Pakete"];
+      const unit = this.f.view === "cve" ? ["Schwachstelle", "Schwachstellen"] : ["Paket", "Pakete"];
       return V.plural(this.total, unit[0], unit[1]) + " mit diesen Filtern";
     },
     emptyText() {
