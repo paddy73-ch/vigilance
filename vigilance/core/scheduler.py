@@ -1,57 +1,96 @@
+"""Background jobs.
+
+One pipeline does the whole work in the right order:
+
+    scan (discover tools) -> CVE sync for exactly those tools -> match -> lifecycle/notifications
+
+* ``pipeline_job`` runs it every ``scan_interval_hours``.
+* ``cve_sync_job`` runs sync + match (no scan) every ``cve_sync_interval_hours``
+  so new advisories for already known packages show up between scans.
+
+Both share a lock, so they never overlap. Intervals follow the values saved on
+the settings page (``reschedule_jobs()``).
+"""
+
 import asyncio
 import logging
 from contextlib import asynccontextmanager
-from datetime import datetime, timedelta
-from typing import Optional
+from datetime import datetime, timedelta, timezone
+from typing import Dict, Optional, Sequence
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from vigilance.config import settings
-from vigilance.database.base import async_session_maker
-from vigilance.database import crud
-from vigilance.discovery.orchestrator import DiscoveryOrchestrator
-from vigilance.cve.sync import CVESyncOrchestrator
 from vigilance.core.notifications import get_digest_queue, notify_digest
+from vigilance.cve.sync import CVESyncOrchestrator
+from vigilance.database import crud
+from vigilance.database.base import async_session_maker
+from vigilance.discovery.orchestrator import DiscoveryOrchestrator
 
 logger = logging.getLogger(__name__)
 
 scheduler: Optional[AsyncIOScheduler] = None
+_pipeline_lock = asyncio.Lock()
+_background_tasks: set = set()
+
+
+async def run_pipeline(
+    with_scan: bool = True,
+    full: bool = False,
+    scan_run_id: Optional[int] = None,
+    sources: Optional[Sequence[str]] = None,
+) -> Dict[str, dict]:
+    """Scan (optional) -> sync for discovered tools -> match. Returns the sync results."""
+    async with _pipeline_lock:
+        async with async_session_maker() as db:
+            run_id = scan_run_id
+            result = None
+            try:
+                if with_scan:
+                    if run_id is None:
+                        run = await crud.create_scan_run(db, "full" if full else "incremental")
+                        await db.commit()
+                        run_id = run.id
+                    result = await DiscoveryOrchestrator(db).discover_all(run_id)
+                    await db.commit()
+
+                sync = CVESyncOrchestrator(db)
+                sync_results = await sync.sync_all(sources=sources, scan_run_id=run_id if with_scan else None)
+
+                if with_scan:
+                    await crud.complete_scan_run(
+                        db, run_id, "completed",
+                        nodes_scanned=result.nodes_scanned,
+                        tools_found=result.tools_found,
+                        new_findings=sync.last_match.new if sync.last_match else 0,
+                    )
+                    await db.commit()
+                logger.info("Pipeline finished (scan=%s): %s", with_scan, sync.last_match)
+                return sync_results
+            except Exception as e:
+                logger.exception("Pipeline failed (scan=%s): %s", with_scan, e)
+                if with_scan and run_id is not None:
+                    await db.rollback()
+                    await crud.complete_scan_run(db, run_id, "failed", error_message=str(e))
+                    await db.commit()
+                raise
 
 
 async def run_scan_job():
-    """Background job to run full discovery scan."""
-    logger.info("Starting scheduled scan job")
-    async with async_session_maker() as db:
-        scan_run = await crud.create_scan_run(db, "incremental" if settings.scan and settings.scan.incremental else "full")
-        try:
-            orchestrator = DiscoveryOrchestrator(db)
-            result = await orchestrator.discover_all(scan_run.id)
-            await crud.complete_scan_run(
-                db, scan_run.id, "completed",
-                nodes_scanned=result.nodes_scanned,
-                tools_found=result.tools_found,
-                new_findings=result.new_findings,
-            )
-            await db.commit()
-            logger.info(f"Scan completed: {result}")
-        except Exception as e:
-            logger.error(f"Scan job failed: {e}")
-            await crud.complete_scan_run(db, scan_run.id, "failed", error_message=str(e))
+    """Scheduled: full pipeline."""
+    try:
+        await run_pipeline(with_scan=True, full=bool(settings.scan and not settings.scan.incremental))
+    except Exception:
+        pass  # already logged and recorded on the scan run
 
 
 async def run_cve_sync_job():
-    """Background job to sync CVE data from all sources."""
-    logger.info("Starting scheduled CVE sync job")
-    async with async_session_maker() as db:
-        orchestrator = CVESyncOrchestrator(db)
-        try:
-            await orchestrator.sync_all()
-            logger.info("CVE sync completed")
-        except Exception as e:
-            logger.error(f"CVE sync job failed: {e}")
+    """Scheduled: sync + match for the known tools (no scan)."""
+    try:
+        await run_pipeline(with_scan=False)
+    except Exception:
+        pass
 
 
 async def run_digest_job():
@@ -65,31 +104,41 @@ async def run_digest_job():
         logger.info("Digest queue empty, nothing to send")
 
 
+def _hours(value, default: int) -> int:
+    try:
+        return max(1, int(value))
+    except (TypeError, ValueError):
+        return default
+
+
 def init_scheduler() -> AsyncIOScheduler:
     global scheduler
     scheduler = AsyncIOScheduler(timezone="UTC")
 
-    # Scan job - daily at 02:00 UTC (runs first, discovers tools)
+    first_scan = None
+    if settings.scan and settings.scan.full_scan_on_start:
+        first_scan = datetime.now(timezone.utc) + timedelta(minutes=1)
+
     scheduler.add_job(
         run_scan_job,
-        CronTrigger(hour=2, minute=0, timezone="UTC"),
+        IntervalTrigger(hours=_hours(settings.scan_interval_hours, 24)),
         id="scan_job",
-        name="Discovery Scan (daily 02:00 UTC)",
+        name="Scan -> CVE sync -> match",
+        next_run_time=first_scan,
         misfire_grace_time=3600,
+        coalesce=True,
         max_instances=1,
     )
-
-    # CVE Sync job - daily at 03:00 UTC (after scan, uses discovered tools)
     scheduler.add_job(
         run_cve_sync_job,
-        CronTrigger(hour=3, minute=0, timezone="UTC"),
+        IntervalTrigger(hours=_hours(settings.cve_sync_interval_hours, 6)),
         id="cve_sync_job",
-        name="CVE Sync (daily 03:00 UTC)",
+        name="CVE sync -> match",
         misfire_grace_time=3600,
+        coalesce=True,
         max_instances=1,
     )
 
-    # Digest job (if enabled)
     if settings.notifications and settings.notifications.gotify and settings.notifications.gotify.digest_mode:
         digest_interval = settings.notifications.gotify.digest_interval_minutes
         scheduler.add_job(
@@ -104,6 +153,16 @@ def init_scheduler() -> AsyncIOScheduler:
     return scheduler
 
 
+def reschedule_jobs():
+    """Apply changed scan / CVE sync intervals (called after saving settings)."""
+    if not scheduler:
+        return
+    scheduler.reschedule_job("scan_job", trigger=IntervalTrigger(hours=_hours(settings.scan_interval_hours, 24)))
+    scheduler.reschedule_job("cve_sync_job", trigger=IntervalTrigger(hours=_hours(settings.cve_sync_interval_hours, 6)))
+    logger.info("Rescheduled jobs: scan every %sh, CVE sync every %sh",
+                settings.scan_interval_hours, settings.cve_sync_interval_hours)
+
+
 async def start_scheduler():
     global scheduler
     if scheduler is None:
@@ -115,48 +174,58 @@ async def start_scheduler():
 async def shutdown_scheduler():
     global scheduler
     if scheduler:
-        scheduler.shutdown(wait=True)
+        scheduler.shutdown(wait=False)
         scheduler = None
         logger.info("Scheduler stopped")
 
 
-async def trigger_scan_now(full: bool = False) -> int:
-    """Manually trigger a scan, returns scan_run_id."""
+def _spawn(coro, name: str):
+    task = asyncio.create_task(coro, name=name)
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
+    return task
+
+
+async def trigger_scan_now(full: bool = False, wait: bool = False) -> int:
+    """Start the pipeline; returns the scan_run_id immediately unless ``wait`` is set."""
     async with async_session_maker() as db:
-        scan_type = "full" if full else "incremental"
-        scan_run = await crud.create_scan_run(db, scan_type)
-        orchestrator = DiscoveryOrchestrator(db)
-        result = await orchestrator.discover_all(scan_run.id)
-        await crud.complete_scan_run(
-            db, scan_run.id, "completed",
-            nodes_scanned=result.nodes_scanned,
-            tools_found=result.tools_found,
-            new_findings=result.new_findings,
-        )
+        run = await crud.create_scan_run(db, "full" if full else "incremental")
         await db.commit()
-        return scan_run.id
+        run_id = run.id
+
+    async def job():
+        try:
+            await run_pipeline(with_scan=True, full=full, scan_run_id=run_id)
+        except Exception:
+            pass  # logged and stored on the scan run
+
+    if wait:
+        await job()
+    else:
+        _spawn(job(), name=f"pipeline-{run_id}")
+    return run_id
 
 
-async def trigger_cve_sync_now() -> dict:
-    """Manually trigger CVE sync, returns results per source."""
-    async with async_session_maker() as db:
-        orchestrator = CVESyncOrchestrator(db)
-        return await orchestrator.sync_all()
+async def trigger_cve_sync_now(sources: Optional[Sequence[str]] = None) -> dict:
+    """Sync + match now (waits for the result)."""
+    return await run_pipeline(with_scan=False, sources=sources)
 
 
 @asynccontextmanager
 async def lifespan(app):
     # Startup - load persisted settings from DB
     async with async_session_maker() as db:
-        for key, attr in [("scan_interval_hours", "scan_interval_hours"), ("cve_sync_interval_hours", "cve_sync_interval_hours"), ("ssh_timeout", "ssh_timeout"), ("ssh_parallel_jobs", "ssh_parallel_jobs")]:
+        for key in ("scan_interval_hours", "cve_sync_interval_hours", "ssh_timeout", "ssh_parallel_jobs"):
             val = await crud.get_setting(db, key)
             if val is not None:
                 try:
-                    setattr(settings, attr, int(val))
+                    setattr(settings, key, int(val))
                 except (ValueError, TypeError):
                     pass
     await start_scheduler()
-    logger.info(f"Application started. Scan interval: {settings.scan_interval_hours}h, CVE sync: {settings.cve_sync_interval_hours}h, SSH timeout: {settings.ssh_timeout}s, SSH parallel: {settings.ssh_parallel_jobs}")
+    logger.info(
+        "Application started. Scan interval: %sh, CVE sync: %sh, SSH timeout: %ss, SSH parallel: %s",
+        settings.scan_interval_hours, settings.cve_sync_interval_hours, settings.ssh_timeout, settings.ssh_parallel_jobs,
+    )
     yield
-    # Shutdown
     await shutdown_scheduler()

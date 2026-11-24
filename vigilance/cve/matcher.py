@@ -2,6 +2,7 @@ import json
 import logging
 import re
 from dataclasses import dataclass
+from functools import total_ordering
 from typing import List, Optional
 
 from packaging.version import Version, InvalidVersion
@@ -19,20 +20,112 @@ class VersionMatch:
     details: dict = None
 
 
-def parse_debian_version(version: str) -> Optional[Version]:
-    """Parse Debian/Ubuntu version format (e.g., 1.2.3-4+deb11u1, 1.25.0-2ubuntu1)."""
+def _dpkg_order(c: str) -> int:
+    if c == "~":
+        return -1
+    if c.isdigit():
+        return 0
+    if c.isalpha():
+        return ord(c)
+    return ord(c) + 256
+
+
+def _dpkg_verrevcmp(a: str, b: str) -> int:
+    """Compare two upstream/revision strings like dpkg's verrevcmp()."""
+    i = j = 0
+    while i < len(a) or j < len(b):
+        first_diff = 0
+        while (i < len(a) and not a[i].isdigit()) or (j < len(b) and not b[j].isdigit()):
+            ac = _dpkg_order(a[i]) if i < len(a) else 0
+            bc = _dpkg_order(b[j]) if j < len(b) else 0
+            if ac != bc:
+                return ac - bc
+            i += 1
+            j += 1
+        while i < len(a) and a[i] == "0":
+            i += 1
+        while j < len(b) and b[j] == "0":
+            j += 1
+        while i < len(a) and a[i].isdigit() and j < len(b) and b[j].isdigit():
+            if not first_diff:
+                first_diff = ord(a[i]) - ord(b[j])
+            i += 1
+            j += 1
+        if i < len(a) and a[i].isdigit():
+            return 1
+        if j < len(b) and b[j].isdigit():
+            return -1
+        if first_diff:
+            return first_diff
+    return 0
+
+
+@total_ordering
+class DebianVersion:
+    """Debian package version ([epoch:]upstream[-revision]) with dpkg ordering."""
+
+    def __init__(self, version: str):
+        version = version.strip()
+        if not version:
+            raise ValueError("empty version")
+        epoch, sep, rest = version.partition(":")
+        if sep and epoch.isdigit():
+            self.epoch = int(epoch)
+        else:
+            self.epoch = 0
+            rest = version
+        upstream, sep, revision = rest.rpartition("-")
+        if not sep:
+            upstream, revision = rest, ""
+        if not upstream or not upstream[0].isdigit():
+            raise ValueError(f"invalid Debian version: {version!r}")
+        self.upstream = upstream
+        self.revision = revision
+        self.original = version
+
+    def _cmp(self, other: "DebianVersion") -> int:
+        if self.epoch != other.epoch:
+            return self.epoch - other.epoch
+        res = _dpkg_verrevcmp(self.upstream, other.upstream)
+        if res:
+            return res
+        return _dpkg_verrevcmp(self.revision, other.revision)
+
+    def __eq__(self, other):
+        if not isinstance(other, DebianVersion):
+            return NotImplemented
+        return self._cmp(other) == 0
+
+    def __lt__(self, other):
+        if not isinstance(other, DebianVersion):
+            return NotImplemented
+        return self._cmp(other) < 0
+
+    def __hash__(self):
+        return hash((self.epoch, self.upstream, self.revision))
+
+    def __str__(self):
+        return self.original
+
+    def __repr__(self):
+        return f"DebianVersion({self.original!r})"
+
+
+def compare_debian_versions(a: str, b: str) -> int:
+    """Return <0, 0 or >0 like `dpkg --compare-versions`."""
+    return DebianVersion(a)._cmp(DebianVersion(b))
+
+
+def parse_debian_version(version: str) -> Optional[DebianVersion]:
+    """Parse a Debian/Ubuntu version (e.g. 1:1.2.3-4+deb12u1, 1.25.0-2ubuntu1).
+
+    Unlike PEP 440 parsing this keeps the Debian revision, which is where
+    security fixes usually land (e.g. ``+deb12u6`` -> ``+deb12u7``).
+    """
     try:
-        # Remove epoch if present (e.g., 1:1.2.3 -> 1.2.3)
-        if ":" in version:
-            version = version.split(":", 1)[1]
-        return Version(version)
-    except InvalidVersion:
-        # Try to normalize: remove revision suffixes like -2, -2ubuntu1, +deb11u1
-        normalized = re.sub(r"[-+].*$", "", version)
-        try:
-            return Version(normalized)
-        except InvalidVersion:
-            return None
+        return DebianVersion(version)
+    except (ValueError, AttributeError):
+        return None
 
 
 def parse_semver(version: str) -> Optional[Version]:
@@ -46,7 +139,8 @@ def parse_semver(version: str) -> Optional[Version]:
 def check_version_in_range(detected_version: str, range_obj: AffectedRange) -> VersionMatch:
     """Check if a detected version falls within an affected range."""
     # DEBIAN and UBUNTU use the same version format
-    if range_obj.type in ("DEBIAN", "UBUNTU"):
+    ecosystem = (getattr(range_obj, "ecosystem", None) or "").lower()
+    if range_obj.type in ("DEBIAN", "UBUNTU") or ecosystem.startswith(("debian", "ubuntu")):
         detected = parse_debian_version(detected_version)
         introduced = parse_debian_version(range_obj.introduced) if range_obj.introduced else None
         fixed = parse_debian_version(range_obj.fixed) if range_obj.fixed else None

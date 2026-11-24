@@ -54,10 +54,13 @@ discovery:
       ecosystem: "go"
 
 cve_sync:
+  # Advisories are only fetched for packages that were actually discovered.
   sources:
+    # Release-specific queries (Debian:13, Alpine:v3.20, Ubuntu:24.04:LTS) per package version
     osv:
       enabled: true
       interval_hours: 6
+    # Language ecosystems only (pip, npm, go, ...); skipped when none are discovered
     ghsa:
       enabled: true
       interval_hours: 6
@@ -65,12 +68,13 @@ cve_sync:
       enabled: false
       interval_hours: 24
       api_key: ""
+    # OSV's Debian data comes from the Debian Security Tracker; enable only if you want both
     debian:
-      enabled: true
+      enabled: false
       interval_hours: 12
-      suites: ["bookworm", "bullseye", "trixie"]
+      suites: ["bookworm", "trixie"]
     ubuntu:
-      enabled: true
+      enabled: false
       interval_hours: 12
       releases: ["noble", "jammy", "focal"]
 

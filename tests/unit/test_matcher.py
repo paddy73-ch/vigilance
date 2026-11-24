@@ -25,10 +25,11 @@ def test_parse_debian_version():
     v = parse_debian_version("1.2.3-4")
     assert v is not None
 
-    # With epoch
+    # With epoch (kept, it affects ordering)
     v = parse_debian_version("1:1.2.3-4")
     assert v is not None
-    assert str(v) == "1.2.3-4"
+    assert str(v) == "1:1.2.3-4"
+    assert v > parse_debian_version("9.9.9-9")
 
     # Ubuntu style
     v = parse_debian_version("1.2.3-4ubuntu1")

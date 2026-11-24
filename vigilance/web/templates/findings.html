@@ -7,14 +7,14 @@
     <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-6 gap-4">
         <h1 class="text-2xl font-bold">Vulnerability Findings</h1>
         <div class="flex flex-wrap gap-2">
-            <select x-model="filters.status" @change="loadFindings()" class="input-field">
+            <select x-model="filters.status" @change="applyFilters()" class="input-field">
                 <option value="">All Status</option>
                 <option value="open">Open</option>
                 <option value="fixed">Fixed</option>
                 <option value="suppressed">Suppressed</option>
                 <option value="unknown_version">Unknown Version</option>
             </select>
-            <select x-model="filters.severity" @change="loadFindings()" class="input-field">
+            <select x-model="filters.severity" @change="applyFilters()" class="input-field">
                 <option value="">All Severities</option>
                 <option value="CRITICAL">Critical</option>
                 <option value="HIGH">High</option>
@@ -22,7 +22,16 @@
                 <option value="LOW">Low</option>
                 <option value="NONE">None</option>
             </select>
-            <input type="text" x-model="filters.search" @input.debounce.300ms="loadFindings()" placeholder="Search tools, CVEs..." class="input-field w-64">
+            <select x-model="filters.fix" @change="applyFilters()" class="input-field" aria-label="Fix status">
+                <option value="">Fix: any</option>
+                <option value="true">Fix available</option>
+                <option value="false">No fix yet</option>
+            </select>
+            <label class="inline-flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300 px-2">
+                <input type="checkbox" x-model="filters.hideUnimportant" @change="applyFilters()">
+                Hide Debian "unimportant"
+            </label>
+            <input type="text" x-model="filters.search" @input.debounce.300ms="applyFilters()" placeholder="Search package..." class="input-field w-64">
         </div>
     </div>
 
@@ -47,12 +56,16 @@
                         <td class="px-4 py-3">
                             <a :href="finding.cve?.cve_id ? '/cves?cve_id=' + encodeURIComponent(finding.cve.cve_id) : '/cves'" class="font-mono text-blue-600 hover:underline" x-text="finding.cve_id"></a>
                         </td>
-                        <td class="px-4 py-3">
+                        <td class="px-4 py-3 whitespace-nowrap">
                             <span :class="getSeverityClass(finding.severity)" x-text="finding.severity"></span>
+                            <span x-show="finding.urgency === 'unimportant'" class="ml-1 px-2 py-1 rounded text-xs bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300" title="The Debian security team rates this issue as unimportant for Debian">Debian: unimportant</span>
                         </td>
-                        <td class="px-4 py-3 text-sm text-gray-900 dark:text-gray-100" x-text="finding.tool_name"></td>
+                        <td class="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">
+                            <span x-text="finding.tool_name"></span>
+                            <span x-show="finding.binaries.length > 1" class="ml-1 text-xs text-gray-500 dark:text-gray-400" :title="finding.binaries.join(', ')" x-text="'+' + (finding.binaries.length - 1) + ' packages'"></span>
+                        </td>
                         <td class="px-4 py-3 text-sm font-mono text-gray-500 dark:text-gray-400" x-text="finding.detected_version"></td>
-                        <td class="px-4 py-3 text-sm font-mono" :class="finding.fixed_version ? 'text-green-600 dark:text-green-400' : 'text-orange-600 dark:text-orange-400'" x-text="finding.fixed_version || 'No fix available'"></td>
+                        <td class="px-4 py-3 text-sm font-mono" :class="finding.fixed_version ? 'text-green-600 dark:text-green-400' : 'text-orange-600 dark:text-orange-400'" x-text="finding.fixed_version || 'No fix yet'"></td>
                         <td class="px-4 py-3 text-sm text-gray-500 dark:text-gray-400" x-text="finding.inventory_name"></td>
                         <td class="px-4 py-3">
                             <span :class="getStatusClass(finding.status)" x-text="finding.status"></span>
@@ -124,7 +137,7 @@
 function findingsPage() {
     return {
         findings: [],
-        filters: { status: '', severity: '', search: '' },
+        filters: { status: '', severity: '', search: '', fix: '', hideUnimportant: false },
         pagination: { page: 1, limit: 50, total: 0 },
         showDetailsModal: false,
         detailsHtml: '',
@@ -137,20 +150,44 @@ function findingsPage() {
             const params = new URLSearchParams(window.location.search);
             this.filters.status = params.get('status') || '';
             this.filters.severity = params.get('severity') || '';
+            this.filters.fix = ['true', 'false'].includes(params.get('fix')) ? params.get('fix') : '';
+            this.filters.hideUnimportant = params.get('hide_unimportant') === 'true';
+            this.filters.search = params.get('q') || '';
+        },
+
+        filterParams() {
+            const params = new URLSearchParams();
+            if (this.filters.status) params.append('status', this.filters.status);
+            if (this.filters.severity) params.append('severity', this.filters.severity);
+            if (this.filters.fix) params.append('fix_available', this.filters.fix);
+            if (this.filters.hideUnimportant) params.append('hide_unimportant', 'true');
+            if (this.filters.search) params.append('tool_name', this.filters.search);
+            return params;
+        },
+
+        applyFilters() {
+            this.pagination.page = 1;
+            // keep the URL in sync so filtered views can be bookmarked / linked from the dashboard
+            const url = new URLSearchParams();
+            if (this.filters.status) url.set('status', this.filters.status);
+            if (this.filters.severity) url.set('severity', this.filters.severity);
+            if (this.filters.fix) url.set('fix', this.filters.fix);
+            if (this.filters.hideUnimportant) url.set('hide_unimportant', 'true');
+            if (this.filters.search) url.set('q', this.filters.search);
+            history.replaceState(null, '', url.toString() ? '?' + url.toString() : window.location.pathname);
+            this.loadFindings();
         },
 
         async loadFindings() {
-            const params = new URLSearchParams();
-            params.append('status', this.filters.status);
-            params.append('severity', this.filters.severity);
+            const params = this.filterParams();
+            const countParams = this.filterParams();
             params.append('limit', this.pagination.limit);
             params.append('offset', (this.pagination.page - 1) * this.pagination.limit);
-            if (this.filters.search) params.append('tool_name', this.filters.search);
 
             try {
                 const [resp, countResp] = await Promise.all([
                     fetch('/api/findings?' + params.toString()),
-                    fetch('/api/findings/count?' + new URLSearchParams({status: this.filters.status, severity: this.filters.severity, tool_name: this.filters.search}).toString())
+                    fetch('/api/findings/count?' + countParams.toString())
                 ]);
                 const data = await resp.json();
                 const countData = await countResp.json();
@@ -163,14 +200,22 @@ function findingsPage() {
                     detected_version: f.tool?.detected_version || 'Unknown',
                     fixed_version: f.fixed_version || null,
                     inventory_name: f.tool?.inventory?.name || 'Unknown',
+                    binaries: this.parseDetails(f).binaries || [f.tool?.tool_name].filter(Boolean),
                 }));
             } catch (e) {
                 console.error('Failed to load findings', e);
             }
         },
+        parseDetails(f) {
+            try { return JSON.parse(f.match_details || '{}') || {}; } catch (e) { return {}; }
+        },
+        esc(value) {
+            return String(value ?? '').replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
+        },
         async viewDetails(id) {
             try {
                 const resp = await fetch('/api/findings/' + id);
+                if (!resp.ok) throw new Error('HTTP ' + resp.status);
                 const finding = await resp.json();
                 this.detailsHtml = this.renderDetails(finding);
                 this.showDetailsModal = true;
@@ -179,28 +224,34 @@ function findingsPage() {
             }
         },
         renderDetails(f) {
+            const e = v => this.esc(v);
             const cve = f.cve;
             const tool = f.tool;
             const inv = tool?.inventory;
+            const d = this.parseDetails(f);
+            const release = [inv?.os_id, inv?.os_version_id, inv?.os_codename ? '(' + inv.os_codename + ')' : ''].filter(Boolean).join(' ');
+            const pkg = tool?.source_name && tool.source_name !== tool.tool_name
+                ? `${tool.tool_name} (source: ${tool.source_name} ${tool.source_version || ''})` : `${tool?.tool_name || 'Unknown'} ${tool?.detected_version || ''}`;
             let html = `
                 <div class="space-y-4">
                     <div class="p-4 bg-gray-50 dark:bg-gray-700 rounded">
-                        <h4 class="font-semibold">${cve?.cve_id || 'Unknown'}</h4>
-                        <p class="text-sm text-gray-500">${cve?.title || 'No title'}</p>
+                        <h4 class="font-semibold">${e(cve?.cve_id || 'Unknown')}</h4>
+                        <p class="text-sm text-gray-500">${e(cve?.title || 'No title')}</p>
                     </div>
                     <dl class="space-y-2 text-sm">
                         <dt class="font-medium">Severity:</dt>
-                        <dd class="text-${this.getSeverityColor(cve?.severity)}">${cve?.severity || 'NONE'}</dd>
+                        <dd class="text-${this.getSeverityColor(cve?.severity)}">${e(cve?.severity || 'NONE')}${d.urgency ? ' &middot; Debian urgency: ' + e(d.urgency) : ''}</dd>
                         <dt class="font-medium">CVSS:</dt>
-                        <dd>${cve?.cvss_score || 'N/A'}</dd>
-                        <dt class="font-medium">Tool:</dt>
-                        <dd>${tool?.tool_name || 'Unknown'} (${tool?.detected_version || 'Unknown'})</dd>
+                        <dd>${e(cve?.cvss_score ?? 'N/A')}${cve?.cvss_vector ? ' <span class="font-mono text-xs text-gray-500">' + e(cve.cvss_vector) + '</span>' : ''}</dd>
+                        <dt class="font-medium">Package:</dt>
+                        <dd>${e(pkg)}</dd>
+                        ${(d.binaries || []).length > 1 ? `<dt class="font-medium">Installed binary packages:</dt><dd class="font-mono text-xs">${e(d.binaries.join(', '))}</dd>` : ''}
                         <dt class="font-medium">Host:</dt>
-                        <dd>${inv?.name || 'Unknown'} (${inv?.ip_address || 'No IP'})</dd>
-                        <dt class="font-medium">Fixed Version:</dt>
-                        <dd>${f.fixed_version || 'Unknown'}</dd>
+                        <dd>${e(inv?.name || 'Unknown')} (${e(inv?.ip_address || 'No IP')})${release ? ' &middot; ' + e(release) : ''}</dd>
+                        <dt class="font-medium">Fix:</dt>
+                        <dd>${f.fixed_version ? 'available in ' + e(f.fixed_version) : 'no fix for this release yet'}${d.ecosystem ? ' <span class="text-xs text-gray-500">(' + e(d.ecosystem) + ', via ' + e(d.source || '') + ')</span>' : ''}</dd>
                         <dt class="font-medium">Description:</dt>
-                        <dd class="whitespace-pre-wrap">${cve?.description || 'No description'}</dd>
+                        <dd class="whitespace-pre-wrap">${e(cve?.description || 'No description')}</dd>
                     </dl>
                 </div>
             `;
@@ -210,11 +261,12 @@ function findingsPage() {
                     if (refs.length) {
                         html += '<div class="mt-4"><h5 class="font-medium mb-2">References:</h5><ul class="space-y-1">';
                         refs.slice(0, 10).forEach(r => {
-                            html += `<li><a href="${r.url}" target="_blank" class="text-blue-600 text-sm">${r.type}: ${r.url}</a></li>`;
+                            if (!/^https?:\/\//i.test(r.url || '')) return;
+                            html += `<li><a href="${e(r.url)}" target="_blank" rel="noopener noreferrer" class="text-blue-600 text-sm">${e(r.type)}: ${e(r.url)}</a></li>`;
                         });
                         html += '</ul></div>';
                     }
-                } catch (e) {}
+                } catch (err) {}
             }
             return html;
         },

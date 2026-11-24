@@ -176,6 +176,7 @@ async def upsert_cve_entry(db: AsyncSession, **kwargs) -> CVEEntry:
     else:
         cve = CVEEntry(**kwargs)
         db.add(cve)
+    await db.flush()
     return cve
 
 
@@ -246,6 +247,43 @@ async def upsert_finding(db: AsyncSession, **kwargs) -> VulnerabilityFinding:
     return finding
 
 
+def _apply_finding_filters(
+    stmt,
+    status: Optional[str] = None,
+    severity: Optional[str] = None,
+    inventory_id: Optional[int] = None,
+    tool_name: Optional[str] = None,
+    fix_available: Optional[bool] = None,
+    hide_unimportant: bool = False,
+):
+    if status:
+        stmt = stmt.where(VulnerabilityFinding.status == status)
+    if fix_available is True:
+        stmt = stmt.where(VulnerabilityFinding.fix_available.is_(True))
+    elif fix_available is False:
+        stmt = stmt.where(VulnerabilityFinding.fix_available.is_not(True))
+    if hide_unimportant:
+        stmt = stmt.where(
+            (VulnerabilityFinding.urgency.is_(None)) | (VulnerabilityFinding.urgency != "unimportant")
+        )
+    if severity:
+        stmt = stmt.join(CVEEntry, VulnerabilityFinding.cve_entry_id == CVEEntry.id)
+        if severity.upper() == "NONE":
+            stmt = stmt.where((CVEEntry.severity.is_(None)) | (func.upper(CVEEntry.severity) == "NONE"))
+        else:
+            stmt = stmt.where(func.upper(CVEEntry.severity) == severity.upper())
+    if inventory_id or tool_name:
+        stmt = stmt.join(DiscoveredTool, VulnerabilityFinding.discovered_tool_id == DiscoveredTool.id)
+        if inventory_id:
+            stmt = stmt.where(DiscoveredTool.inventory_id == inventory_id)
+        if tool_name:
+            pattern = f"%{tool_name}%"
+            stmt = stmt.where(
+                DiscoveredTool.tool_name.ilike(pattern) | DiscoveredTool.source_name.ilike(pattern)
+            )
+    return stmt
+
+
 async def get_findings(
     db: AsyncSession,
     status: Optional[str] = None,
@@ -254,6 +292,8 @@ async def get_findings(
     tool_name: Optional[str] = None,
     limit: int = 100,
     offset: int = 0,
+    fix_available: Optional[bool] = None,
+    hide_unimportant: bool = False,
 ) -> Sequence[VulnerabilityFinding]:
     stmt = (
         select(VulnerabilityFinding)
@@ -263,24 +303,25 @@ async def get_findings(
             .selectinload(Inventory.node)
         )
         .options(selectinload(VulnerabilityFinding.cve))
-        .order_by(VulnerabilityFinding.first_seen_at.desc())
-        .limit(limit)
-        .offset(offset)
     )
-    if status:
-        stmt = stmt.where(VulnerabilityFinding.status == status)
-    if inventory_id:
-        stmt = stmt.where(DiscoveredTool.inventory_id == inventory_id)
-    if tool_name:
-        stmt = stmt.where(DiscoveredTool.tool_name == tool_name)
-    if severity:
-        stmt = stmt.join(CVEEntry)
-        if severity.upper() == "NONE":
-            stmt = stmt.where((CVEEntry.severity.is_(None)) | (func.upper(CVEEntry.severity) == "NONE"))
-        else:
-            stmt = stmt.where(func.upper(CVEEntry.severity) == severity.upper())
-    result = await db.execute(stmt)
+    stmt = _apply_finding_filters(stmt, status, severity, inventory_id, tool_name, fix_available, hide_unimportant)
+    stmt = stmt.order_by(VulnerabilityFinding.first_seen_at.desc(), VulnerabilityFinding.id.desc())
+    result = await db.execute(stmt.limit(limit).offset(offset))
     return result.scalars().all()
+
+
+async def get_finding(db: AsyncSession, finding_id: int) -> Optional[VulnerabilityFinding]:
+    stmt = (
+        select(VulnerabilityFinding)
+        .where(VulnerabilityFinding.id == finding_id)
+        .options(
+            selectinload(VulnerabilityFinding.tool)
+            .selectinload(DiscoveredTool.inventory)
+            .selectinload(Inventory.node)
+        )
+        .options(selectinload(VulnerabilityFinding.cve))
+    )
+    return (await db.execute(stmt)).scalar_one_or_none()
 
 
 async def count_findings(db: AsyncSession, status: Optional[str] = None) -> int:
@@ -297,22 +338,11 @@ async def count_filtered_findings(
     severity: Optional[str] = None,
     inventory_id: Optional[int] = None,
     tool_name: Optional[str] = None,
+    fix_available: Optional[bool] = None,
+    hide_unimportant: bool = False,
 ) -> int:
-    stmt = select(func.count(VulnerabilityFinding.id))
-    if status:
-        stmt = stmt.where(VulnerabilityFinding.status == status)
-    if severity:
-        stmt = stmt.join(CVEEntry)
-        if severity.upper() == "NONE":
-            stmt = stmt.where((CVEEntry.severity.is_(None)) | (func.upper(CVEEntry.severity) == "NONE"))
-        else:
-            stmt = stmt.where(func.upper(CVEEntry.severity) == severity.upper())
-    if inventory_id or tool_name:
-        stmt = stmt.join(DiscoveredTool)
-        if inventory_id:
-            stmt = stmt.where(DiscoveredTool.inventory_id == inventory_id)
-        if tool_name:
-            stmt = stmt.where(DiscoveredTool.tool_name == tool_name)
+    stmt = select(func.count(VulnerabilityFinding.id)).select_from(VulnerabilityFinding)
+    stmt = _apply_finding_filters(stmt, status, severity, inventory_id, tool_name, fix_available, hide_unimportant)
     result = await db.execute(stmt)
     return result.scalar_one()
 
@@ -340,7 +370,31 @@ async def get_finding_stats(db: AsyncSession) -> dict:
         result = await db.execute(stmt)
         severity_counts[severity] = result.scalar_one()
 
-    return {"by_status": status_counts, "by_severity": severity_counts}
+    open_with_fix = await count_filtered_findings(db, status="open", fix_available=True)
+    open_unimportant = await db.scalar(
+        select(func.count(VulnerabilityFinding.id)).where(
+            VulnerabilityFinding.status == "open", VulnerabilityFinding.urgency == "unimportant"
+        )
+    )
+    # Group by the raw column and normalise in Python: a bound literal inside the GROUP BY
+    # expression is a different parameter than in SELECT for PostgreSQL (GroupingError).
+    rows = await db.execute(
+        select(CVEEntry.severity, func.count(VulnerabilityFinding.id))
+        .join(CVEEntry, VulnerabilityFinding.cve_entry_id == CVEEntry.id)
+        .where(VulnerabilityFinding.status == "open", VulnerabilityFinding.fix_available.is_(True))
+        .group_by(CVEEntry.severity)
+    )
+    with_fix_by_severity: dict = {}
+    for sev, n in rows.all():
+        key = (sev or "NONE").upper()
+        with_fix_by_severity[key] = with_fix_by_severity.get(key, 0) + n
+    return {
+        "by_status": status_counts,
+        "by_severity": severity_counts,
+        "open_with_fix": open_with_fix,
+        "open_unimportant": open_unimportant or 0,
+        "open_with_fix_by_severity": with_fix_by_severity,
+    }
 
 
 # Suppressions

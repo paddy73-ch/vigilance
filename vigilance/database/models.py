@@ -33,6 +33,9 @@ class Inventory(Base):
     status: Mapped[Optional[str]] = mapped_column(String(64))
     ip_address: Mapped[Optional[str]] = mapped_column(String(64))
     hostname: Mapped[Optional[str]] = mapped_column(String(255))
+    os_id: Mapped[Optional[str]] = mapped_column(String(32))  # debian, ubuntu, alpine
+    os_version_id: Mapped[Optional[str]] = mapped_column(String(32))  # 13, 24.04, 3.20.3
+    os_codename: Mapped[Optional[str]] = mapped_column(String(64))  # trixie, noble
     tags: Mapped[Optional[str]] = mapped_column(Text)  # JSON array
     last_seen: Mapped[Optional[datetime]] = mapped_column(DateTime)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
@@ -62,6 +65,9 @@ class DiscoveredTool(Base):
     cpe_name: Mapped[Optional[str]] = mapped_column(String(512))
     cpe_version: Mapped[Optional[str]] = mapped_column(String(128))
     package_manager: Mapped[Optional[str]] = mapped_column(String(32))
+    # Source package / version (dpkg source:Package, apk origin). CVE data is keyed on these.
+    source_name: Mapped[Optional[str]] = mapped_column(String(255))
+    source_version: Mapped[Optional[str]] = mapped_column(String(128))
     raw_data: Mapped[Optional[str]] = mapped_column(Text)  # JSON
     discovered_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     scan_run_id: Mapped[Optional[int]] = mapped_column(ForeignKey("scan_runs.id"))
@@ -73,6 +79,7 @@ class DiscoveredTool(Base):
         Index("idx_discovered_tools_inventory", "inventory_id"),
         Index("idx_discovered_tools_tool_name", "tool_name"),
         Index("idx_discovered_tools_source_type", "source_type"),
+        Index("idx_discovered_tools_source_name", "source_name"),
     )
 
 
@@ -131,6 +138,8 @@ class VulnerabilityFinding(Base):
     matched_version: Mapped[Optional[str]] = mapped_column(String(128))
     fixed_version: Mapped[Optional[str]] = mapped_column(String(128))
     match_details: Mapped[Optional[str]] = mapped_column(Text)  # JSON
+    fix_available: Mapped[Optional[bool]] = mapped_column(Boolean)  # a fixed version exists for this release
+    urgency: Mapped[Optional[str]] = mapped_column(String(32))  # distro urgency, e.g. Debian "unimportant"
     first_seen_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     last_seen_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     resolved_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
@@ -144,6 +153,7 @@ class VulnerabilityFinding(Base):
         Index("idx_vuln_findings_tool", "discovered_tool_id"),
         Index("idx_vuln_findings_cve", "cve_entry_id"),
         Index("idx_vuln_findings_status", "status"),
+        Index("idx_vuln_findings_fix_available", "fix_available"),
     )
 
 
