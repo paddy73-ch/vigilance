@@ -210,6 +210,7 @@ class CVESyncStatusResponse(BaseModel):
     entries_count: int
     error_message: Optional[str] = None
     next_sync_at: Optional[datetime] = None
+    enabled: bool = True  # source switched on in config (disabled ones are not synced)
 
     class Config:
         from_attributes = True

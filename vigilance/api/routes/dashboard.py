@@ -42,7 +42,8 @@ async def get_dashboard_stats(
     recent_scans = await crud.get_recent_scan_runs(db, limit=5)
 
     # CVE sync status
-    cve_sync_status = await crud.get_all_sync_status(db)
+    from vigilance.cve.sync import annotate_enabled
+    cve_sync_status = annotate_enabled(await crud.get_all_sync_status(db))
 
     return DashboardStats(
         total_nodes=total_nodes or 0,

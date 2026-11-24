@@ -55,6 +55,27 @@
             },
         };
         window.vigilanceAuth = auth;
+        window.vigilanceEscape = (value) => String(value ?? '').replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
+
+        // CVE source status, shared by dashboard / CVE database / settings
+        window.vigilanceSync = {
+            visible: (list) => (list || []).filter(s => s.enabled !== false),
+            label(s) {
+                if (s.status === 'running') return 'Läuft';
+                if (s.status === 'skipped') return 'Übersprungen';
+                if (s.status === 'error') return 'Fehler';
+                if (s.status === 'success') return 'OK';
+                return 'Noch nicht gestartet';
+            },
+            cls(s) {
+                if (s.status === 'running') return 'text-blue-600';
+                if (s.status === 'error') return 'text-red-600';
+                if (s.status === 'success') return 'text-green-600';
+                return 'text-gray-500';
+            },
+            canRetry: (s) => s.status === 'error',
+            title: (s) => s.error_message || '',
+        };
 
         const originalFetch = window.fetch.bind(window);
         const isWriteApi = (url, method) => {

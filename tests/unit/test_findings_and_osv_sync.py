@@ -146,6 +146,10 @@ async def test_orchestrator_end_to_end(monkeypatch, db_session):
     results = await orch.sync_all(sources=["osv", "ghsa"])
     assert results["osv"]["status"] == "success"
     assert results["ghsa"]["status"] == "skipped"
+    from vigilance.cve.sync import annotate_enabled
+    statuses = {st.source: st for st in annotate_enabled(await crud.get_all_sync_status(db_session))}
+    assert statuses["ghsa"].status == "skipped"  # not shown as an error
+    assert statuses["osv"].status == "success" and statuses["osv"].enabled is True
     entry = await crud.get_cve_entry(db_session, "DEBIAN-CVE-2026-50")
     assert entry.severity == "CRITICAL"
     f = (await db_session.execute(select(VulnerabilityFinding).where(

@@ -62,6 +62,13 @@ def cve_affects_names(cve_data: CVEData, names: Set[str]) -> bool:
     return False
 
 
+def annotate_enabled(statuses):
+    """Set ``enabled`` on CVESyncStatus rows (not stored; follows config)."""
+    for status in statuses:
+        status.enabled = _source_enabled(status.source)
+    return statuses
+
+
 class CVESyncOrchestrator:
     def __init__(self, db: AsyncSession):
         self.db = db
@@ -106,7 +113,8 @@ class CVESyncOrchestrator:
             else:
                 results["ghsa"] = {"status": "skipped", "count": 0,
                                    "message": "No packages from GHSA ecosystems (pip, npm, ...) discovered"}
-                await self._set_status("ghsa", status="idle", entries_count=0,
+                await self._set_status("ghsa", status="skipped", entries_count=0,
+                                       last_sync_at=datetime.utcnow(),
                                        error_message=results["ghsa"]["message"])
 
         if "nvd" in wanted:

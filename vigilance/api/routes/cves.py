@@ -46,7 +46,8 @@ async def get_sync_status(
     current_user: User = Depends(get_current_user_optional),
 ):
     """Get CVE sync status for all sources."""
-    return await crud.get_all_sync_status(db)
+    from vigilance.cve.sync import annotate_enabled
+    return annotate_enabled(await crud.get_all_sync_status(db))
 
 
 @router.get("/cves/sync/status/{source}/entries", response_model=CVESyncStatusWithEntriesResponse)
