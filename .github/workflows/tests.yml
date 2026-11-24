@@ -38,9 +38,9 @@ jobs:
       - name: Unit tests (SQLite and PostgreSQL)
         env:
           VIGILANCE_TEST_PG_URL: postgresql+asyncpg://vigilance:vigilance@localhost/vigilance_test
-        run: pytest -q tests/unit
+        run: python -m pytest -q tests/unit
       - name: Browser tests (Chrome of the runner image)
         env:
           VIGILANCE_E2E: "1"
           VIGILANCE_E2E_CHROME: /usr/bin/google-chrome
-        run: pytest -q tests/e2e
+        run: python -m pytest -q tests/e2e
