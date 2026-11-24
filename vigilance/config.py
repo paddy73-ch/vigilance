@@ -47,6 +47,8 @@ class CVESyncConfig:
         sources = data.get("sources", {})
         self.osv = sources.get("osv", {"enabled": True, "interval_hours": 6})
         self.ghsa = sources.get("ghsa", {"enabled": True, "interval_hours": 6})
+        # Tailscale security bulletins (only queried when the tailscale package is installed)
+        self.tailscale = sources.get("tailscale", {"enabled": True})
         # NVD has no package-level query for distro packages; matching is name based only.
         self.nvd = sources.get("nvd", {"enabled": False, "interval_hours": 24, "api_key": "", "max_pages": 0})
         # OSV's Debian:N data is generated from the Debian Security Tracker, so the

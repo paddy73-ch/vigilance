@@ -79,7 +79,7 @@ async def get_settings(
         "ssh_parallel_jobs": _get_int_setting(db_settings, "ssh_parallel_jobs", settings.ssh_parallel_jobs),
         "gotify_configured": bool(settings.notifications and settings.notifications.gotify and settings.notifications.gotify.url),
         "gotify": _gotify_info(),
-        "sources_disabled": [s for s in ("nvd", "debian", "ubuntu", "ghsa", "osv") if not _source_on(s)],
+        "sources_disabled": [s for s in ("nvd", "debian", "ubuntu", "ghsa", "osv", "tailscale") if not _source_on(s)],
         "proxmox_nodes_configured": len(settings.proxmox_nodes),
         "proxmox_nodes": [
             {

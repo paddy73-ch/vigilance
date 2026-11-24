@@ -16,6 +16,7 @@ from sqlalchemy.orm import selectinload
 from vigilance.config import settings
 from vigilance.cve import ghsa as ghsa_mod
 from vigilance.cve import osv as osv_mod
+from vigilance.cve import tailscale as tailscale_mod
 from vigilance.cve.debian import sync_debian
 from vigilance.cve.findings import DirectMatches, MatchStats, match_findings
 from vigilance.cve.matcher import _extract_package_from_cpe
@@ -27,11 +28,15 @@ from vigilance.database.models import CVEEntry, DiscoveredTool
 
 logger = logging.getLogger(__name__)
 
-ALL_SOURCES = ("osv", "ghsa", "nvd", "debian", "ubuntu")
+ALL_SOURCES = ("osv", "ghsa", "tailscale", "nvd", "debian", "ubuntu")
 MAX_INDIVIDUAL_NOTIFICATIONS = 20
 
 
 def _source_enabled(source: str) -> bool:
+    if source == "tailscale":
+        # Vendor source: on unless switched off; only queried when the package is installed
+        cfg = getattr(settings.cve_sync, "tailscale", None) if settings.cve_sync else None
+        return bool((cfg or {}).get("enabled", True))
     if not settings.cve_sync:
         return source in ("osv", "ghsa")
     cfg = getattr(settings.cve_sync, source, {}) or {}
@@ -120,6 +125,24 @@ class CVESyncOrchestrator:
                 await self._set_status("ghsa", status="skipped", entries_count=0,
                                        last_sync_at=datetime.utcnow(),
                                        error_message=results["ghsa"]["message"])
+
+        if "tailscale" in wanted:
+            if any((t.source_name or t.tool_name) == tailscale_mod.PACKAGE for t in tools):
+                bulletins: list = []
+
+                async def run_tailscale():
+                    bulletins.extend(await tailscale_mod.fetch_bulletins())
+                    return bulletins
+
+                results["tailscale"] = await self._sync_source("tailscale", run_tailscale)
+                if results["tailscale"].get("status") == "success":
+                    # Shown on the sources page: how the bulletins were classified
+                    await self._set_status("tailscale", error_message=tailscale_mod.summary(bulletins))
+            else:
+                results["tailscale"] = {"status": "skipped", "count": 0,
+                                        "message": "Tailscale ist auf keinem Host installiert."}
+                await self._set_status("tailscale", status="skipped", entries_count=0,
+                                       last_sync_at=datetime.utcnow(), error_message=results["tailscale"]["message"])
 
         if "nvd" in wanted:
             cfg = settings.cve_sync.nvd if settings.cve_sync else {}
