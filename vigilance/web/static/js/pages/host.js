@@ -3,10 +3,16 @@ document.addEventListener("alpine:init", () => {
     h: null,
     error: null,
     open: {},
-    async init() { await this.load(); },
+    suggested: null, // true/false once checked
+    async init() {
+      await this.load();
+      window.addEventListener("vigilance-changed", () => this.load());
+    },
     async load() {
       try { this.h = await V.api("/api/hosts/" + id); document.title = this.h.name + " – Vigilance"; }
       catch (e) { this.error = e.message; }
+      try { this.suggested = (await V.api("/api/actions/available?host_id=" + id)).suggested.length > 0; }
+      catch (e) { this.suggested = false; }
     },
     key(g) { return g.package + "|" + g.installed_version; },
     isOpen(g) { return !!this.open[this.key(g)]; },

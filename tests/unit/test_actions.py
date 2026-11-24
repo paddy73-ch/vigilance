@@ -314,3 +314,17 @@ async def test_batch_runs_parallel_after_apt_proxy(client, any_engine, monkeypat
     assert events[:2] == [("start", "cache"), ("end", "cache")]  # the apt proxy alone, before everyone else
     assert peak[0] == 2  # parallel, but not more than PARALLEL
     assert scans == [1]
+
+
+@pytest.mark.asyncio
+async def test_available_lists_only_hosts_with_suggestions(client, any_engine):
+    ids = {n: client.hosts[n].id for n in ("adguard", "dev", "box")}
+    assert (await client.get("/api/actions/available")).json()["suggested"] == [ids["adguard"], ids["dev"]]  # box: stopped
+    assert (await client.get(f"/api/actions/available?host_id={ids['dev']}")).json()["suggested"] == [ids["dev"]]
+    maker = async_sessionmaker(any_engine, class_=AsyncSession, expire_on_commit=False)
+    async with maker() as db:  # the curl fix is not in the package sources -> nothing to apply
+        for n in ("adguard", "dev"):
+            inv = await db.get(Inventory, ids[n])
+            inv.upgrade_check = json.dumps({"lists_at": None, "candidates": {}})
+        await db.commit()
+    assert (await client.get("/api/actions/available")).json()["suggested"] == []

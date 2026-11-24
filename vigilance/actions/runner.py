@@ -154,6 +154,23 @@ async def plan(db: AsyncSession, inv: Inventory, kind: str) -> dict:
     return result
 
 
+async def hosts_with_suggestions(db: AsyncSession, inventories: List[Inventory]) -> List[int]:
+    """Hosts where "Vorschläge umsetzen" would run something (same rules as plan()).
+    Hosts without fixable packages or kernel packages are skipped without planning."""
+    from vigilance.api.routes.views import host_summaries
+
+    counts = {h["id"]: h for h in await host_summaries(db)}
+    out = []
+    for inv in inventories:
+        h = counts.get(inv.id) or {}
+        if not (h.get("upgrade_packages") or h.get("remove_packages") or kernel_info(inv)):
+            continue
+        p = await plan(db, inv, "suggested")
+        if not p["blocked"] and p["commands"]:
+            out.append(inv.id)
+    return out
+
+
 def script(commands: Sequence[str]) -> str:
     return "\n".join(["set -e", APT_ENV, *commands])
 

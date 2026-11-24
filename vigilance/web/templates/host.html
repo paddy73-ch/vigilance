@@ -23,7 +23,8 @@
           <p class="muted" x-text="h.type === 'node'
             ? 'Vigilance kann die Befehle auf dem Proxmox-Host ausführen, über eine sudo-Regel für apt-get. Vorher siehst du in einer Simulation, was sich ändert, und bestätigst ausdrücklich.'
             : 'Vigilance kann die Befehle auf diesem Container selbst ausführen. Vorher siehst du in einer Simulation, was sich ändert.'"></p>
-          <button class="btn btn-primary" @click="$dispatch('open-actions', { kind: 'suggested', hostIds: [h.id], title: h.name })">Vorschläge umsetzen</button>
+          <button class="btn btn-primary" :disabled="!suggested" :title="suggested === null ? 'Prüfe, ob es Vorschläge gibt …' : (suggested ? '' : 'Keine Vorschläge für diesen Host')"
+                  @click="$dispatch('open-actions', { kind: 'suggested', hostIds: [h.id], title: h.name })">Vorschläge umsetzen</button>
           <button class="btn" @click="$dispatch('open-actions', { kind: 'full_upgrade', hostIds: [h.id], title: h.name })" x-text="h.type === 'node' ? 'dist-upgrade' : 'Vollständiges Upgrade'"></button>
         </div>
       </template>
