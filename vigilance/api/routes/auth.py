@@ -1,7 +1,9 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from vigilance.api.deps import get_current_user
+from vigilance.api.deps import get_current_user, get_db, require_write_access
+from vigilance.core import auth_token
 from vigilance.core.security import User
 
 router = APIRouter()
@@ -10,11 +12,12 @@ router = APIRouter()
 class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
+    message: str = "Store this token now - it is shown only once. The previous token is no longer valid."
 
 
 @router.get("/auth/me")
 async def get_current_user_info(current_user: User = Depends(get_current_user)):
-    """Get current authenticated user info."""
+    """Who am I (401 without a valid token)."""
     return {
         "username": current_user.username,
         "is_admin": current_user.is_admin,
@@ -24,6 +27,9 @@ async def get_current_user_info(current_user: User = Depends(get_current_user)):
 
 
 @router.post("/auth/token", response_model=TokenResponse)
-async def create_token():
-    """Create an API token (placeholder for built-in auth)."""
-    raise HTTPException(status_code=501, detail="Built-in token creation not implemented in MVP")
+async def rotate_api_token(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_write_access),
+):
+    """Generate a new API token. Replaces the current one immediately."""
+    return TokenResponse(access_token=await auth_token.rotate_token(db))

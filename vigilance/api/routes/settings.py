@@ -75,7 +75,7 @@ class SettingsUpdate(BaseModel):
 async def update_settings(
     update: SettingsUpdate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user_optional),
+    current_user: User = Depends(require_write_access),
 ):
     """Update editable settings. Values are persisted in the database."""
     if update.scan_interval_hours is not None:
@@ -117,11 +117,9 @@ async def test_gotify(
 
 @router.get("/settings/api-token")
 async def get_api_token_info(
-    current_user: User = Depends(require_write_access),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user_optional),
 ):
-    """Get API token info (masked)."""
-    token = settings.api_token
-    return {
-        "configured": bool(token),
-        "preview": token[:8] + "..." + token[-4:] if token and len(token) > 12 else "",
-    }
+    """Whether a write token is configured (never returns the token or parts of it)."""
+    from vigilance.core import auth_token
+    return await auth_token.get_token_info(db)

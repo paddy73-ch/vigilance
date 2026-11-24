@@ -119,14 +119,21 @@
         <!-- API Token -->
         <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6 border border-gray-200 dark:border-gray-700 lg:col-span-2">
             <h2 class="text-lg font-semibold mb-4">API Token</h2>
-            <div class="flex items-center justify-between">
-                <div>
-                    <p class="text-gray-500 dark:text-gray-400">Used for write access (scans, sync, suppressions) when using Reverse Proxy auth.</p>
-                    <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">Set VIGILANCE_API_TOKEN in .env</p>
+            <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+                <div class="text-sm">
+                    <p class="text-gray-500 dark:text-gray-400">Needed for every change (scans, sync, suppressions, settings). Reading works without it.</p>
+                    <p class="mt-1" x-text="tokenStatus"></p>
+                    <p class="mt-1 text-gray-500 dark:text-gray-400">A new token replaces the current one immediately. First token without the UI: <code>docker exec vigilance vigilance token-rotate</code></p>
                 </div>
-                <div class="flex items-center space-x-4">
-                    <code class="bg-gray-100 dark:bg-gray-700 px-3 py-1 rounded text-sm" x-text="tokenPreview"></code>
+                <button type="button" @click="rotateToken()" class="px-4 py-2 rounded border border-gray-300 dark:border-gray-600 whitespace-nowrap" :disabled="rotatingToken">Generate new token</button>
+            </div>
+            <div x-show="newToken" class="mt-4 p-4 rounded border border-yellow-300 bg-yellow-50 text-sm">
+                <p class="font-medium text-yellow-900">New token - shown only once. Store it now (e.g. in Vaultwarden).</p>
+                <div class="mt-2 flex items-center gap-2">
+                    <code class="flex-1 break-all bg-white px-2 py-1 rounded border border-yellow-200 text-gray-900" x-text="newToken"></code>
+                    <button type="button" class="px-3 py-1 rounded border border-yellow-400" @click="navigator.clipboard && navigator.clipboard.writeText(newToken)">Copy</button>
                 </div>
+                <p class="mt-2 text-yellow-900">This browser already uses the new token.</p>
             </div>
         </div>
 
@@ -224,7 +231,9 @@ function settingsPage() {
         gotifyTestResult: false,
         gotifyTestSuccess: false,
         gotifyTestMessage: '',
-        tokenPreview: '',
+        tokenStatus: '',
+        newToken: '',
+        rotatingToken: false,
         proxmoxNodes: [],
         cveSyncStatus: [],
         cveSyncRunning: false,
@@ -237,6 +246,25 @@ function settingsPage() {
         settingsSaveMessage: '',
         settingsSaveSuccess: true,
 
+        setTokenStatus(info) {
+            if (!info || !info.configured) { this.tokenStatus = 'No token configured yet.'; return; }
+            this.tokenStatus = info.source === 'generated'
+                ? 'Token configured (generated ' + (info.created_at ? new Date(info.created_at).toLocaleString() : '') + ').'
+                : 'Token from VIGILANCE_API_TOKEN (.env) - generate a new one to replace it.';
+        },
+        async rotateToken() {
+            if (!confirm('Generate a new API token? The current token stops working immediately.')) return;
+            this.rotatingToken = true;
+            try {
+                const resp = await fetch('/api/auth/token', { method: 'POST' });
+                if (!resp.ok) { if (resp.status !== 401) alert('Could not generate a token (HTTP ' + resp.status + ')'); return; }
+                const data = await resp.json();
+                this.newToken = data.access_token;
+                window.vigilanceAuth.set(data.access_token);
+                this.setTokenStatus(await (await fetch('/api/settings/api-token')).json());
+            } finally { this.rotatingToken = false; }
+        },
+
         async loadSettings() {
             try {
                 const [settingsResp, tokenResp] = await Promise.all([
@@ -244,8 +272,7 @@ function settingsPage() {
                     fetch('/api/settings/api-token')
                 ]);
                 this.settings = await settingsResp.json();
-                const tokenData = await tokenResp.json();
-                this.tokenPreview = tokenData.preview || 'Not configured';
+                this.setTokenStatus(await tokenResp.json());
                 this.gotifyConfigured = this.settings.gotify_configured;
                 this.proxmoxNodes = this.settings.proxmox_nodes || [];
                 await this.loadCveSyncStatus();

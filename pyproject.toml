@@ -41,7 +41,7 @@ dev = [
 ]
 
 [project.entry-points.console_scripts]
-vigilance = "vigilance.__main__:app"
+vigilance = "vigilance.cli:app"
 
 [tool.uv]
 dev-dependencies = [

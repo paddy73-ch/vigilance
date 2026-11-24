@@ -67,8 +67,13 @@ def config_check():
     if not settings.proxmox_nodes:
         errors.append("No Proxmox nodes configured")
 
-    if not settings.api_token:
-        errors.append("No API token configured (VIGILANCE_API_TOKEN)")
+    async def _token_info():
+        from vigilance.core import auth_token
+        async with async_session_maker() as db:
+            return await auth_token.get_token_info(db)
+
+    if not asyncio.run(_token_info())["configured"]:
+        errors.append("No API token configured (run `vigilance token-rotate`)")
 
     if settings.notifications and settings.notifications.gotify:
         if not settings.notifications.gotify.url:
@@ -145,3 +150,32 @@ def version():
 
 if __name__ == "__main__":
     app()
+
+
+@app.command()
+def token_rotate():
+    """Generate a new API token for write access (replaces the current one; shown once)."""
+    from vigilance.core import auth_token
+
+    async def _rotate():
+        async with async_session_maker() as db:
+            return await auth_token.rotate_token(db)
+
+    token = asyncio.run(_rotate())
+    console.print("[green]New API token[/green] (store it now, e.g. in Vaultwarden - it is shown only once):")
+    print(token)
+
+
+@app.command()
+def ssh_key_show():
+    """Show the public SSH key Vigilance uses to log into the LXCs."""
+    from vigilance.discovery.sshkey import ensure_ssh_key
+    print(ensure_ssh_key())
+
+
+@app.command()
+def ssh_key_rotate():
+    """Generate a new SSH key (the old one is kept as id_rsa.old-<timestamp>) and print the new public key."""
+    from vigilance.discovery.sshkey import rotate_ssh_key
+    console.print("[yellow]Distribute this public key to the LXCs before the next scan:[/yellow]")
+    print(rotate_ssh_key())

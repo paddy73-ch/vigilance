@@ -4,6 +4,108 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Vigilance{% endblock %}</title>
+    <script>
+    // Write access: API token kept in this browser (localStorage) and sent as
+    // "Authorization: Bearer" on every non-GET /api request. Reading needs no token.
+    (function () {
+        const KEY = 'vigilance.apiToken';
+        let memoryToken = null;  // fallback when localStorage is unavailable
+        const auth = {
+            get() { try { return localStorage.getItem(KEY) || memoryToken; } catch (e) { return memoryToken; } },
+            set(token) { memoryToken = token; try { localStorage.setItem(KEY, token); } catch (e) {} auth.render(); },
+            clear() { memoryToken = null; try { localStorage.removeItem(KEY); } catch (e) {} auth.render(); },
+            render() {
+                const el = document.getElementById('auth-state');
+                if (!el) return;
+                const has = !!auth.get();
+                el.textContent = has ? 'Lock editing' : 'Unlock editing';
+                el.title = has ? 'Remove the API token from this browser' : 'Enter the API token to make changes';
+                el.dataset.unlocked = has ? 'true' : 'false';
+            },
+            ask(message) {
+                return new Promise((resolve) => {
+                    const overlay = document.createElement('div');
+                    overlay.id = 'vigilance-token-dialog';
+                    overlay.className = 'fixed inset-0 z-50 flex items-center justify-center p-4';
+                    overlay.style.background = 'rgba(17,24,39,0.5)';
+                    overlay.innerHTML = `
+                        <form class="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full p-6 space-y-4" autocomplete="on">
+                            <h3 class="text-lg font-semibold">API token required</h3>
+                            <p class="text-sm text-gray-600 dark:text-gray-300" data-msg></p>
+                            <input type="text" name="username" value="vigilance" autocomplete="username" hidden>
+                            <input type="password" name="token" autocomplete="current-password" required
+                                   class="w-full border border-gray-300 dark:border-gray-600 rounded px-3 py-2 bg-white dark:bg-gray-700"
+                                   placeholder="vig_...">
+                            <div class="flex justify-end gap-3">
+                                <button type="button" data-cancel class="px-4 py-2 rounded border border-gray-300 dark:border-gray-600">Cancel</button>
+                                <button type="submit" class="px-4 py-2 rounded bg-blue-600 text-white">Unlock</button>
+                            </div>
+                        </form>`;
+                    overlay.querySelector('[data-msg]').textContent = message || 'Changes need the API token. It is stored in this browser until you lock editing again.';
+                    const done = (value) => { overlay.remove(); resolve(value); };
+                    overlay.querySelector('[data-cancel]').addEventListener('click', () => done(null));
+                    overlay.addEventListener('keydown', (e) => { if (e.key === 'Escape') done(null); });
+                    overlay.querySelector('form').addEventListener('submit', (e) => {
+                        e.preventDefault();
+                        done(overlay.querySelector('input[name=token]').value.trim() || null);
+                    });
+                    document.body.appendChild(overlay);
+                    overlay.querySelector('input[name=token]').focus();
+                });
+            },
+        };
+        window.vigilanceAuth = auth;
+
+        const originalFetch = window.fetch.bind(window);
+        const isWriteApi = (url, method) => {
+            const m = (method || 'GET').toUpperCase();
+            if (m === 'GET' || m === 'HEAD') return false;
+            try { const u = new URL(url, window.location.href); return u.origin === window.location.origin && u.pathname.startsWith('/api/'); }
+            catch (e) { return false; }
+        };
+        const withToken = (init, token) => {
+            const headers = new Headers((init && init.headers) || {});
+            if (token) headers.set('Authorization', 'Bearer ' + token);
+            return Object.assign({}, init || {}, { headers });
+        };
+        window.fetch = async function (input, init) {
+            const url = typeof input === 'string' ? input : (input && input.url) || '';
+            const method = (init && init.method) || (input && input.method) || 'GET';
+            if (typeof input !== 'string' || !isWriteApi(url, method)) return originalFetch(input, init);
+            let resp = await originalFetch(input, withToken(init, auth.get()));
+            if (resp.status !== 401) return resp;
+            if (auth.get()) auth.clear();  // stored token is no longer valid
+            const token = await auth.ask(auth.get() === null ? null : 'The stored token is no longer valid.');
+            if (!token) return resp;
+            resp = await originalFetch(input, withToken(init, token));
+            if (resp.status === 401) alert('Invalid token - nothing was changed.');
+            else if (resp.status === 429) alert('Too many failed attempts. Try again in 15 minutes.');
+            else auth.set(token);
+            return resp;
+        };
+
+        document.addEventListener('htmx:configRequest', (e) => {
+            const token = auth.get();
+            if (token && e.detail.verb !== 'get') e.detail.headers['Authorization'] = 'Bearer ' + token;
+        });
+        document.addEventListener('DOMContentLoaded', async () => {
+            auth.render();
+            const el = document.getElementById('auth-state');
+            if (el) el.addEventListener('click', async () => {
+                if (auth.get()) { auth.clear(); return; }
+                const token = await auth.ask();
+                if (!token) return;
+                const resp = await originalFetch('/api/auth/me', { headers: { Authorization: 'Bearer ' + token } });
+                if (resp.ok) auth.set(token); else alert(resp.status === 429 ? 'Too many failed attempts. Try again in 15 minutes.' : 'Invalid token.');
+            });
+            const token = auth.get();
+            if (token) {
+                const resp = await originalFetch('/api/auth/me', { headers: { Authorization: 'Bearer ' + token } });
+                if (resp.status === 401) auth.clear();
+            }
+        });
+    })();
+    </script>
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
     <script src="https://unpkg.com/htmx.org@1.9.10"></script>
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
@@ -31,7 +133,7 @@
                     </div>
                 </div>
                 <div class="flex items-center space-x-4">
-                    <span id="user-info" class="text-sm text-gray-500 dark:text-gray-400"></span>
+                    <button type="button" id="auth-state" class="text-sm text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200">Unlock editing</button>
                     <div x-data="{ dropdownOpen: false }" class="relative">
                         <button @click="dropdownOpen = !dropdownOpen" class="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">
                             <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -59,20 +161,6 @@
         </div>
     </footer>
 
-    <script>
-        // Check auth status on load
-        document.addEventListener('DOMContentLoaded', async () => {
-            try {
-                const resp = await fetch('/api/auth/me');
-                if (resp.ok) {
-                    const data = await resp.json();
-                    document.getElementById('user-info').textContent = `Logged in as ${data.username} (${data.auth_method})`;
-                }
-            } catch (e) {
-                // Ignore
-            }
-        });
-    </script>
     {% block extra_scripts %}{% endblock %}
 </body>
 </html>

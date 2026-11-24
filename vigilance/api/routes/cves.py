@@ -79,7 +79,7 @@ async def get_sync_status_entries(
 async def trigger_cve_sync(
     source: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
-    current_user: Optional[User] = Depends(get_current_user_optional),
+    current_user: User = Depends(require_write_access),
 ):
     """Trigger CVE sync (+ re-match) for all enabled sources or one specific source."""
     from vigilance.core.scheduler import _spawn, run_pipeline
