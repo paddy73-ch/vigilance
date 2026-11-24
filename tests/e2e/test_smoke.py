@@ -112,7 +112,7 @@ def test_write_action_asks_for_token_and_drawer_works(server):
         page.goto(base + f"/hosts/{host_id}")
         page.locator("tr.clickable", has=page.locator(".pkg", has_text="glib2.0")).first.click()
         page.get_by_text("CVE-2024-52533").first.click()
-        page.locator(".drawer").wait_for()
-        assert "CVE-2024-52533" in page.locator(".drawer-head").inner_text()
+        # the drawer shows "Lädt …" first; wait for the loaded header instead of reading it at once
+        page.locator(".drawer-head", has_text="CVE-2024-52533").wait_for(timeout=10000)
         assert page.locator(".drawer a[href^='javascript']").count() == 0
         browser.close()
