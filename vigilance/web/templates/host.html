@@ -18,6 +18,13 @@
         </div>
       </div>
 
+      <template x-if="h.type === 'node'">
+        <div class="panel panel-pad note-node">
+          <h2>Was hier nicht geprüft wird</h2>
+          <p class="muted mt-10">Pakete von Proxmox selbst (<code>pve-*</code>, <code>proxmox-*</code>, der Proxmox-Kernel) fehlen in den Debian-Sicherheitsdaten. Für sie zeigt Vigilance keine Befunde. Die Angaben unten betreffen nur die Debian-Pakete auf dem Host. Ob es für die Proxmox-Pakete Updates gibt, zeigt <code>apt list --upgradable</code> auf dem Host.</p>
+          <p class="faint mt-6">Vigilance prüft den Host ohne Root-Rechte, als Benutzer <code>vigilance-scan</code>.</p>
+        </div>
+      </template>
       <template x-if="V.scanReason(h)">
         <div class="panel panel-pad"><h2 x-text="V.scanReason(h)"></h2>
           <p class="muted mt-10" x-text="h.status !== 'running' ? 'Gestoppte Container werden nicht gescannt. Die Angaben unten stammen vom letzten erfolgreichen Scan.' : 'Vigilance konnte diesen Host beim letzten Scan nicht prüfen. Angaben unten stammen von früher, falls vorhanden.'"></p>
