@@ -1,0 +1,90 @@
+{# Advisory detail drawer. Open with: $dispatch('open-vuln', { id: <cve_entry_id> }) #}
+<div x-data="vulnDrawer" @open-vuln.window="open($event.detail.id)" @keydown.escape.window="close()">
+  <template x-if="visible">
+    <div>
+      <div class="scrim" @click="close()"></div>
+      <aside class="drawer" role="dialog" aria-modal="true" :aria-label="item ? item.id : 'Details'">
+        <div class="drawer-head">
+          <div>
+            <h2 x-text="item ? (item.upstream[0] || item.id) : 'Lädt …'"></h2>
+            <p class="muted mono" x-show="item && item.upstream.length && item.upstream[0] !== item.id" x-text="item && item.id"></p>
+          </div>
+          <button class="icon-btn" @click="close()" aria-label="Schliessen">
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 5l10 10M15 5L5 15"/></svg>
+          </button>
+        </div>
+        <div class="drawer-body" x-show="item">
+          <template x-if="item">
+            <div>
+              <section>
+                <dl class="kv">
+                  <dt>Schwere</dt><dd><span class="sev" :class="'sev-' + item.severity" x-text="V.sevLabel(item.severity)"></span><span class="muted" x-show="item.cvss" x-text="' CVSS ' + item.cvss"></span></dd>
+                  <dt x-show="item.cvss_vector">Vektor</dt><dd x-show="item.cvss_vector" class="mono" x-text="item.cvss_vector"></dd>
+                  <dt>Quelle</dt><dd x-text="item.source.toUpperCase()"></dd>
+                  <dt>Veröffentlicht</dt><dd x-text="V.day(item.published_at)"></dd>
+                </dl>
+              </section>
+              <section x-show="item.description">
+                <h3>Beschreibung</h3>
+                <p class="desc" x-text="item.description"></p>
+              </section>
+              <section>
+                <h3 x-text="'Betroffen (' + item.affected.length + ')'"></h3>
+                <table class="rows">
+                  <thead><tr><th>Host</th><th>Paket</th><th>Fix</th><th>Status</th></tr></thead>
+                  <tbody>
+                    <template x-for="a in item.affected" :key="a.finding_id">
+                      <tr>
+                        <td data-label="Host"><a :href="'/hosts/' + a.host_id" x-text="a.host"></a></td>
+                        <td data-label="Paket"><span class="pkg" x-text="a.package"></span><div class="ver" x-text="a.installed_version"></div></td>
+                        <td data-label="Fix"><span class="ver" x-text="a.fixed_version || 'noch kein Fix'"></span><div class="faint" x-show="a.urgency === 'unimportant'">Debian: unwichtig</div></td>
+                        <td data-label="Status" x-text="statusLabel(a.status)"></td>
+                      </tr>
+                    </template>
+                  </tbody>
+                </table>
+              </section>
+              <section>
+                <h3>Ausnahme</h3>
+                <template x-for="ex in item.exceptions" :key="ex.id">
+                  <p class="mb-10"><span class="tag" x-text="ex.host ? 'nur ' + ex.host : 'alle Hosts'"></span> <span x-text="ex.reason"></span>
+                    <span class="faint" x-show="ex.expires_at" x-text="' bis ' + V.day(ex.expires_at)"></span></p>
+                </template>
+                <form class="stack" @submit.prevent="createException()" x-show="showForm">
+                  <div class="field">
+                    <label for="ex-reason">Begründung</label>
+                    <textarea id="ex-reason" class="input" rows="2" x-model="form.reason" required minlength="3" placeholder="z. B. Dienst ist nur intern erreichbar"></textarea>
+                  </div>
+                  <div class="form-row">
+                    <div class="field">
+                      <label for="ex-scope">Gilt für</label>
+                      <select id="ex-scope" class="select" x-model="form.scope">
+                        <option value="">alle Hosts</option>
+                        <template x-for="h in hosts()" :key="h.id"><option :value="h.id" x-text="'nur ' + h.name"></option></template>
+                      </select>
+                    </div>
+                    <div class="field">
+                      <label for="ex-until">Ablauf (optional)</label>
+                      <input id="ex-until" class="input" type="date" x-model="form.until">
+                    </div>
+                  </div>
+                  <div class="row-flex"><button class="btn btn-primary" type="submit" :disabled="saving">Ausnahme speichern</button>
+                    <button class="btn" type="button" @click="showForm = false">Abbrechen</button></div>
+                </form>
+                <button class="btn" x-show="!showForm" @click="showForm = true">Ausnahme anlegen</button>
+              </section>
+              <section x-show="item.links.length">
+                <h3>Mehr dazu</h3>
+                <ul class="plain">
+                  <template x-for="l in item.links" :key="l.url">
+                    <li><a :href="l.url" target="_blank" rel="noopener noreferrer" x-text="l.label"></a> <span class="faint mono" x-text="host(l.url)"></span></li>
+                  </template>
+                </ul>
+              </section>
+            </div>
+          </template>
+        </div>
+      </aside>
+    </div>
+  </template>
+</div>

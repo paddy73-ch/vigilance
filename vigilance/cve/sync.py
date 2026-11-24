@@ -116,7 +116,7 @@ class CVESyncOrchestrator:
                 results["ghsa"] = await self._sync_source("ghsa", run_ghsa)
             else:
                 results["ghsa"] = {"status": "skipped", "count": 0,
-                                   "message": "No packages from GHSA ecosystems (pip, npm, ...) discovered"}
+                                   "message": "Keine Pakete aus pip, npm, Go usw. installiert. Für Debian-Pakete nicht nötig."}
                 await self._set_status("ghsa", status="skipped", entries_count=0,
                                        last_sync_at=datetime.utcnow(),
                                        error_message=results["ghsa"]["message"])

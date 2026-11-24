@@ -1,7 +1,7 @@
 from typing import Optional
 import json
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from vigilance.api.deps import get_db, get_current_user_optional, require_write_access
@@ -36,6 +36,34 @@ async def _load_db_settings(db: AsyncSession) -> dict:
     return result
 
 
+def _gotify_info() -> dict:
+    g = settings.notifications.gotify if settings.notifications else None
+    if not g:
+        return {"enabled": False}
+    return {
+        "enabled": bool(g.enabled and g.url and g.token),
+        "url": g.url or "",
+        "min_severity": g.min_severity,
+        "digest_mode": g.digest_mode,
+        "digest_interval_minutes": g.digest_interval_minutes,
+    }
+
+
+def _source_on(source: str) -> bool:
+    from vigilance.cve.sync import _source_enabled
+    return _source_enabled(source)
+
+
+@router.get("/settings/ssh-key")
+async def get_ssh_public_key(current_user: User = Depends(get_current_user_optional)):
+    """Public SSH key Vigilance uses for the LXCs (to put into authorized_keys)."""
+    from vigilance.discovery.sshkey import SSH_PUBLIC_KEY
+    try:
+        return {"public_key": SSH_PUBLIC_KEY.read_text().strip()}
+    except OSError:
+        return {"public_key": None}
+
+
 @router.get("/settings")
 async def get_settings(
     db: AsyncSession = Depends(get_db),
@@ -50,6 +78,8 @@ async def get_settings(
         "ssh_timeout": _get_int_setting(db_settings, "ssh_timeout", settings.ssh_timeout),
         "ssh_parallel_jobs": _get_int_setting(db_settings, "ssh_parallel_jobs", settings.ssh_parallel_jobs),
         "gotify_configured": bool(settings.notifications and settings.notifications.gotify and settings.notifications.gotify.url),
+        "gotify": _gotify_info(),
+        "sources_disabled": [s for s in ("nvd", "debian", "ubuntu", "ghsa", "osv") if not _source_on(s)],
         "proxmox_nodes_configured": len(settings.proxmox_nodes),
         "proxmox_nodes": [
             {
@@ -65,10 +95,10 @@ async def get_settings(
 
 
 class SettingsUpdate(BaseModel):
-    scan_interval_hours: Optional[int] = None
-    cve_sync_interval_hours: Optional[int] = None
-    ssh_timeout: Optional[int] = None
-    ssh_parallel_jobs: Optional[int] = None
+    scan_interval_hours: Optional[int] = Field(None, ge=1, le=168)
+    cve_sync_interval_hours: Optional[int] = Field(None, ge=1, le=168)
+    ssh_timeout: Optional[int] = Field(None, ge=5, le=300)
+    ssh_parallel_jobs: Optional[int] = Field(None, ge=1, le=50)
 
 
 @router.post("/settings")

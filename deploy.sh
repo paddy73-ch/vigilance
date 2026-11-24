@@ -77,6 +77,8 @@ printf '\nDashboard severity counts: '
 curl -fsS http://127.0.0.1:8000/api/dashboard/stats | python3 -c 'import json,sys; print(json.dumps(json.load(sys.stdin).get("findings_by_severity", {}), sort_keys=True))'
 printf 'Container severity counts: '
 curl -fsS http://127.0.0.1:8000/api/inventory-findings | python3 -c 'import json,sys; hosts=json.load(sys.stdin); levels=("CRITICAL","HIGH","MEDIUM","LOW","NONE"); print(json.dumps({k:sum(h.get("counts",{}).get(k,0) for h in hosts) for k in levels}, sort_keys=True))'
+printf 'Overview: '
+curl -fsS http://127.0.0.1:8000/api/overview | python3 -c 'import json,sys; k=json.load(sys.stdin)["kpis"]; print(json.dumps(k, sort_keys=True))'
 
 rm -rf "$stage" "$archive"
 REMOTE_SCRIPT

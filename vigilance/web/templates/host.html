@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+{% block title %}Host{% endblock %}
+{% block page_script %}<script defer src="/static/js/drawer.js?v={{ asset_version }}"></script><script defer src="/static/js/pages/host.js?v={{ asset_version }}"></script>{% endblock %}
+{% block content %}
+<div x-data="hostPage({{ inventory_id }})" x-cloak @vigilance-changed.window="load()">
+  <p class="mb-10"><a href="/hosts">Alle Hosts</a></p>
+  <template x-if="error"><div class="panel empty"><h3>Host nicht gefunden</h3><p x-text="error"></p></div></template>
+  <template x-if="h">
+    <div class="stack">
+      <div class="page-head">
+        <div>
+          <h1 x-text="h.name"></h1>
+          <p class="muted" x-text="['CT ' + h.vmid, h.ip_address, h.os].filter(Boolean).join(', ')"></p>
+        </div>
+        <div class="right">
+          <p x-text="h.last_scan_at ? 'Letzter Scan ' + V.ago(h.last_scan_at) : 'Noch nicht gescannt'"></p>
+          <p class="faint" x-show="h.last_scan_at" x-text="V.date(h.last_scan_at)"></p>
+        </div>
+      </div>
+
+      <template x-if="V.scanReason(h)">
+        <div class="panel panel-pad"><h2 x-text="V.scanReason(h)"></h2>
+          <p class="muted mt-10" x-text="h.status !== 'running' ? 'Gestoppte Container werden nicht gescannt. Die Angaben unten stammen vom letzten erfolgreichen Scan.' : 'Vigilance konnte diesen Container beim letzten Scan nicht prüfen. Angaben unten stammen von früher, falls vorhanden.'"></p>
+        </div>
+      </template>
+
+      <section class="panel">
+        <div class="panel-head"><h2>Jetzt beheben</h2><span class="muted" x-text="V.plural(h.patchable, 'Befund', 'Befunde')"></span></div>
+        <template x-if="!h.patchable_list.length"><div class="empty"><h3>Nichts zu tun</h3><p>Für die installierten Pakete gibt es keine offenen Befunde mit Fix.</p></div></template>
+        <div class="panel-pad" x-show="h.upgrade_command || h.remove_command">
+          <template x-if="h.upgrade_command">
+            <div>
+              <p class="cmd-label">Updates installieren</p>
+              <div class="cmd"><code x-text="h.upgrade_command"></code><button class="btn btn-sm" @click="V.copy(h.upgrade_command)">Kopieren</button></div>
+            </div>
+          </template>
+          <template x-if="h.remove_command">
+            <div>
+              <p class="cmd-label">Alte Pakete aus dem früheren Debian-Release entfernen. Der Befehl simuliert nur (<code>-s</code>): Prüfe die Liste, dann ohne <code>-s</code> ausführen.</p>
+              <div class="cmd"><code x-text="h.remove_command"></code><button class="btn btn-sm" @click="V.copy(h.remove_command)">Kopieren</button></div>
+            </div>
+          </template>
+        </div>
+        <table class="rows" x-show="h.patchable_list.length">
+          <thead><tr><th></th><th>Paket</th><th>Aktion</th><th>Schwere</th><th class="num">Advisories</th><th>Betroffene Pakete</th></tr></thead>
+          <template x-for="g in h.patchable_list" :key="g.package + g.installed_version">
+            <tbody>
+              <tr class="clickable" @click="toggle(g)">
+                <td class="hide-sm"><span class="caret" :class="{ open: isOpen(g) }">›</span></td>
+                <td><span class="pkg" x-text="g.package"></span><div class="ver" x-text="g.installed_version + (g.obsolete ? '' : ' → ' + (g.fixed_version || '?'))"></div></td>
+                <td data-label="Aktion"><span class="tag" :class="g.obsolete ? 'tag-remove' : 'tag-upgrade'" x-text="g.obsolete ? 'Entfernen' : 'Update'"></span></td>
+                <td data-label="Schwere"><span class="sev" :class="'sev-' + g.severity" x-text="V.sevLabel(g.severity)"></span></td>
+                <td class="num" data-label="Advisories" x-text="g.count"></td>
+                <td data-label="Pakete" class="ver" x-text="g.binaries.join(', ')"></td>
+              </tr>
+              <template x-for="a in (isOpen(g) ? g.advisories : [])" :key="a.finding_id">
+                <tr class="sub clickable" @click="$dispatch('open-vuln', { id: a.cve_entry_id })">
+                  <td class="hide-sm"></td>
+                  <td colspan="2"><a href="#" @click.prevent x-text="a.upstream[0] || a.id"></a> <span class="faint" x-text="a.title && a.title !== a.upstream[0] ? a.title : ''"></span></td>
+                  <td><span class="sev" :class="'sev-' + a.severity" x-text="V.sevLabel(a.severity)"></span></td>
+                  <td class="num" x-text="a.cvss ? 'CVSS ' + a.cvss : ''"></td>
+                  <td class="ver" x-text="a.fixed_version ? 'Fix ' + a.fixed_version : ''"></td>
+                </tr>
+              </template>
+            </tbody>
+          </template>
+        </table>
+      </section>
+
+      <template x-for="sec in folds()" :key="sec.key">
+        <section class="panel">
+          <details class="fold">
+            <summary x-text="sec.title"></summary>
+            <p class="muted panel-pad" x-show="!sec.list.length" x-text="sec.empty"></p>
+            <table class="rows" x-show="sec.list.length">
+              <thead><tr><th>Paket</th><th>Schwere</th><th class="num">Advisories</th><th>Hinweis</th></tr></thead>
+              <template x-for="g in sec.list" :key="g.package + g.installed_version">
+                <tbody>
+                  <tr class="clickable" @click="toggle(g)">
+                    <td><span class="caret" :class="{ open: isOpen(g) }">›</span> <span class="pkg" x-text="g.package"></span> <span class="ver" x-text="g.installed_version"></span></td>
+                    <td data-label="Schwere"><span class="sev" :class="'sev-' + g.severity" x-text="V.sevLabel(g.severity)"></span></td>
+                    <td class="num" data-label="Advisories" x-text="g.count"></td>
+                    <td data-label="Hinweis" class="faint" x-text="hint(sec.key, g)"></td>
+                  </tr>
+                  <template x-for="a in (isOpen(g) ? g.advisories : [])" :key="a.finding_id">
+                    <tr class="sub clickable" @click="$dispatch('open-vuln', { id: a.cve_entry_id })">
+                      <td><a href="#" @click.prevent x-text="a.upstream[0] || a.id"></a></td>
+                      <td><span class="sev" :class="'sev-' + a.severity" x-text="V.sevLabel(a.severity)"></span></td>
+                      <td class="num" x-text="a.cvss ? 'CVSS ' + a.cvss : ''"></td>
+                      <td class="faint" x-text="sec.key === 'fixed' ? 'behoben ' + V.day(a.resolved_at) : (a.urgency === 'unimportant' ? 'Debian: unwichtig' : '')"></td>
+                    </tr>
+                  </template>
+                </tbody>
+              </template>
+            </table>
+          </details>
+        </section>
+      </template>
+    </div>
+  </template>
+  {% include "_drawer.html" %}
+</div>
+{% endblock %}

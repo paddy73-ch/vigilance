@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}Einstellungen{% endblock %}
+{% block page_script %}<script defer src="/static/js/pages/admin.js?v={{ asset_version }}"></script>{% endblock %}
+{% block content %}
+{% include "_admin_tabs.html" %}
+<div x-data="settingsPage" x-cloak class="stack">
+  <div class="grid-2">
+    <section class="panel">
+      <div class="panel-head"><h2>Zeitplan</h2></div>
+      <form class="panel-pad stack" @submit.prevent="save()">
+        <div class="form-row">
+          <div class="field"><label for="s-scan">Scan alle … Stunden</label><input id="s-scan" class="input" type="number" min="1" max="168" x-model.number="s.scan_interval_hours"><span class="hint">Scan, danach CVE-Abgleich und Auswertung</span></div>
+          <div class="field"><label for="s-sync">CVE-Abgleich alle … Stunden</label><input id="s-sync" class="input" type="number" min="1" max="168" x-model.number="s.cve_sync_interval_hours"><span class="hint">Neue Advisories für bekannte Pakete</span></div>
+          <div class="field"><label for="s-to">SSH-Timeout (Sekunden)</label><input id="s-to" class="input" type="number" min="5" max="300" x-model.number="s.ssh_timeout"></div>
+          <div class="field"><label for="s-par">Parallele SSH-Verbindungen</label><input id="s-par" class="input" type="number" min="1" max="50" x-model.number="s.ssh_parallel_jobs"></div>
+        </div>
+        <div><button class="btn btn-primary" type="submit" :disabled="saving">Speichern</button></div>
+      </form>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head"><h2>API-Token</h2></div>
+      <div class="panel-pad stack">
+        <p x-text="tokenText()"></p>
+        <p class="muted">Der Token wird für jede Änderung gebraucht: Scans, Abgleiche, Ausnahmen, Einstellungen. Lesen geht ohne. Ein neuer Token ersetzt den alten sofort.</p>
+        <div><button class="btn" @click="rotate()" :disabled="rotating">Neuen Token erzeugen</button></div>
+        <template x-if="newToken">
+          <div>
+            <p class="cmd-label">Nur jetzt sichtbar. Speichere ihn, z. B. in Vaultwarden. Dieser Browser verwendet ihn bereits.</p>
+            <div class="cmd"><code x-text="newToken"></code><button class="btn btn-sm" @click="V.copy(newToken)">Kopieren</button></div>
+          </div>
+        </template>
+      </div>
+    </section>
+  </div>
+
+  <div class="grid-2">
+    <section class="panel">
+      <div class="panel-head"><h2>Benachrichtigungen (Gotify)</h2></div>
+      <div class="panel-pad stack">
+        <template x-if="!s.gotify || !s.gotify.enabled"><p class="muted">Gotify ist nicht eingerichtet. URL und Token in <code>.env</code> setzen: <code>VIGILANCE_GOTIFY_URL</code>, <code>VIGILANCE_GOTIFY_TOKEN</code>.</p></template>
+        <template x-if="s.gotify && s.gotify.enabled">
+          <dl class="kv">
+            <dt>Server</dt><dd x-text="s.gotify.url"></dd>
+            <dt>Ab Schwere</dt><dd x-text="V.sevLabel(s.gotify.min_severity)"></dd>
+            <dt>Sammelmeldung</dt><dd x-text="s.gotify.digest_mode ? 'alle ' + s.gotify.digest_interval_minutes + ' Minuten' : 'aus, einzelne Meldungen'"></dd>
+          </dl>
+        </template>
+        <div x-show="s.gotify && s.gotify.enabled"><button class="btn" @click="testGotify()" :disabled="testing">Testnachricht senden</button></div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head"><h2>Proxmox und SSH</h2></div>
+      <div class="panel-pad stack">
+        <template x-for="n in s.proxmox_nodes || []" :key="n.name">
+          <dl class="kv">
+            <dt>Node</dt><dd x-text="n.name"></dd>
+            <dt>API</dt><dd class="mono" x-text="n.url"></dd>
+            <dt>Token</dt><dd class="mono" x-text="n.token_id"></dd>
+            <dt>TLS prüfen</dt><dd x-text="n.verify_tls ? 'ja' : 'nein'"></dd>
+          </dl>
+        </template>
+        <p class="faint">Kommt aus <code>.env</code> bzw. <code>config.yaml</code> und wird beim nächsten Scan übernommen.</p>
+        <div x-show="sshKey">
+          <p class="cmd-label">Öffentlicher SSH-Schlüssel von Vigilance (für <code>/root/.ssh/authorized_keys</code> der Container)</p>
+          <div class="cmd"><code x-text="sshKey"></code><button class="btn btn-sm" @click="V.copy(sshKey)">Kopieren</button></div>
+        </div>
+      </div>
+    </section>
+  </div>
+</div>
+{% endblock %}
