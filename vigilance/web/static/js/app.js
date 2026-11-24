@@ -161,6 +161,58 @@
       const path = (k) => points.map((p, i) => (i ? "L" : "M") + x(i).toFixed(1) + " " + y(p[k]).toFixed(1)).join(" ");
       return { patchable: path("patchable"), without_fix: path("without_fix"), fixed: path("fixed_total"), max };
     },
+    // ---- solution and removal risk (see /api remedy objects)
+    replacementText(rem) {
+      const r = rem.replacement;
+      const base = "Ältere Version, die neben einer neueren installiert geblieben ist, zum Beispiel nach einem Release-Upgrade. Sie bekommt keine Updates mehr.";
+      return r && r.packages.length ? base + " Bereits installiert: " + r.packages.join(", ") + "." : base;
+    },
+    riskHead(risk) {
+      if (!risk || risk.status === "unknown") return "Risiko noch nicht geprüft";
+      return risk.status === "ok" ? "Geprüft: unbedenklich" : "Vor dem Entfernen prüfen";
+    },
+    riskLines(risk) {
+      if (!risk) return [];
+      const when = risk.checked_at ? " (Scan vom " + V.date(risk.checked_at) + ")" : "";
+      const lines = [];
+      if (risk.status === "unknown") {
+        lines.push(risk.errors && risk.errors.length
+          ? "Die Prüfung beim Scan ist fehlgeschlagen: " + risk.errors.join("; ")
+          : "Vigilance prüft das beim nächsten Scan. Bis dahin zuerst mit apt-get -s purge simulieren.");
+        return lines;
+      }
+      if (risk.status === "ok") {
+        lines.push("apt würde nur " + risk.would_remove.join(", ") + " entfernen" + when + ".");
+        if (risk.libraries_checked) lines.push("Kein laufendes Programm benutzt die alte Bibliothek, und nichts unter /usr/local oder /opt verweist darauf.");
+        return lines;
+      }
+      if (risk.extra.length) lines.push("apt würde zusätzlich entfernen, weil diese Pakete davon abhängen: " + risk.extra.join(", ") + ". Prüfe, ob du sie noch brauchst.");
+      risk.in_use.forEach((u) => lines.push("Wird noch benutzt von PID " + u.pid + ": " + (u.command || "?") + ". Vermutlich seit dem Upgrade nicht neu gestartet. Es läuft nach dem Entfernen weiter; danach neu starten und prüfen."));
+      if (risk.external.length) lines.push("Programme ausserhalb von apt verweisen auf die Bibliothek und starten danach vermutlich nicht mehr: " + risk.external.join(", ") + ".");
+      if (when) lines.push("Stand" + when + ".");
+      return lines;
+    },
+    // Hosts with the same command and the same check result are shown as one block
+    groupRemedies(hosts) {
+      const groups = new Map();
+      (hosts || []).forEach((h) => {
+        const r = h.risk || {};
+        const sig = JSON.stringify([h.action, h.command, h.target, h.replacement && h.replacement.packages, r.status, r.would_remove,
+          r.extra, r.in_use, r.external, r.errors, r.not_reinstallable, r.libraries_checked]);
+        if (!groups.has(sig)) groups.set(sig, { key: sig, hosts: [], rem: { action: "remove", ...h } });  // action from h wins
+        groups.get(sig).hosts.push({ id: h.host_id, name: h.host });
+      });
+      return [...groups.values()];
+    },
+    reinstallText(risk, binaries) {
+      if (!risk || risk.status === "unknown" || !risk.not_reinstallable) return "";
+      const gone = risk.not_reinstallable;
+      if (!gone.length) return "Lässt sich bei Bedarf wieder installieren, die Version ist noch in einer Paketquelle.";
+      const all = !binaries || gone.length >= binaries.length;
+      return "Nicht rückgängig zu machen: " + (all ? "Diese Version ist" : gone.join(", ") + " ist")
+        + " in keiner Paketquelle mehr und lässt sich danach nicht wieder installieren.";
+    },
+
     qs(params) {
       const u = new URLSearchParams();
       Object.entries(params).forEach(([k, v]) => { if (v !== "" && v !== null && v !== undefined && v !== false) u.set(k, v); });

@@ -15,7 +15,7 @@ document.addEventListener("alpine:init", () => {
       const h = this.h;
       const count = (list) => list.reduce((a, g) => a + g.count, 0);
       return [
-        { key: "without_fix", list: h.without_fix_list, title: "Offen ohne Fix (" + V.plural(count(h.without_fix_list), "Befund", "Befunde") + ")", empty: "Keine." },
+        { key: "without_fix", list: h.without_fix_list, title: "Offen ohne Fix (" + V.plural(count(h.without_fix_list), "Lücke", "Lücken") + ")", empty: "Keine." },
         { key: "suppressed", list: h.suppressed_list, title: "Ausnahmen (" + count(h.suppressed_list) + ")", empty: "Keine Ausnahmen für diesen Host." },
         { key: "fixed", list: h.fixed_list, title: "Behoben in den letzten 30 Tagen (" + count(h.fixed_list) + ")", empty: "In den letzten 30 Tagen wurde nichts behoben." },
       ];

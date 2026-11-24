@@ -68,11 +68,11 @@
           <ul class="toplist">
             <template x-for="p in data.top_packages" :key="p.package + p.version">
               <li>
-                <a :href="'/vulnerabilities?fix=true&q=' + encodeURIComponent(p.package)"><span class="pkg" x-text="p.package"></span> <span class="ver mono muted" x-text="p.version"></span></a>
+                <a :href="'/vulnerabilities?fix=true&q=' + encodeURIComponent(p.package)"><span class="pkg" x-text="p.display_name || p.package"></span> <span class="ver mono muted" x-text="p.version"></span></a>
                 <span class="sev" :class="'sev-' + p.severity" x-text="V.sevLabel(p.severity)"></span>
                 <div class="meta">
                   <span class="tag" :class="p.action === 'remove' ? 'tag-remove' : 'tag-upgrade'" x-text="p.action === 'remove' ? 'Altpaket entfernen' : 'Update'"></span>
-                  <span x-text="V.plural(p.advisories, 'Advisory', 'Advisories')"></span>
+                  <span x-text="V.plural(p.advisories, 'Lücke', 'Lücken')"></span>
                   <span x-text="V.plural(p.hosts, 'Host', 'Hosts')"></span>
                 </div>
               </li>

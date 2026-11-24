@@ -25,6 +25,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from vigilance.cve.matcher import _extract_package_from_cpe, match_tool_against_cves
+from vigilance.cve.advisories import same_vulnerability
 from vigilance.database.models import CVEEntry, DiscoveredTool, Suppression, VulnerabilityFinding
 
 logger = logging.getLogger(__name__)
@@ -111,9 +112,10 @@ def urgency_for(cve: CVEEntry, ecosystem: Optional[str], package: str) -> Option
     return None
 
 
-def _suppressed(suppressions: Sequence[Suppression], cve_id: str, tool: DiscoveredTool, now: datetime) -> bool:
+def _suppressed(suppressions: Sequence[Suppression], cve: CVEEntry, tool: DiscoveredTool, now: datetime) -> bool:
     for s in suppressions:
-        if s.cve_id != cve_id:
+        # An exception for DEBIAN-CVE-2026-1 also covers DSA-… for the same CVE
+        if not same_vulnerability(s.cve_id, cve.cve_id, cve.upstream_ids):
             continue
         if s.expires_at and s.expires_at < now:
             continue
@@ -158,7 +160,7 @@ async def match_findings(
         if key in seen:
             return
         seen.add(key)
-        status = "suppressed" if _suppressed(suppressions, cve.cve_id, tool, now) else "open"
+        status = "suppressed" if _suppressed(suppressions, cve, tool, now) else "open"
         finding = existing.get(key)
         if finding is None:
             finding = VulnerabilityFinding(

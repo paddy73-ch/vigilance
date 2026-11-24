@@ -197,10 +197,27 @@ docker compose exec -u vigilance vigilance vigilance ssh-key-rotate
 
 - **Übersicht** (`/`): status of scan and CVE sync, what can be fixed now (update vs. remove old packages), host board, top packages, 30-day trend
 - **Hosts** (`/hosts`, `/hosts/{id}`): per container the packages to fix with copyable `apt-get` commands, open findings without fix, exceptions, fixed in the last 30 days, scan problems (stopped, no IP, unreachable)
-- **Schwachstellen** (`/vulnerabilities`): grouped by package or by advisory, filters (status, fix, severity, host, Debian "unimportant"), search incl. CVE IDs, detail panel with links and "Ausnahme anlegen"
+- **Schwachstellen** (`/vulnerabilities`): grouped by package or by CVE, filters (status, fix, severity, host, Debian "unimportant"), search incl. CVE IDs, detail panel with the solution, links and "Ausnahme anlegen"
 - **Verwaltung** (`/admin/...`): CVE sources, exceptions, schedule, API token, Gotify, Proxmox/SSH info
 
 Reading needs no login; every change needs the API token ("Bearbeiten" in the header).
+
+### Solutions and removal check
+
+Every finding with a fix shows a solution: an update command, or - for an older version that stayed
+installed next to a newer one (e.g. `libapt-pkg6.0` next to `libapt-pkg7.0` after a release upgrade) -
+the command to remove it. Such packages are shown by their installed name, with the source package below.
+
+Before suggesting a removal, each scan runs a read-only check on the host
+(`vigilance/discovery/removal_check.sh`, nothing is changed):
+
+- `apt-get -s purge <package>`: what apt would remove in addition (dependent packages)
+- running processes (same mount namespace, so not Docker containers) that still map a library of the package
+- ELF files under `/usr/local` and `/opt` that reference one of its sonames (not managed by dpkg, apt cannot see them)
+- `apt-cache policy`: whether the version is still in a package source, i.e. whether the removal can be undone
+
+Advisories for the same CVE (e.g. `DEBIAN-CVE-2026-1234` and `DSA-6000-1`) are shown and counted as one
+vulnerability. An exception for one of them covers all advisories of that CVE.
 
 ## Authentication
 

@@ -6,8 +6,8 @@
       <aside class="drawer" role="dialog" aria-modal="true" :aria-label="item ? item.id : 'Details'">
         <div class="drawer-head">
           <div>
-            <h2 x-text="item ? (item.upstream[0] || item.id) : 'Lädt …'"></h2>
-            <p class="muted mono" x-show="item && item.upstream.length && item.upstream[0] !== item.id" x-text="item && item.id"></p>
+            <h2 x-text="item ? item.label : 'Lädt …'"></h2>
+            <p class="muted mono" x-show="item && (item.label !== item.id || item.also.length)" x-text="item && [item.id].concat(item.also).filter((x) => x !== item.label).join(', ')"></p>
           </div>
           <button class="icon-btn" @click="close()" aria-label="Schliessen">
             <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 5l10 10M15 5L5 15"/></svg>
@@ -28,6 +28,15 @@
                 <h3>Beschreibung</h3>
                 <p class="desc" x-text="item.description"></p>
               </section>
+              <section x-show="remedies().length">
+                <h3>Lösung</h3>
+                <template x-for="grp in remedies()" :key="grp.key">
+                  <div class="remedy-block" x-data="{ rem: grp.rem }">
+                    <p class="remedy-host"><span x-text="grp.hosts.length > 1 ? 'Gleich auf ' : ''"></span><template x-for="(h, i) in grp.hosts" :key="h.id"><span><a :href="'/hosts/' + h.id" x-text="h.name"></a><span x-show="i < grp.hosts.length - 1">, </span></span></template></p>
+                    {% include "_remedy.html" %}
+                  </div>
+                </template>
+              </section>
               <section>
                 <h3 x-text="'Betroffen (' + item.affected.length + ')'"></h3>
                 <table class="rows">
@@ -36,7 +45,7 @@
                     <template x-for="a in item.affected" :key="a.finding_id">
                       <tr>
                         <td data-label="Host"><a :href="'/hosts/' + a.host_id" x-text="a.host"></a></td>
-                        <td data-label="Paket"><span class="pkg" x-text="a.package"></span><div class="ver" x-text="a.installed_version"></div></td>
+                        <td data-label="Paket"><span class="pkg" x-text="a.display_name"></span><div class="ver" x-text="a.installed_version"></div></td>
                         <td data-label="Fix"><span class="ver" x-text="a.fixed_version || 'noch kein Fix'"></span><div class="faint" x-show="a.urgency === 'unimportant'">Debian: unwichtig</div></td>
                         <td data-label="Status" x-text="statusLabel(a.status)"></td>
                       </tr>
@@ -46,6 +55,7 @@
               </section>
               <section>
                 <h3>Ausnahme</h3>
+                <p class="faint mb-10" x-show="item.also.length" x-text="'Gilt auch für ' + item.also.join(', ') + ', weil sie dieselbe Lücke beschreiben.'"></p>
                 <template x-for="ex in item.exceptions" :key="ex.id">
                   <p class="mb-10"><span class="tag" x-text="ex.host ? 'nur ' + ex.host : 'alle Hosts'"></span> <span x-text="ex.reason"></span>
                     <span class="faint" x-show="ex.expires_at" x-text="' bis ' + V.day(ex.expires_at)"></span></p>

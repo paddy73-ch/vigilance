@@ -42,6 +42,8 @@ class Inventory(Base):
     last_scan_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
     last_scan_status: Mapped[Optional[str]] = mapped_column(String(16))
     last_scan_error: Mapped[Optional[str]] = mapped_column(Text)
+    # JSON: result of the read-only removal check for obsolete packages (discovery/removal.py)
+    removal_check: Mapped[Optional[str]] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

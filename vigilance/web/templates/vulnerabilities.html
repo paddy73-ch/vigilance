@@ -7,7 +7,7 @@
     <div><h1>Schwachstellen</h1><p class="muted" x-text="summary()"></p></div>
     <div class="seg" role="group" aria-label="Ansicht">
       <button :aria-pressed="f.view === 'package'" @click="set('view', 'package')">Nach Paket</button>
-      <button :aria-pressed="f.view === 'cve'" @click="set('view', 'cve')">Nach Advisory</button>
+      <button :aria-pressed="f.view === 'cve'" @click="set('view', 'cve')">Nach CVE</button>
     </div>
   </div>
 
@@ -42,26 +42,46 @@
     <!-- by package -->
     <template x-if="f.view === 'package' && items.length && items[0].package !== undefined && items[0].host_list">
     <table class="rows">
-      <thead><tr><th class="hide-sm"></th><th>Paket</th><th>Aktion</th><th>Schwere</th><th class="num">Advisories</th><th>Hosts</th></tr></thead>
+      <thead><tr><th class="hide-sm"></th><th>Paket</th><th>Aktion</th><th>Schwere</th><th class="num">Lücken</th><th>Hosts</th></tr></thead>
       <template x-for="p in items" :key="p.package + p.version">
         <tbody>
           <tr class="clickable" @click="expand(p)">
             <td class="hide-sm"><span class="caret" :class="{ open: open[key(p)] }">›</span></td>
-            <td><span class="pkg" x-text="p.package"></span>
-              <div class="ver" x-text="p.version + (p.fix_available && p.action !== 'remove' && p.fixed_version ? ' → ' + p.fixed_version : '')"></div></td>
+            <td><span class="pkg" x-text="p.display_name"></span>
+              <div class="ver" x-text="p.version + (p.fix_available && p.action !== 'remove' && p.fixed_version ? ' → ' + p.fixed_version : '')"></div>
+              <div class="src-hint" x-show="p.display_name !== p.package" x-text="'Quellpaket ' + p.package"></div></td>
             <td data-label="Aktion"><span class="tag" :class="actionClass(p)" x-text="actionText(p)"></span></td>
             <td data-label="Schwere"><span class="sev" :class="'sev-' + p.severity" x-text="V.sevLabel(p.severity)"></span></td>
-            <td class="num" data-label="Advisories" x-text="p.advisories"></td>
+            <td class="num" data-label="Lücken" x-text="p.advisories"></td>
             <td data-label="Hosts"><template x-for="(h, i) in p.host_list" :key="h.id"><span><a :href="'/hosts/' + h.id" @click.stop x-text="h.name"></a><span x-show="i < p.host_list.length - 1">, </span></span></template></td>
           </tr>
           <template x-if="open[key(p)]">
             <tr class="sub"><td colspan="6">
+              <template x-if="f.status === 'open' && p.remedy">
+                <div class="mb-16">
+                  <template x-if="p.remedy.action === 'remove'">
+                    <div>
+                      <template x-for="grp in V.groupRemedies(p.remedy.hosts)" :key="grp.key">
+                        <div class="remedy-block" x-data="{ rem: grp.rem }">
+                          <p class="remedy-host" x-show="p.remedy.hosts.length > 1">
+                            <span x-text="grp.hosts.length > 1 ? 'Gleich auf ' : ''"></span><template x-for="(h, i) in grp.hosts" :key="h.id"><span><a :href="'/hosts/' + h.id" x-text="h.name"></a><span x-show="i < grp.hosts.length - 1">, </span></span></template>
+                          </p>
+                          {% include "_remedy.html" %}
+                        </div>
+                      </template>
+                    </div>
+                  </template>
+                  <template x-if="p.remedy.action !== 'remove'">
+                    <div x-data="{ rem: p.remedy }">{% include "_remedy.html" %}</div>
+                  </template>
+                </div>
+              </template>
               <template x-if="!open[key(p)].items"><div class="skeleton w-40"></div></template>
               <table class="rows" x-show="open[key(p)].items">
                 <tbody>
                   <template x-for="v in (open[key(p)].items || [])" :key="v.cve_entry_id">
                     <tr class="clickable" @click="$dispatch('open-vuln', { id: v.cve_entry_id })">
-                      <td><a href="#" @click.prevent x-text="v.upstream[0] || v.id"></a></td>
+                      <td><a href="#" @click.prevent x-text="v.label"></a><div class="also" x-show="v.also.length" x-text="'auch ' + v.also.join(', ')"></div></td>
                       <td data-label="Schwere"><span class="sev" :class="'sev-' + v.severity" x-text="V.sevLabel(v.severity)"></span></td>
                       <td class="num" data-label="CVSS" x-text="v.cvss || '–'"></td>
                       <td data-label="Fix" class="ver" x-text="v.fixed_version || 'noch kein Fix'"></td>
@@ -81,11 +101,11 @@
     <!-- by advisory -->
     <template x-if="f.view === 'cve' && items.length && items[0].cve_entry_id !== undefined">
     <table class="rows">
-      <thead><tr><th>Advisory</th><th>Schwere</th><th class="num">CVSS</th><th>Paket</th><th class="num">Hosts</th><th>Fix</th></tr></thead>
+      <thead><tr><th>CVE</th><th>Schwere</th><th class="num">CVSS</th><th>Paket</th><th class="num">Hosts</th><th>Fix</th></tr></thead>
       <tbody>
         <template x-for="v in items" :key="v.cve_entry_id">
           <tr class="clickable" @click="$dispatch('open-vuln', { id: v.cve_entry_id })">
-            <td><a href="#" @click.prevent x-text="v.upstream[0] || v.id"></a><div class="faint" x-show="v.urgency === 'unimportant'">Debian: unwichtig</div></td>
+            <td><a href="#" @click.prevent x-text="v.label"></a><div class="also" x-show="v.also.length" x-text="'auch ' + v.also.join(', ')"></div><div class="faint" x-show="v.urgency === 'unimportant'">Debian: unwichtig</div></td>
             <td data-label="Schwere"><span class="sev" :class="'sev-' + v.severity" x-text="V.sevLabel(v.severity)"></span></td>
             <td class="num" data-label="CVSS" x-text="v.cvss || '–'"></td>
             <td data-label="Paket" class="pkg" x-text="v.package + (v.packages > 1 ? ' +' + (v.packages - 1) : '')"></td>

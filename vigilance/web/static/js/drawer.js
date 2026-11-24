@@ -24,6 +24,10 @@ document.addEventListener("alpine:init", () => {
       (this.item ? this.item.affected : []).forEach((a) => seen.set(a.host_id, { id: a.host_id, name: a.host }));
       return [...seen.values()];
     },
+    remedies() {
+      const list = this.item ? this.item.affected.filter((a) => a.remedy).map((a) => ({ host_id: a.host_id, host: a.host, ...a.remedy })) : [];
+      return V.groupRemedies(list);
+    },
     host(url) { try { return new URL(url).host; } catch (e) { return ""; } },
     statusLabel(s) { return { open: "offen", fixed: "behoben", suppressed: "Ausnahme" }[s] || s; },
 
