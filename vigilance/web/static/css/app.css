@@ -400,3 +400,16 @@ pre.log { margin: 0; padding: 10px 12px; max-height: 340px; overflow: auto; back
 .notice-row h2 { font-size: 15px; margin: 0 0 4px; }
 .notice-row p { margin: 2px 0; }
 @media (max-width: 700px) { .notice-row { flex-direction: column; align-items: stretch; } }
+
+/* Zurück-Pfeil vor "Alle Hosts", so gross wie die Überschrift (h1, 26px) */
+.back-row { display: flex; align-items: center; gap: 4px; }
+.back-link { display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; margin-left: -11px;
+  border-radius: var(--radius); color: var(--action); }
+.back-link svg { width: 40px; height: 40px; fill: currentColor; } /* Chevron ~19px hoch, wie die Grossbuchstaben von h1 */
+.back-link:hover { background: var(--action-soft); }
+.back-link:focus-visible { outline: 2px solid var(--action); outline-offset: 1px; }
+
+/* Hosts: Filter aus der Übersicht */
+.filter-note { display: flex; align-items: center; gap: 12px; margin: 0 0 12px; color: var(--muted); }
+a.tag-link { text-decoration: none; }
+a.tag-link:hover { text-decoration: underline; }

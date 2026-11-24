@@ -1,8 +1,15 @@
 document.addEventListener("alpine:init", () => {
   Alpine.data("hostsPage", () => ({
     hosts: null,
+    only: null, // host ids from the overview (?ids=…&for=…), null = all
+    onlyFor: "",
     suggested: null, // host ids with something to apply; null while checking
     async init() {
+      const q = new URLSearchParams(location.search);
+      if (q.get("ids")) {
+        this.only = q.get("ids").split(",").map(Number).filter(Boolean);
+        this.onlyFor = q.get("for") || "";
+      }
       await this.load();
       window.addEventListener("vigilance-changed", () => this.load());
     },
@@ -15,8 +22,10 @@ document.addEventListener("alpine:init", () => {
       if (!this.suggested.length) return "Keine Vorschläge: kein Update mit Fix in den Paketquellen, kein unbedenkliches Altpaket.";
       return "Vorschläge auf " + V.plural(this.suggested.length, "Container", "Containern");
     },
-    running() { return (this.hosts || []).filter((h) => h.level !== "stopped"); },
-    stopped() { return (this.hosts || []).filter((h) => h.level === "stopped"); },
+    shown() { return (this.hosts || []).filter((h) => !this.only || this.only.includes(h.id)); },
+    running() { return this.shown().filter((h) => h.level !== "stopped"); },
+    stopped() { return this.shown().filter((h) => h.level === "stopped"); },
+    showAll() { this.only = null; this.onlyFor = ""; history.replaceState(null, "", "/hosts"); },
     levelText(h) {
       return { critical: "Kritisch behebbar", warning: "Behebbar", ok: "Aktuell", unknown: V.scanReason(h) || "Unbekannt" }[h.level] || h.level;
     },

@@ -589,10 +589,10 @@ async def overview(db: AsyncSession = Depends(get_db), _: Optional[User] = Depen
     obsolete_all = await obsolete_keys(db)
     obsolete_pkgs = {(p, v) for _, p, v in obsolete_all}
     # Count vulnerabilities, not advisories, and name obsolete libraries by their installed package
-    top_detail: Dict[tuple, dict] = {(r.package, r.version): {"adv": {}, "bins": set()} for r in top}
+    top_detail: Dict[tuple, dict] = {(r.package, r.version): {"adv": {}, "bins": set(), "hosts": set()} for r in top}
     if top:
-        for pkg, ver, adv, up, tname in (await db.execute(
-            select(PKG_NAME, PKG_VERSION, C.cve_id, C.upstream_ids, T.tool_name)
+        for pkg, ver, adv, up, tname, inv_id in (await db.execute(
+            select(PKG_NAME, PKG_VERSION, C.cve_id, C.upstream_ids, T.tool_name, T.inventory_id)
             .select_from(F).join(T, T.id == F.discovered_tool_id).join(C, C.id == F.cve_entry_id)
             .where(PATCHABLE, PKG_NAME.in_({r.package for r in top}))
         )).all():
@@ -600,6 +600,7 @@ async def overview(db: AsyncSession = Depends(get_db), _: Optional[User] = Depen
             if d is not None:
                 d["adv"][adv] = {"id": adv, "upstream": [u for u in (up or "").split(",") if u]}
                 d["bins"].add(tname)
+                d["hosts"].add(inv_id)
 
     last_scan = (await db.execute(
         select(ScanRun).where(ScanRun.scan_type != "cve_sync").order_by(ScanRun.started_at.desc()).limit(1)
@@ -622,7 +623,7 @@ async def overview(db: AsyncSession = Depends(get_db), _: Optional[User] = Depen
         "top_packages": [
             {"package": r.package, "version": r.version, "severity": _sev(r.rank),
              "advisories": len(merge_advisories(top_detail[(r.package, r.version)]["adv"].values())),
-             "hosts": r.hosts, "action": "remove" if (r.package, r.version) in obsolete_pkgs else "upgrade",
+             "hosts": r.hosts, "host_ids": sorted(top_detail[(r.package, r.version)]["hosts"]), "action": "remove" if (r.package, r.version) in obsolete_pkgs else "upgrade",
              "display_name": (", ".join(sorted(top_detail[(r.package, r.version)]["bins"]))
                               if (r.package, r.version) in obsolete_pkgs else r.package)}
             for r in top

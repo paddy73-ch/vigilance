@@ -24,6 +24,17 @@ document.addEventListener("alpine:init", () => {
       }
     },
 
+    // "Altpaket entfernen" / "Update": to the host (one) or the Hosts page filtered to the affected hosts
+    hostLink(p) {
+      const ids = p.host_ids || [];
+      if (ids.length === 1) return "/hosts/" + ids[0];
+      const what = (p.action === "remove" ? "Altpaket " : "Update für ") + (p.display_name || p.package);
+      return "/hosts?ids=" + ids.join(",") + "&for=" + encodeURIComponent(what);
+    },
+    hostLinkTitle(p) {
+      const n = (p.host_ids || []).length;
+      return n === 1 ? "Zum Host, dort steht der Befehl" : "Zu den " + n + " betroffenen Hosts";
+    },
     kernelText() {
       const ks = this.data.kernels;
       const names = ks.map((h) => h.name + " (CT " + h.vmid + ")").join(", ");

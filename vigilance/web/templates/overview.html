@@ -82,7 +82,8 @@
                 <a :href="'/vulnerabilities?fix=true&q=' + encodeURIComponent(p.package)"><span class="pkg" x-text="p.display_name || p.package"></span> <span class="ver mono muted" x-text="p.version"></span></a>
                 <span class="sev" :class="'sev-' + p.severity" x-text="V.sevLabel(p.severity)"></span>
                 <div class="meta">
-                  <span class="tag" :class="p.action === 'remove' ? 'tag-remove' : 'tag-upgrade'" x-text="p.action === 'remove' ? 'Altpaket entfernen' : 'Update'"></span>
+                  <a class="tag tag-link" :class="p.action === 'remove' ? 'tag-remove' : 'tag-upgrade'" :href="hostLink(p)" :title="hostLinkTitle(p)"
+                     x-text="p.action === 'remove' ? 'Altpaket entfernen' : 'Update'"></a>
                   <span x-text="V.plural(p.advisories, 'Lücke', 'Lücken')"></span>
                   <span x-text="V.plural(p.hosts, 'Host', 'Hosts')"></span>
                 </div>
