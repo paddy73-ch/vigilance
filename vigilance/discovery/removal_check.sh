@@ -7,12 +7,14 @@
 #   ##EXT <path>                         file under /usr/local or /opt (not managed by dpkg) references a library soname
 #   ##LIBS <n>                           number of shared libraries in the package (0: no usage check possible)
 #   ##AVAIL yes|no                       installed version still available from a package source (can be reinstalled)
-# Nothing is changed on the host: apt-get runs with -s (simulation), everything else only reads.
+# Nothing is changed on the host: apt-get runs with -s (simulation) and without its planner log,
+# everything else only reads.
 LC_ALL=C; export LC_ALL
 self_ns=$(readlink /proc/1/ns/mnt 2>/dev/null)
 for p in "$@"; do
   echo "##PKG $p"
-  out=$(apt-get -s -o Debug::NoLocking=1 purge "$p" 2>&1); rc=$?
+  # Dir::Log::Planner=/dev/null: even a simulation would otherwise rewrite /var/log/apt/eipp.log.xz
+  out=$(apt-get -s -o Debug::NoLocking=1 -o Dir::Log::Planner=/dev/null purge "$p" 2>&1); rc=$?
   if [ $rc -ne 0 ]; then
     echo "##SIMERR $(printf '%s' "$out" | grep -E '^E:' | head -n 2 | tr '\n' ' ')"
   else
