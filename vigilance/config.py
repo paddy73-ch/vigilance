@@ -20,6 +20,10 @@ class ProxmoxNodeConfig:
         self.ssh_user = ssh.get("user", "root")
         self.ssh_key_path = ssh.get("key_path")
         self.ssh_known_hosts = ssh.get("known_hosts")
+        # Scan the Proxmox host itself (packages, CVEs). Uses its own unprivileged user,
+        # not the root user that is used for the containers.
+        self.scan_host = bool(ssh.get("scan_host", False))
+        self.host_user = ssh.get("host_user", "vigilance-scan")
 
 
 class DiscoveryConfig:

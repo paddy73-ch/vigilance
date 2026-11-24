@@ -260,3 +260,58 @@ async def test_removal_risk_unknown_without_check(client):
     h = (await client.get(f"/api/hosts/{client.hosts['adguard'].id}")).json()
     risk = next(g for g in h["patchable_list"] if g["package"] == "glib2.0")["remedy"]["risk"]
     assert risk["status"] == "unknown"
+
+
+def test_removal_risk_kernel_and_unprivileged():
+    from vigilance.api.routes.views import removal_risk
+    pkg = {"would_remove": [], "in_use": [], "external": [], "error": None, "libraries": 0, "reinstallable": True}
+    check = {"checked_at": "x", "root": False, "kernel": "7.0.14-30-pve", "packages": {
+        "proxmox-kernel-7.0.14-30-pve-signed": {**pkg, "would_remove": ["proxmox-kernel-7.0.14-30-pve-signed"]},
+        "proxmox-kernel-7.0.14-29-pve-signed": {**pkg, "would_remove": ["proxmox-kernel-7.0.14-29-pve-signed"]},
+        "libfoo1": {**pkg, "would_remove": ["libfoo1"], "libraries": 2}}}
+    running = removal_risk(json.dumps(check), ["proxmox-kernel-7.0.14-30-pve-signed"])
+    assert running["status"] == "check" and running["running_kernel"] == ["proxmox-kernel-7.0.14-30-pve-signed"]
+    fallback = removal_risk(json.dumps(check), ["proxmox-kernel-7.0.14-29-pve-signed"])
+    assert fallback["status"] == "ok" and fallback["kernel"] is True and fallback["running_kernel"] == []
+    lib = removal_risk(json.dumps(check), ["libfoo1"])
+    assert lib["process_check_limited"] is True and lib["kernel"] is False
+
+
+@pytest.mark.asyncio
+async def test_proxmox_host_is_listed(client, any_engine):
+    from vigilance.database.models import ProxmoxNode
+    from sqlalchemy import select
+    maker = async_sessionmaker(any_engine, class_=AsyncSession, expire_on_commit=False)
+    async with maker() as db:
+        node = (await db.execute(select(ProxmoxNode))).scalar_one()
+        await crud.upsert_inventory(db, proxmox_node_id=node.id, vmid=0, name="pve", type="node", status="running")
+        await db.commit()
+    hosts = {h["name"]: h for h in (await client.get("/api/hosts")).json()}
+    assert hosts["pve"]["type"] == "node"
+
+
+@pytest.mark.asyncio
+async def test_node_host_scan_uses_own_user(any_engine, monkeypatch):
+    from vigilance.config import ProxmoxNodeConfig
+    from vigilance.discovery.orchestrator import DiscoveryOrchestrator, ScanResult
+    cfg = ProxmoxNodeConfig({"name": "pve", "url": "x", "ssh": {"host": "192.0.2.49", "user": "root",
+                                                                  "key_path": "/k", "scan_host": True}})
+    monkeypatch.setattr(type(settings), "proxmox_nodes", property(lambda self: [cfg]), raising=False)
+    maker = async_sessionmaker(any_engine, class_=AsyncSession, expire_on_commit=False)
+    async with maker() as db:
+        node = await crud.create_proxmox_node(db, name="pve", url="x", token_id="t", token_secret="s")
+        orch = DiscoveryOrchestrator(db)
+        seen = {}
+
+        async def fake(inventory, ssh_config, scan_run_id, result):
+            seen.update(ssh_config, inv=(inventory.type, inventory.vmid, inventory.name))
+        monkeypatch.setattr(orch, "_run_ssh_discovery", fake)
+        await orch._scan_node_host(node, 1, ScanResult())
+        assert seen["user"] == "vigilance-scan" and seen["host"] == "192.0.2.49"
+        assert seen["inv"] == ("node", 0, "pve")
+        # containers still use the configured (root) user
+        assert cfg.ssh_user == "root"
+        cfg.scan_host = False
+        seen.clear()
+        await orch._scan_node_host(node, 1, ScanResult())
+        assert seen == {}

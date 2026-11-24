@@ -216,6 +216,26 @@ Before suggesting a removal, each scan runs a read-only check on the host
 - ELF files under `/usr/local` and `/opt` that reference one of its sonames (not managed by dpkg, apt cannot see them)
 - `apt-cache policy`: whether the version is still in a package source, i.e. whether the removal can be undone
 
+### Scanning the Proxmox host
+
+The containers are scanned as root. The Proxmox host itself is optional and uses its own
+unprivileged user, so Vigilance gets no root access to the host:
+
+```bash
+# on the Proxmox host
+useradd --system --create-home --home-dir /var/lib/vigilance-scan --shell /bin/sh vigilance-scan
+passwd -l vigilance-scan
+install -d -m 700 -o vigilance-scan -g vigilance-scan /var/lib/vigilance-scan/.ssh
+PUB=$(pct exec <Vigilance-CT> -- docker exec vigilance cat /app/data/ssh/id_rsa.pub)
+echo "from=\"<Vigilance-IP>\",restrict $PUB" > /var/lib/vigilance-scan/.ssh/authorized_keys
+chown vigilance-scan: /var/lib/vigilance-scan/.ssh/authorized_keys; chmod 600 /var/lib/vigilance-scan/.ssh/authorized_keys
+```
+
+and in `config.yaml` under the node's `ssh:` set `scan_host: true` (`host_user` defaults to `vigilance-scan`).
+The host appears as "Proxmox-Host". Without root, the removal check cannot see processes of other
+users; the UI says so. Packages built by Proxmox (pve-*, proxmox-*) are not in the Debian advisory
+data, so findings cover the Debian packages on the host.
+
 Advisories for the same CVE (e.g. `DEBIAN-CVE-2026-1234` and `DSA-6000-1`) are shown and counted as one
 vulnerability. An exception for one of them covers all advisories of that CVE.
 

@@ -6,11 +6,15 @@
 #   ##USE <pid> <command>                running process (same mount namespace) maps a library of the package
 #   ##EXT <path>                         file under /usr/local or /opt (not managed by dpkg) references a library soname
 #   ##LIBS <n>                           number of shared libraries in the package (0: no usage check possible)
+#   ##NOROOT                             (once) not run as root: processes of other users cannot be checked
+#   ##KERNEL <release>                   (once) running kernel, from uname -r
 #   ##AVAIL yes|no                       installed version still available from a package source (can be reinstalled)
 # Nothing is changed on the host: apt-get runs with -s (simulation) and without its planner log,
 # everything else only reads.
 LC_ALL=C; export LC_ALL
 self_ns=$(readlink /proc/1/ns/mnt 2>/dev/null)
+[ "$(id -u)" = 0 ] || echo "##NOROOT"
+echo "##KERNEL $(uname -r)"
 for p in "$@"; do
   echo "##PKG $p"
   # Dir::Log::Planner=/dev/null: even a simulation would otherwise rewrite /var/log/apt/eipp.log.xz

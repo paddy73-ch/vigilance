@@ -13,7 +13,7 @@
       <tbody>
         <template x-for="h in running()" :key="h.id">
           <tr class="clickable" @click="location.href = '/hosts/' + h.id">
-            <td><a :href="'/hosts/' + h.id" class="pkg" x-text="h.name"></a> <span class="faint" x-text="'CT ' + h.vmid"></span></td>
+            <td><a :href="'/hosts/' + h.id" class="pkg" x-text="h.name"></a> <span class="faint" x-text="V.hostLabel(h)"></span></td>
             <td data-label="System" x-text="h.os || '–'"></td>
             <td data-label="Zustand"><span class="tag" :class="levelClass(h)" x-text="levelText(h)" :title="h.last_scan_error || ''"></span></td>
             <td class="num" data-label="Updates" x-text="h.upgrade_packages || '–'"></td>
@@ -33,7 +33,7 @@
         <tbody>
           <template x-for="h in stopped()" :key="h.id">
             <tr class="clickable" @click="location.href = '/hosts/' + h.id">
-              <td><a :href="'/hosts/' + h.id" class="pkg" x-text="h.name"></a> <span class="faint" x-text="'CT ' + h.vmid"></span></td>
+              <td><a :href="'/hosts/' + h.id" class="pkg" x-text="h.name"></a> <span class="faint" x-text="V.hostLabel(h)"></span></td>
               <td data-label="Behebbar (letzter Stand)" x-text="h.patchable ? V.plural(h.patchable, 'behebbarer Befund', 'behebbare Befunde') : 'keine Daten'"></td>
             </tr>
           </template>
