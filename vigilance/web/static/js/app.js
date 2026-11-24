@@ -161,6 +161,7 @@
       const path = (k) => points.map((p, i) => (i ? "L" : "M") + x(i).toFixed(1) + " " + y(p[k]).toFixed(1)).join(" ");
       return { patchable: path("patchable"), without_fix: path("without_fix"), fixed: path("fixed_total"), max };
     },
+    hostLabel(h) { return h.type === "node" ? "Proxmox-Host" : "CT " + h.vmid; },
     // ---- solution and removal risk (see /api remedy objects)
     replacementText(rem) {
       const r = rem.replacement;
@@ -181,14 +182,22 @@
           : "Vigilance prüft das beim nächsten Scan. Bis dahin zuerst mit apt-get -s purge simulieren.");
         return lines;
       }
+      const limited = "Laufende Programme anderer Benutzer konnten nicht geprüft werden, weil Vigilance hier ohne Root-Rechte prüft.";
+      const kernel = "Kernel: Ein älterer Kernel ist die Rückfallebene, falls der neue nicht startet. Erst entfernen, wenn der neue Kernel nach einem Neustart läuft.";
       if (risk.status === "ok") {
         lines.push("apt würde nur " + risk.would_remove.join(", ") + " entfernen" + when + ".");
-        if (risk.libraries_checked) lines.push("Kein laufendes Programm benutzt die alte Bibliothek, und nichts unter /usr/local oder /opt verweist darauf.");
+        if (risk.libraries_checked && !risk.process_check_limited) lines.push("Kein laufendes Programm benutzt die alte Bibliothek, und nichts unter /usr/local oder /opt verweist darauf.");
+        if (risk.libraries_checked && risk.process_check_limited) lines.push("Nichts unter /usr/local oder /opt verweist auf die alte Bibliothek.");
+        if (risk.process_check_limited && risk.libraries_checked) lines.push(limited);
+        if (risk.kernel) lines.push(kernel);
         return lines;
       }
+      (risk.running_kernel || []).forEach((k) => lines.push(k + " ist der laufende Kernel. Erst nach einem Neustart in einen neueren Kernel entfernen."));
       if (risk.extra.length) lines.push("apt würde zusätzlich entfernen, weil diese Pakete davon abhängen: " + risk.extra.join(", ") + ". Prüfe, ob du sie noch brauchst.");
       risk.in_use.forEach((u) => lines.push("Wird noch benutzt von PID " + u.pid + ": " + (u.command || "?") + ". Vermutlich seit dem Upgrade nicht neu gestartet. Es läuft nach dem Entfernen weiter; danach neu starten und prüfen."));
       if (risk.external.length) lines.push("Programme ausserhalb von apt verweisen auf die Bibliothek und starten danach vermutlich nicht mehr: " + risk.external.join(", ") + ".");
+      if (risk.process_check_limited && risk.libraries_checked) lines.push(limited);
+      if (risk.kernel && !(risk.running_kernel || []).length) lines.push(kernel);
       if (when) lines.push("Stand" + when + ".");
       return lines;
     },

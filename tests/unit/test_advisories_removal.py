@@ -77,3 +77,13 @@ def test_script_is_read_only():
     body = SCRIPT.replace("apt-get -s", "")
     for forbidden in (r"apt-get\s+(purge|remove|install)", r"\bdpkg\s+-[rPi]", r"(^|[\s;|&])rm\s", r"[^2]>\s*/(?!dev/null)"):
         assert not re.search(forbidden, body, re.M), forbidden
+
+
+def test_parse_header():
+    from vigilance.discovery.removal import parse_header
+    assert parse_header("##KERNEL 7.0.14-30-pve\n##PKG a\n##NOROOT") == {"root": True, "kernel": "7.0.14-30-pve"}
+    assert parse_header("##NOROOT\n##KERNEL 6.12\n##PKG a") == {"root": False, "kernel": "6.12"}
+
+
+def test_script_reports_root_and_kernel():
+    assert '[ "$(id -u)" = 0 ] || echo "##NOROOT"' in SCRIPT and "##KERNEL $(uname -r)" in SCRIPT

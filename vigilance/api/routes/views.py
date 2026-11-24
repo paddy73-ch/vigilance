@@ -185,6 +185,7 @@ async def newer_versions(db: AsyncSession, pairs: set) -> Dict[tuple, dict]:
     return out
 
 
+_KERNEL_RE = re.compile(r"(linux-image|proxmox-kernel|pve-kernel)-\d")
 _STEM_RE = re.compile(r"[a-z][a-z+.-]*?(?=[-.]?\d|$)")
 
 
@@ -214,7 +215,8 @@ def removal_risk(check_json: Optional[str], binaries: List[str]) -> dict:
         check = {}
     checked = check.get("packages") or {}
     risk = {"status": "unknown", "checked_at": check.get("checked_at"), "would_remove": [], "extra": [],
-            "in_use": [], "external": [], "errors": [], "not_reinstallable": [], "libraries_checked": False}
+            "in_use": [], "external": [], "errors": [], "not_reinstallable": [], "libraries_checked": False,
+            "process_check_limited": check.get("root") is False, "running_kernel": [], "kernel": False}
     if check.get("error"):
         risk["errors"].append(check["error"])
     missing = [b for b in binaries if b not in checked]
@@ -236,9 +238,13 @@ def removal_risk(check_json: Optional[str], binaries: List[str]) -> dict:
             risk["not_reinstallable"].append(b)
         if r.get("libraries"):
             risk["libraries_checked"] = True
+        if _KERNEL_RE.match(b):
+            risk["kernel"] = True
+            if check.get("kernel") and check["kernel"] in b:
+                risk["running_kernel"].append(b)
     if risk["errors"]:
         return risk
-    risk["status"] = "check" if (risk["extra"] or risk["in_use"] or risk["external"]) else "ok"
+    risk["status"] = "check" if (risk["extra"] or risk["in_use"] or risk["external"] or risk["running_kernel"]) else "ok"
     return risk
 
 
@@ -279,7 +285,7 @@ async def host_summaries(db: AsyncSession, inventory_id: Optional[int] = None) -
         .outerjoin(T, T.inventory_id == I.id)
         .outerjoin(F, F.discovered_tool_id == T.id)
         .outerjoin(C, C.id == F.cve_entry_id)
-        .where(I.type == "lxc")
+        .where(I.type.in_(["lxc", "node"]))
         .group_by(I.id)
     )
     if inventory_id is not None:

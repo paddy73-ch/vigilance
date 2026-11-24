@@ -65,6 +65,19 @@ def obsolete_binaries(packages: List[PackageInfo]) -> List[str]:
     return sorted(set(n for n in result if _PKG_NAME_RE.match(n)))
 
 
+def parse_header(output: str) -> dict:
+    """Host-wide facts printed before the first package: run as root? running kernel."""
+    header = {"root": True, "kernel": None}
+    for line in output.splitlines():
+        if line.startswith("##PKG "):
+            break
+        if line.strip() == "##NOROOT":
+            header["root"] = False
+        elif line.startswith("##KERNEL "):
+            header["kernel"] = line[9:].strip() or None
+    return header
+
+
 def parse_check_output(output: str, packages: List[str]) -> Dict[str, dict]:
     """Parse removal_check.sh output into {package: {would_remove, in_use, external, error}}."""
     def empty():
@@ -110,7 +123,7 @@ async def check_removal(host: str, port: int, user: str, key_path: str, known_ho
     if not res.stdout and not res.success:
         logger.warning("Removal check on %s failed: %s", host, res.stderr)
         return {"checked_at": checked_at, "packages": {}, "error": (res.stderr or "Prüfung fehlgeschlagen")[:300]}
-    return {"checked_at": checked_at, "packages": parse_check_output(res.stdout, packages)}
+    return {"checked_at": checked_at, **parse_header(res.stdout), "packages": parse_check_output(res.stdout, packages)}
 
 
 def dumps(result: dict) -> str:

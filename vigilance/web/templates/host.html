@@ -10,7 +10,7 @@
       <div class="page-head">
         <div>
           <h1 x-text="h.name"></h1>
-          <p class="muted" x-text="['CT ' + h.vmid, h.ip_address, h.os].filter(Boolean).join(', ')"></p>
+          <p class="muted" x-text="[V.hostLabel(h), h.ip_address, h.os].filter(Boolean).join(', ')"></p>
         </div>
         <div class="right">
           <p x-text="h.last_scan_at ? 'Letzter Scan ' + V.ago(h.last_scan_at) : 'Noch nicht gescannt'"></p>
@@ -20,7 +20,7 @@
 
       <template x-if="V.scanReason(h)">
         <div class="panel panel-pad"><h2 x-text="V.scanReason(h)"></h2>
-          <p class="muted mt-10" x-text="h.status !== 'running' ? 'Gestoppte Container werden nicht gescannt. Die Angaben unten stammen vom letzten erfolgreichen Scan.' : 'Vigilance konnte diesen Container beim letzten Scan nicht prüfen. Angaben unten stammen von früher, falls vorhanden.'"></p>
+          <p class="muted mt-10" x-text="h.status !== 'running' ? 'Gestoppte Container werden nicht gescannt. Die Angaben unten stammen vom letzten erfolgreichen Scan.' : 'Vigilance konnte diesen Host beim letzten Scan nicht prüfen. Angaben unten stammen von früher, falls vorhanden.'"></p>
         </div>
       </template>
 

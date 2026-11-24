@@ -110,6 +110,22 @@ class DiscoveryOrchestrator:
             for vtype, lxc in all_targets:
                 await self._process_inventory_target(node, vtype, lxc, scan_run_id, result)
 
+        await self._scan_node_host(node, scan_run_id, result)
+
+    async def _scan_node_host(self, node: ProxmoxNode, scan_run_id: int, result: ScanResult):
+        """Scan the Proxmox host itself (inventory type "node", vmid 0) if enabled in the config."""
+        node_config = next((c for c in settings.proxmox_nodes if c.name == node.name), None)
+        if not node_config or not node_config.scan_host or not node_config.ssh_host:
+            return
+        inventory = await crud.upsert_inventory(
+            self.db, proxmox_node_id=node.id, vmid=0, name=node.name, type="node",
+            status="running", ip_address=node_config.ssh_host,
+        )
+        ssh_config = self._get_ssh_config_for_target(node, inventory)
+        ssh_config["user"] = node_config.host_user
+        result.nodes_scanned += 1
+        await self._run_ssh_discovery(inventory, ssh_config, scan_run_id, result)
+
     async def _record_skipped(self, node: ProxmoxNode, lxc, status: str, error: Optional[str]):
         inventory = await crud.upsert_inventory(
             self.db,
