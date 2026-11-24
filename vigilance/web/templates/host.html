@@ -80,7 +80,7 @@
               <template x-for="a in (isOpen(g) ? g.advisories : [])" :key="a.finding_id">
                 <tr class="sub clickable" @click="$dispatch('open-vuln', { id: a.cve_entry_id })">
                   <td class="hide-sm"></td>
-                  <td colspan="2"><a href="#" @click.prevent x-text="a.label"></a> <span class="also" x-show="a.also.length" x-text="'auch ' + a.also.join(', ')"></span>
+                  <td colspan="2"><a href="#" @click.prevent x-text="a.label"></a><span class="info" tabindex="0" role="img" x-show="a.note" :aria-label="a.note" :data-tip="a.note" @click.stop>i</span> <span class="also" x-show="a.also.length" x-text="'auch ' + a.also.join(', ')"></span>
                     <span class="os-hint" x-show="a.os_hint" x-text="'laut Meldung nur ' + a.os_hint"></span></td>
                   <td><span class="sev" :class="'sev-' + a.severity" x-text="V.sevLabel(a.severity)"></span></td>
                   <td class="num" x-text="a.cvss ? 'CVSS ' + a.cvss : ''"></td>
@@ -97,16 +97,15 @@
           <details class="fold">
             <summary>Pakete aus fremden Paketquellen <span class="muted" x-text="'(' + h.foreign_sources.reduce((n, g) => n + g.uncovered.length + g.covered.length + (g.debian || []).length, 0) + ')'"></span></summary>
             <div class="panel-pad stack">
-              <p class="muted">Diese Pakete stammen nicht aus Debian. Wie gut Vigilance sie prüfen kann, hängt davon ab, ob es passende Sicherheitsdaten gibt.</p>
+              <p class="muted">Diese Pakete stammen nicht aus Debian. Wie gut Vigilance sie prüfen kann, hängt davon ab, ob es passende Sicherheitsdaten gibt. Mehr unter <a href="/admin/limits">Grenzen von Vigilance</a>.</p>
               <template x-for="g in h.foreign_sources" :key="g.source">
                 <div>
                   <p class="remedy-host" x-text="g.source"></p>
-                  <p x-show="g.covered.length"><span class="tag tag-ok">Geprüft</span>
+                  <p x-show="g.covered.length"><span class="tag tag-ok">Geprüft</span><span class="info" tabindex="0" role="img" x-show="V.notes.goModule" :aria-label="V.notes.goModule" :data-tip="V.notes.goModule" @click.stop>i</span>
                     <span x-text="g.covered.map((c) => c.package + ' (Go-Modul ' + c.module + ')').join(', ')"></span></p>
-                  <p class="mt-6" x-show="(g.debian || []).length"><span class="tag tag-upgrade">Nur Debian-Daten</span>
-                    <span class="faint" x-text="'Debian hat gleichnamige Pakete, installiert ist aber der Build von ' + g.source + '. Treffer und Fix-Versionen können deshalb ungenau sein: '"></span>
+                  <p class="mt-6" x-show="(g.debian || []).length"><span class="tag tag-upgrade">Nur Debian-Daten</span><span class="info" tabindex="0" role="img" x-show="V.notes.debianData" :aria-label="V.notes.debianData" :data-tip="V.notes.debianData" @click.stop>i</span>
                     <span class="ver" x-text="g.debian.length > 12 ? g.debian.slice(0, 12).join(', ') + ' und ' + (g.debian.length - 12) + ' weitere' : g.debian.join(', ')"></span></p>
-                  <p class="mt-6" x-show="g.uncovered.length"><span class="tag">Keine Sicherheitsdaten</span>
+                  <p class="mt-6" x-show="g.uncovered.length"><span class="tag">Keine Sicherheitsdaten</span><span class="info" tabindex="0" role="img" x-show="V.notes.noData" :aria-label="V.notes.noData" :data-tip="V.notes.noData" @click.stop>i</span>
                     <span class="ver" x-text="g.uncovered.length > 12 ? g.uncovered.slice(0, 12).join(', ') + ' und ' + (g.uncovered.length - 12) + ' weitere' : g.uncovered.join(', ')"></span></p>
                 </div>
               </template>
@@ -132,7 +131,7 @@
                   </tr>
                   <template x-for="a in (isOpen(g) ? g.advisories : [])" :key="a.finding_id">
                     <tr class="sub clickable" @click="$dispatch('open-vuln', { id: a.cve_entry_id })">
-                      <td><a href="#" @click.prevent x-text="a.label"></a> <span class="also" x-show="a.also.length" x-text="'auch ' + a.also.join(', ')"></span></td>
+                      <td><a href="#" @click.prevent x-text="a.label"></a><span class="info" tabindex="0" role="img" x-show="a.note" :aria-label="a.note" :data-tip="a.note" @click.stop>i</span> <span class="also" x-show="a.also.length" x-text="'auch ' + a.also.join(', ')"></span></td>
                       <td><span class="sev" :class="'sev-' + a.severity" x-text="V.sevLabel(a.severity)"></span></td>
                       <td class="num" x-text="a.cvss ? 'CVSS ' + a.cvss : ''"></td>
                       <td class="faint" x-text="sec.key === 'fixed' ? 'behoben ' + V.day(a.resolved_at) : (sec.key === 'not_affected' ? 'nur ' + a.only_on.join(', ') : (a.os_hint ? 'laut Meldung nur ' + a.os_hint : (a.urgency === 'unimportant' ? 'Debian: unwichtig' : '')))"></td>

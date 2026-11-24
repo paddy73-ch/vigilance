@@ -82,7 +82,7 @@
                 <tbody>
                   <template x-for="v in (open[key(p)].items || [])" :key="v.cve_entry_id">
                     <tr class="clickable" @click="$dispatch('open-vuln', { id: v.cve_entry_id })">
-                      <td><a href="#" @click.prevent x-text="v.label"></a><div class="also" x-show="v.also.length" x-text="'auch ' + v.also.join(', ')"></div></td>
+                      <td><a href="#" @click.prevent x-text="v.label"></a><span class="info" tabindex="0" role="img" x-show="v.note" :aria-label="v.note" :data-tip="v.note" @click.stop>i</span><div class="also" x-show="v.also.length" x-text="'auch ' + v.also.join(', ')"></div></td>
                       <td data-label="Schwere"><span class="sev" :class="'sev-' + v.severity" x-text="V.sevLabel(v.severity)"></span></td>
                       <td class="num" data-label="CVSS" x-text="v.cvss || '–'"></td>
                       <td data-label="Fix" class="ver" x-text="v.fixed_version || 'noch kein Fix'"></td>
@@ -106,7 +106,7 @@
       <tbody>
         <template x-for="v in items" :key="v.cve_entry_id">
           <tr class="clickable" @click="$dispatch('open-vuln', { id: v.cve_entry_id })">
-            <td><a href="#" @click.prevent x-text="v.label"></a><div class="also" x-show="v.also.length" x-text="'auch ' + v.also.join(', ')"></div><div class="faint" x-show="v.urgency === 'unimportant'">Debian: unwichtig</div><div class="os-hint" x-show="v.os_hint" x-text="'laut Meldung nur ' + v.os_hint"></div></td>
+            <td><a href="#" @click.prevent x-text="v.label"></a><span class="info" tabindex="0" role="img" x-show="v.note" :aria-label="v.note" :data-tip="v.note" @click.stop>i</span><div class="also" x-show="v.also.length" x-text="'auch ' + v.also.join(', ')"></div><div class="faint" x-show="v.urgency === 'unimportant'">Debian: unwichtig</div><div class="os-hint" x-show="v.os_hint" x-text="'laut Meldung nur ' + v.os_hint"></div></td>
             <td data-label="Schwere"><span class="sev" :class="'sev-' + v.severity" x-text="V.sevLabel(v.severity)"></span></td>
             <td class="num" data-label="CVSS" x-text="v.cvss || '–'"></td>
             <td data-label="Paket" class="pkg" x-text="v.package + (v.packages > 1 ? ' +' + (v.packages - 1) : '')"></td>

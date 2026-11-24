@@ -202,6 +202,12 @@ docker compose exec -u vigilance vigilance vigilance ssh-key-rotate
 
 Reading needs no login; every change needs the API token ("Bearbeiten" in the header).
 
+### Limitations
+
+What Vigilance does not see, or only judges roughly, is described in
+[docs/LIMITATIONS.md](docs/LIMITATIONS.md) (German). The same text is shown in the UI under
+Verwaltung, Grenzen; findings from less precise sources carry an (i) with the specific limitation.
+
 ### Solutions and removal check
 
 Every finding with a fix shows a solution: an update command, or - for an older version that stayed

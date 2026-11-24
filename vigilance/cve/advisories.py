@@ -48,7 +48,7 @@ def _rank(row: dict) -> tuple:
 
 
 def merge_advisories(rows: Iterable[dict], max_fields: Sequence[str] = (),
-                     fill_fields: Sequence[str] = ("os_hint",)) -> List[dict]:
+                     fill_fields: Sequence[str] = ("os_hint", "note")) -> List[dict]:
     """Merge advisory rows that describe the same CVE.
 
     Each row needs "id" and "upstream" (list). Returned rows get "label" (the CVE, or the
