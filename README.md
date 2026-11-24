@@ -142,6 +142,7 @@ For production, put behind a reverse proxy (nginx, Traefik, Caddy) with authenti
 | `VIGILANCE_GOTIFY_URL` | Gotify server URL | - |
 | `VIGILANCE_GOTIFY_TOKEN` | Gotify application token | - |
 | `VIGILANCE_GOTIFY_MIN_SEVERITY` | Minimum severity for notifications | `HIGH` |
+| `VIGILANCE_PUBLIC_URL` | Address of the UI as a browser sees it; used for the link in notifications | - |
 | `VIGILANCE_GOTIFY_DIGEST_MODE` | Bundle notifications | `false` |
 | `VIGILANCE_AUTH_MODE` | `proxy`, `builtin`, or `both` | `proxy` |
 | `VIGILANCE_API_TOKEN` | API token for write access | - |
@@ -236,7 +237,8 @@ skipped and why, and what `apt-get -s` says would change.
 
 Containers are changed as root. The Proxmox host only alone, with an explicit confirmation and a
 sudo rule for apt-get (see "Scanning the Proxmox host"); VMs never. "Kernel aufräumen" removes kernel
-packages from a container (never loaded there). One batch runs at a time; output and exit code of every run are kept
+packages from a container (never loaded there). One batch runs at a time. Within a batch up to 4 containers run in parallel; a container with
+apt-cacher-ng runs first and alone, because the others may download through it; output and exit code of every run are kept
 (Verwaltung, Aktionen), and a scan starts afterwards. Each scan also records which newer versions the
 package sources offer (`apt list --upgradable`, without `apt update`), so a fix that apt cannot
 install is shown as such instead of a command that does nothing.

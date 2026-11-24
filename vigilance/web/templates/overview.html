@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block title %}Übersicht{% endblock %}
-{% block page_script %}<script defer src="/static/js/pages/overview.js?v={{ asset_version }}"></script>{% endblock %}
+{% block page_script %}<script defer src="/static/js/actions.js?v={{ asset_version }}"></script><script defer src="/static/js/pages/overview.js?v={{ asset_version }}"></script>{% endblock %}
 {% block content %}
 <div x-data="overview" x-cloak>
   <div class="status-strip" aria-live="polite">
@@ -31,6 +31,17 @@
           <div class="fact"><a href="/admin/exceptions"><b x-text="V.n(k.suppressed)"></b></a><span>als Ausnahme markiert</span></div>
         </div>
       </section>
+
+      <template x-if="data.kernels.length">
+        <section class="panel notice-row">
+          <div class="grow">
+            <h2>Überflüssige Kernel-Pakete</h2>
+            <p class="muted" x-text="kernelText()"></p>
+            <p class="faint" x-show="kernelExtra()" x-text="kernelExtra()"></p>
+          </div>
+          <button class="btn btn-primary" @click="$dispatch('open-actions', { kind: 'kernel_cleanup', hostIds: data.kernels.map((h) => h.id), title: V.plural(data.kernels.length, 'Container', 'Container') })">Kernel entfernen</button>
+        </section>
+      </template>
 
       <section class="panel">
         <div class="panel-head">
@@ -106,4 +117,5 @@
     </div>
   </template>
 </div>
+{% include "_actions.html" %}
 {% endblock %}

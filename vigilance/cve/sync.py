@@ -251,6 +251,18 @@ class CVESyncOrchestrator:
             return {"status": "error", "error": error_msg,
                     "duration": (datetime.utcnow() - start_time).total_seconds()}
 
+    async def _load_for_notification(self, ids):
+        from sqlalchemy import select
+        from sqlalchemy.orm import selectinload
+        from vigilance.database.models import DiscoveredTool, Inventory, VulnerabilityFinding
+        rows = await self.db.execute(
+            select(VulnerabilityFinding).where(VulnerabilityFinding.id.in_(ids)).options(
+                selectinload(VulnerabilityFinding.cve),
+                selectinload(VulnerabilityFinding.tool).selectinload(DiscoveredTool.inventory)
+                .selectinload(Inventory.node),
+            ).execution_options(populate_existing=True))
+        return list(rows.scalars().all())
+
     async def _notify(self, stats: MatchStats):
         """Notify new findings; many at once (e.g. first run) are sent as one summary."""
         if not stats or not stats.new_findings:
@@ -261,6 +273,11 @@ class CVESyncOrchestrator:
             return
         relevant = [f for f in stats.new_findings
                     if notif.severity_meets_threshold(f.cve.severity or "NONE", config.min_severity)]
+        if not relevant:
+            return
+        # The message reads tool -> inventory -> node. Those relations are not loaded on the
+        # objects from the match step, and a lazy load in async code fails (MissingGreenlet).
+        relevant = await self._load_for_notification([f.id for f in relevant])
         if len(relevant) > MAX_INDIVIDUAL_NOTIFICATIONS and not config.digest_mode:
             by_sev: Dict[str, int] = {}
             hosts = set()

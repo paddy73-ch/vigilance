@@ -11,6 +11,7 @@ document.addEventListener("alpine:init", () => {
       await this.load();
       // refresh every minute; every 5 s while a scan is running
       this.timer = setInterval(() => this.load(), 60000);
+      window.addEventListener("vigilance-changed", () => this.load());
     },
 
     async load() {
@@ -23,6 +24,17 @@ document.addEventListener("alpine:init", () => {
       }
     },
 
+    kernelText() {
+      const ks = this.data.kernels;
+      const names = ks.map((h) => h.name + " (CT " + h.vmid + ")").join(", ");
+      return "Ein Container nutzt immer den Kernel des Proxmox-Hosts; Kernel-Pakete darin werden nie geladen, belegen aber Platz und können Befunde erzeugen. Betroffen: " + names + ".";
+    },
+    kernelExtra() {
+      const ex = this.data.kernels.filter((h) => h.extra.length);
+      if (!ex.length) return "";
+      const list = ex.map((h) => (h.extra.length > 1 ? "die Pakete " : "das Paket ") + h.extra.join(", ") + " in CT " + h.vmid).join("; ");
+      return "Beim Entfernen fällt zusätzlich " + list + " weg. Die Vorschau zeigt alles, bevor etwas läuft.";
+    },
     active() { return (this.data ? this.data.hosts : []).filter((h) => h.level !== "stopped"); },
     stopped() { return (this.data ? this.data.hosts : []).filter((h) => h.level === "stopped"); },
 

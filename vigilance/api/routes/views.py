@@ -171,6 +171,20 @@ def kernel_section(inv) -> Optional[dict]:
             "remnants": [p["name"] for p in info["packages"] if p["status"] == "rc"]}
 
 
+async def kernel_hosts(db: AsyncSession) -> List[dict]:
+    """Running containers with kernel packages (never loaded in an LXC), for the overview."""
+    rows = (await db.execute(
+        select(I).where(I.type == "lxc", I.status == "running", I.removal_check.isnot(None)).order_by(I.vmid)
+    )).scalars().all()
+    out = []
+    for inv in rows:
+        k = kernel_section(inv)
+        if k:
+            out.append({"id": inv.id, "name": inv.name, "vmid": inv.vmid, "installed": len(k["installed"]),
+                        "remnants": len(k["remnants"]), "extra": k.get("extra") or []})
+    return out
+
+
 def upgrade_command(binaries: List[str]) -> str:
     return "apt-get update && apt-get install --only-upgrade " + " ".join(sorted(binaries))
 
@@ -604,6 +618,7 @@ async def overview(db: AsyncSession = Depends(get_db), _: Optional[User] = Depen
         "hosts": hosts,
         "hosts_needing_attention": sum(1 for h in hosts if h["level"] in ("critical", "warning")),
         "hosts_unknown": sum(1 for h in hosts if h["level"] == "unknown"),
+        "kernels": await kernel_hosts(db),
         "top_packages": [
             {"package": r.package, "version": r.version, "severity": _sev(r.rank),
              "advisories": len(merge_advisories(top_detail[(r.package, r.version)]["adv"].values())),

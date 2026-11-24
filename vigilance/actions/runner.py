@@ -30,7 +30,7 @@ from typing import Dict, List, Optional, Sequence
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from vigilance.database.models import ActionRun, Inventory, ProxmoxNode
+from vigilance.database.models import ActionRun, DiscoveredTool, Inventory, ProxmoxNode
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +46,7 @@ SIM_TIMEOUT = 180
 OUTPUT_LIMIT = 200_000
 
 _lock = asyncio.Lock()
+PARALLEL = 4  # containers changed at the same time in one batch
 _starting = False
 _tasks: set = set()
 
@@ -313,47 +314,75 @@ async def start_batch(db: AsyncSession, inventories: List[Inventory], kind: str,
 
 
 async def _execute(batch_id: str):
+    """Run a batch: hosts with apt-cacher-ng first and alone (the others may download through it),
+    then the rest in parallel, at most PARALLEL at a time. Each run has its own DB session."""
     from vigilance.core.scheduler import trigger_scan_now
     from vigilance.database.base import async_session_maker
 
     async with _lock:
         async with async_session_maker() as db:
             runs = (await db.execute(
-                select(ActionRun).where(ActionRun.batch_id == batch_id, ActionRun.status == "queued")
-                .order_by(ActionRun.id)
-            )).scalars().all()
-            changed = False
-            for run in runs:
-                inv = await db.get(Inventory, run.inventory_id) if run.inventory_id else None
-                reason = blocked_reason(inv, run.kind) if inv else "Host nicht mehr vorhanden."
-                if reason:  # checked again right before anything runs
-                    run.status, run.output = "skipped", reason
-                    await db.commit()
-                    continue
-                run.status, run.started_at = "running", datetime.utcnow()
-                await db.commit()
-                try:
-                    target = await _ssh_target(db, inv)
-                    body = script(json.loads(run.commands))
-                    if inv.type == "node":
-                        res = await _run_detached(target, body, EXEC_TIMEOUT)
-                    else:
-                        res = await _run(target, body, EXEC_TIMEOUT)
-                    out = res.stdout or res.stderr or ""
-                    run.output = out[-OUTPUT_LIMIT:]
-                    run.exit_code = res.exit_code
-                    run.status = "ok" if res.exit_code == 0 else "failed"
-                    changed = True
-                except Exception as exc:  # keep going with the next host
-                    logger.exception("Action on %s failed", run.host_name)
-                    run.status, run.output = "failed", f"{type(exc).__name__}: {exc}"
-                run.finished_at = datetime.utcnow()
-                await db.commit()
+                select(ActionRun.id, ActionRun.inventory_id).where(
+                    ActionRun.batch_id == batch_id, ActionRun.status == "queued").order_by(ActionRun.id)
+            )).all()
+            inv_ids = [r.inventory_id for r in runs if r.inventory_id]
+            proxies = set((await db.execute(
+                select(DiscoveredTool.inventory_id).where(
+                    DiscoveredTool.inventory_id.in_(inv_ids), DiscoveredTool.tool_name == "apt-cacher-ng")
+            )).scalars().all()) if inv_ids else set()
+        first = [r.id for r in runs if r.inventory_id in proxies]
+        rest = [r.id for r in runs if r.inventory_id not in proxies]
+
+        changed = False
+        for run_id in first:
+            changed |= await _execute_run(run_id)
+        sem = asyncio.Semaphore(max(1, PARALLEL))
+
+        async def bounded(run_id):
+            async with sem:
+                return await _execute_run(run_id)
+
+        changed |= any(await asyncio.gather(*(bounded(r) for r in rest)))
     if changed:
         try:
             await trigger_scan_now()
         except Exception:
             logger.exception("Scan after actions could not be started")
+
+
+async def _execute_run(run_id: int) -> bool:
+    """Execute one queued run. Returns True if commands ran (successful or not)."""
+    from vigilance.database.base import async_session_maker
+
+    async with async_session_maker() as db:
+        run = await db.get(ActionRun, run_id)
+        inv = await db.get(Inventory, run.inventory_id) if run.inventory_id else None
+        reason = blocked_reason(inv, run.kind) if inv else "Host nicht mehr vorhanden."
+        if reason:  # checked again right before anything runs
+            run.status, run.output = "skipped", reason
+            await db.commit()
+            return False
+        run.status, run.started_at = "running", datetime.utcnow()
+        await db.commit()
+        changed = False
+        try:
+            target = await _ssh_target(db, inv)
+            body = script(json.loads(run.commands))
+            if inv.type == "node":
+                res = await _run_detached(target, body, EXEC_TIMEOUT)
+            else:
+                res = await _run(target, body, EXEC_TIMEOUT)
+            out = res.stdout or res.stderr or ""
+            run.output = out[-OUTPUT_LIMIT:]
+            run.exit_code = res.exit_code
+            run.status = "ok" if res.exit_code == 0 else "failed"
+            changed = True
+        except Exception as exc:  # the other hosts carry on
+            logger.exception("Action on %s failed", run.host_name)
+            run.status, run.output = "failed", f"{type(exc).__name__}: {exc}"
+        run.finished_at = datetime.utcnow()
+        await db.commit()
+        return changed
 
 
 async def mark_interrupted(db: AsyncSession) -> int:

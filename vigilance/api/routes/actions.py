@@ -54,7 +54,7 @@ def _run_dict(r: ActionRun, with_output: bool = True) -> dict:
 @router.post("/actions/preview")
 async def preview(body: ActionRequest, db: AsyncSession = Depends(get_db), _: User = Depends(require_write_access)):
     """What would run, what is skipped, and what apt would change (simulation, changes nothing)."""
-    return {"kind": body.kind, "busy": runner.is_busy(),
+    return {"kind": body.kind, "busy": runner.is_busy(), "parallel": runner.PARALLEL,
             "hosts": await runner.preview(db, await _targets(db, body.host_ids), body.kind)}
 
 

@@ -276,3 +276,41 @@ async def test_mark_interrupted(any_engine):
         await db.commit()
         run = (await db.execute(select(ActionRun))).scalar_one()
         assert run.status == "interrupted"
+
+
+@pytest.mark.asyncio
+async def test_batch_runs_parallel_after_apt_proxy(client, any_engine, monkeypatch):
+    """Hosts with apt-cacher-ng run first and alone; the rest in parallel, at most PARALLEL at once."""
+    maker = async_sessionmaker(any_engine, class_=AsyncSession, expire_on_commit=False)
+    calls, scans = [], []
+    _patch_exec(monkeypatch, maker, calls, scans)
+    async with maker() as db:
+        node_id = client.hosts["adguard"].proxmox_node_id
+        extra = {}
+        for vmid, name in [(104, "cache"), (120, "web1"), (121, "web2")]:
+            extra[name] = await crud.upsert_inventory(db, proxmox_node_id=node_id, vmid=vmid, name=name, type="lxc",
+                                                      status="running", last_scan_status="ok", os_id="debian")
+        await crud.upsert_discovered_tool(db, inventory_id=extra["cache"].id, source_type="ssh_pkg",
+                                          tool_name="apt-cacher-ng", detected_version="3.7", package_manager="dpkg")
+        await db.commit()
+
+    events, active, peak = [], [0], [0]
+
+    async def slow_run(target, body, timeout):
+        active[0] += 1
+        peak[0] = max(peak[0], active[0])
+        events.append(("start", target["host"]))
+        await asyncio.sleep(0.05)
+        events.append(("end", target["host"]))
+        active[0] -= 1
+        return Res("ok")
+
+    monkeypatch.setattr(runner, "_run", slow_run)
+    monkeypatch.setattr(runner, "PARALLEL", 2)
+    ids = [client.hosts["adguard"].id, client.hosts["dev"].id] + [h.id for h in extra.values()]
+    r = await client.post("/api/actions", json={"kind": "full_upgrade", "host_ids": ids}, headers=AUTH)
+    runs = await _wait_batch(client, r.json()["batch_id"])
+    assert {h: x["status"] for h, x in runs.items()} == {n: "ok" for n in ["adguard", "dev", "cache", "web1", "web2"]}
+    assert events[:2] == [("start", "cache"), ("end", "cache")]  # the apt proxy alone, before everyone else
+    assert peak[0] == 2  # parallel, but not more than PARALLEL
+    assert scans == [1]

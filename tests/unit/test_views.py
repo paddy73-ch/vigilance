@@ -345,3 +345,20 @@ async def test_upgrade_not_in_sources_has_no_command(client, any_engine):
     assert h["upgrade_command"] is None
     p = next(i for i in (await client.get("/api/packages?fix=true")).json()["items"] if i["package"] == "curl")
     assert p["remedy"]["availability"]["missing_on"] == ["adguard"]
+
+
+@pytest.mark.asyncio
+async def test_overview_lists_containers_with_kernel_packages(client, any_engine):
+    from vigilance.database.models import Inventory
+    maker = async_sessionmaker(any_engine, class_=AsyncSession, expire_on_commit=False)
+    kernel = {"packages": [{"status": "ii", "name": "linux-image-6.12.118+deb13-rt-amd64"},
+                           {"status": "rc", "name": "linux-image-6.12.105+deb13-rt-amd64"}],
+              "would_remove": ["wireguard"], "extra": ["wireguard"], "running_kernel": "7.0.14-30-pve", "error": None}
+    async with maker() as db:
+        for name in ("dev", "box"):  # box is stopped and must not be listed
+            inv = await db.get(Inventory, client.hosts[name].id)
+            inv.removal_check = json.dumps({"packages": {}, "kernel": kernel})
+        await db.commit()
+    ks = (await client.get("/api/overview")).json()["kernels"]
+    assert ks == [{"id": client.hosts["dev"].id, "name": "dev", "vmid": 110, "installed": 1, "remnants": 1,
+                   "extra": ["wireguard"]}]
