@@ -28,6 +28,10 @@
                 <h3>Beschreibung</h3>
                 <p class="desc" x-text="item.description"></p>
               </section>
+              <section x-show="item.os_hint">
+                <p class="note" x-text="'Laut Meldung betrifft das nur ' + item.os_hint + '. Deine Hosts laufen unter Linux. Vigilance blendet das nicht selbst aus, weil die Sicherheitsdaten das Betriebssystem nicht strukturiert angeben.'"></p>
+                <button class="btn mt-10" x-show="!showForm" @click="exceptionForOs()">Als Ausnahme festhalten</button>
+              </section>
               <section x-show="remedies().length">
                 <h3>Lösung</h3>
                 <template x-for="grp in remedies()" :key="grp.key">
@@ -47,7 +51,7 @@
                         <td data-label="Host"><a :href="'/hosts/' + a.host_id" x-text="a.host"></a></td>
                         <td data-label="Paket"><span class="pkg" x-text="a.display_name"></span><div class="ver" x-text="a.installed_version"></div></td>
                         <td data-label="Fix"><span class="ver" x-text="a.fixed_version || 'noch kein Fix'"></span><div class="faint" x-show="a.urgency === 'unimportant'">Debian: unwichtig</div></td>
-                        <td data-label="Status" x-text="statusLabel(a.status)"></td>
+                        <td data-label="Status"><span x-text="statusLabel(a.status)"></span><div class="faint" x-show="a.only_on && a.only_on.length" x-text="'nur ' + (a.only_on || []).join(', ')"></div></td>
                       </tr>
                     </template>
                   </tbody>

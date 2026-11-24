@@ -249,8 +249,14 @@ checked against the Go vulnerability data on OSV instead, by their Go module:
 
 `docker-ce` is deliberately not mapped: the advisories on `github.com/docker/docker` carry no fixed
 version (every release would match), and Docker 29 releases do not map onto the
-`github.com/moby/moby/v2` module versions. Go advisories do not say which operating system is
-affected, so a FreeBSD-only issue can show up for a Linux host; use an exception for those.
+`github.com/moby/moby/v2` module versions. Operating-system restrictions: reviewed
+entries of the Go vulnerability database list the affected systems (`goos`). If that list does
+not include linux, the finding gets the status "Anderes OS" (filter on the Schwachstellen page,
+fold in the host detail) instead of "open"; a GHSA record inherits this from the GO record of the
+same CVE. Many entries lack the field (e.g. unreviewed ones such as GO-2023-1671 for
+CVE-2023-28436, FreeBSD only). If only the title or description names another system, Vigilance
+shows "laut Meldung nur FreeBSD" with a button to record an exception; it does not hide those
+findings by itself.
 
 ### Scanning the Proxmox host
 

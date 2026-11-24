@@ -29,7 +29,11 @@ document.addEventListener("alpine:init", () => {
       return V.groupRemedies(list);
     },
     host(url) { try { return new URL(url).host; } catch (e) { return ""; } },
-    statusLabel(s) { return { open: "offen", fixed: "behoben", suppressed: "Ausnahme" }[s] || s; },
+    statusLabel(s) { return { open: "offen", fixed: "behoben", suppressed: "Ausnahme", not_affected: "nicht betroffen" }[s] || s; },
+    exceptionForOs() {
+      this.form.reason = "Betrifft laut Meldung nur " + this.item.os_hint + ". Die Hosts laufen unter Linux.";
+      this.showForm = true;
+    },
 
     async createException() {
       this.saving = true;

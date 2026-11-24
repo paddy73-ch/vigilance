@@ -25,7 +25,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from vigilance.cve.matcher import _extract_package_from_cpe, match_tool_against_cves
-from vigilance.cve.advisories import same_vulnerability
+from vigilance.cve.advisories import same_vulnerability, vuln_key
+from vigilance.cve.platforms import not_for_host, restriction_map
 from vigilance.database.models import CVEEntry, DiscoveredTool, Suppression, VulnerabilityFinding
 
 logger = logging.getLogger(__name__)
@@ -148,6 +149,10 @@ async def match_findings(
         for name in _range_repo_names(cve):
             by_name.setdefault(name, []).append(cve)
 
+    # Advisories restricted to other operating systems (Go "goos"); a GHSA record inherits the
+    # restriction of the GO-… record for the same CVE
+    os_restrictions = restriction_map(cves, lambda c: vuln_key(c.cve_id, c.upstream_ids) or c.cve_id)
+
     suppressions = (await db.execute(select(Suppression))).scalars().all()
     existing: Dict[Tuple[int, int], VulnerabilityFinding] = {
         (f.discovered_tool_id, f.cve_entry_id): f
@@ -161,6 +166,10 @@ async def match_findings(
             return
         seen.add(key)
         status = "suppressed" if _suppressed(suppressions, cve, tool, now) else "open"
+        systems = os_restrictions.get((vuln_key(cve.cve_id, cve.upstream_ids) or cve.cve_id, details.get("package")))
+        if not_for_host(systems):
+            status = "not_affected"  # e.g. FreeBSD only; the hosts run Linux
+            details = {**details, "goos": sorted(systems)}
         finding = existing.get(key)
         if finding is None:
             finding = VulnerabilityFinding(
@@ -241,7 +250,7 @@ async def match_findings(
     # 3. Lifecycle: no longer matching -> fixed (only for sources that synced successfully)
     source_of = {c.id: c.source for c in cves}
     for key, finding in existing.items():
-        if key in seen or finding.status not in ("open", "suppressed", "unknown_version"):
+        if key in seen or finding.status not in ("open", "suppressed", "unknown_version", "not_affected"):
             continue
         if source_of.get(finding.cve_entry_id) not in active_sources:
             continue

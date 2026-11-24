@@ -80,7 +80,8 @@
               <template x-for="a in (isOpen(g) ? g.advisories : [])" :key="a.finding_id">
                 <tr class="sub clickable" @click="$dispatch('open-vuln', { id: a.cve_entry_id })">
                   <td class="hide-sm"></td>
-                  <td colspan="2"><a href="#" @click.prevent x-text="a.label"></a> <span class="also" x-show="a.also.length" x-text="'auch ' + a.also.join(', ')"></span></td>
+                  <td colspan="2"><a href="#" @click.prevent x-text="a.label"></a> <span class="also" x-show="a.also.length" x-text="'auch ' + a.also.join(', ')"></span>
+                    <span class="os-hint" x-show="a.os_hint" x-text="'laut Meldung nur ' + a.os_hint"></span></td>
                   <td><span class="sev" :class="'sev-' + a.severity" x-text="V.sevLabel(a.severity)"></span></td>
                   <td class="num" x-text="a.cvss ? 'CVSS ' + a.cvss : ''"></td>
                   <td class="ver" x-text="a.fixed_version ? 'Fix ' + a.fixed_version : ''"></td>
@@ -131,7 +132,7 @@
                       <td><a href="#" @click.prevent x-text="a.label"></a> <span class="also" x-show="a.also.length" x-text="'auch ' + a.also.join(', ')"></span></td>
                       <td><span class="sev" :class="'sev-' + a.severity" x-text="V.sevLabel(a.severity)"></span></td>
                       <td class="num" x-text="a.cvss ? 'CVSS ' + a.cvss : ''"></td>
-                      <td class="faint" x-text="sec.key === 'fixed' ? 'behoben ' + V.day(a.resolved_at) : (a.urgency === 'unimportant' ? 'Debian: unwichtig' : '')"></td>
+                      <td class="faint" x-text="sec.key === 'fixed' ? 'behoben ' + V.day(a.resolved_at) : (sec.key === 'not_affected' ? 'nur ' + a.only_on.join(', ') : (a.os_hint ? 'laut Meldung nur ' + a.os_hint : (a.urgency === 'unimportant' ? 'Debian: unwichtig' : '')))"></td>
                     </tr>
                   </template>
                 </tbody>

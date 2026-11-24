@@ -345,3 +345,4 @@ pre.log { margin: 0; padding: 10px 12px; max-height: 340px; overflow: auto; back
 .action-bar p { flex: 1 1 260px; }
 .unavail { margin-top: 6px; padding: 8px 12px; border-left: 3px solid var(--high); background: var(--high-soft); border-radius: var(--radius); font-size: 14px; }
 .note { padding: 8px 12px; border-radius: var(--radius); background: var(--high-soft); color: var(--high); font-size: 14px; }
+.os-hint { display: inline-block; margin-left: 6px; font-size: 13px; color: var(--high); }

@@ -76,6 +76,7 @@ document.addEventListener("alpine:init", () => {
     actionText(p) {
       if (this.f.status === "fixed") return "Behoben";
       if (this.f.status === "suppressed") return "Ausnahme";
+      if (this.f.status === "not_affected") return "Anderes OS";
       if (!p.fix_available) return "Kein Fix";
       return p.action === "remove" ? "Entfernen" : "Update";
     },

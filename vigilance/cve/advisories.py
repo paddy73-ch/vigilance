@@ -47,13 +47,15 @@ def _rank(row: dict) -> tuple:
     return (SEVERITY_RANK.get((row.get("severity") or "NONE").upper(), 0), row.get("cvss") or 0)
 
 
-def merge_advisories(rows: Iterable[dict], max_fields: Sequence[str] = ()) -> List[dict]:
+def merge_advisories(rows: Iterable[dict], max_fields: Sequence[str] = (),
+                     fill_fields: Sequence[str] = ("os_hint",)) -> List[dict]:
     """Merge advisory rows that describe the same CVE.
 
     Each row needs "id" and "upstream" (list). Returned rows get "label" (the CVE, or the
     advisory ID if there is none) and "also" (the other advisory IDs merged into this row).
     The row with the highest severity/CVSS represents the group; numeric fields listed in
-    max_fields take the maximum of the group. An advisory covering several CVEs is folded
+    max_fields take the maximum of the group; fill_fields take the first value any member has.
+    An advisory covering several CVEs is folded
     into those rows if every one of its CVEs is listed, otherwise it stays on its own.
     """
     keyed: dict = {}
@@ -72,11 +74,15 @@ def merge_advisories(rows: Iterable[dict], max_fields: Sequence[str] = ()) -> Li
             new = {**row, "label": key, "also": merged_ids}
             for f in max_fields:
                 new[f] = _max(row.get(f), cur.get(f))
+            for f in fill_fields:
+                new[f] = row.get(f) or cur.get(f)
             keyed[key] = new
         else:
             cur["also"].append(row["id"])
             for f in max_fields:
                 cur[f] = _max(row.get(f), cur.get(f))
+            for f in fill_fields:
+                cur[f] = cur.get(f) or row.get(f)
     out = list(keyed.values())
     for row in bundles:
         cves = cves_of("", row.get("upstream"))
