@@ -103,11 +103,12 @@ async def send_gotify_message(
             response.raise_for_status()
             return True, None
     except httpx.ConnectError as e:
-        return False, f"Connection failed: {e}"
+        return False, f"Keine Verbindung: {e}"
     except httpx.TimeoutException as e:
         return False, f"Timeout: {e}"
     except httpx.HTTPStatusError as e:
-        return False, f"HTTP {e.response.status_code}: {e.response.text}"
+        hint = {401: " (App-Token falsch?)", 403: " (App-Token ohne Rechte?)", 404: " (Adresse falsch?)"}.get(e.response.status_code, "")
+        return False, f"HTTP {e.response.status_code}{hint}: {e.response.text[:200]}"
     except Exception as e:
         logger.error(f"Failed to send Gotify notification: {e}")
         return False, f"Error: {type(e).__name__}: {e}"
@@ -206,30 +207,27 @@ async def get_digest_queue() -> List[dict]:
 
 
 async def send_test_gotify(url: Optional[str] = None, token: Optional[str] = None) -> tuple[bool, Optional[str]]:
-    if not settings.notifications or not settings.notifications.gotify:
-        return False, "Gotify not configured in settings"
-
-    config = settings.notifications.gotify
-    # Use provided url/token for testing, fallback to configured values
-    test_url = url or config.url
-    test_token = token or config.token
-    
+    """Send a test message. Empty url/token = the configured values. The stored token is only used
+    for the configured server: for another address the token has to be entered, so it cannot be
+    sent to a server it does not belong to."""
+    from vigilance.core.runtime_settings import gotify_config
+    config = gotify_config()
+    configured_url = (config.url or "").rstrip("/")
+    test_url = (url or "").strip().rstrip("/") or configured_url
+    test_token = (token or "").strip()
+    if not test_token:
+        if test_url != configured_url:
+            return False, "Für eine andere Adresse als die gespeicherte bitte den App-Token eingeben."
+        test_token = config.token
     if not test_url or not test_token:
-        return False, "No URL or token provided (and none configured)"
+        return False, "Adresse oder App-Token fehlt."
 
-    test_config = GotifyConfig(
-        enabled=True,
-        url=test_url,
-        token=test_token,
-        min_severity=config.min_severity,
-        digest_mode=config.digest_mode,
-        digest_interval_minutes=config.digest_interval_minutes,
-    )
-    
+    test_config = GotifyConfig(enabled=True, url=test_url, token=test_token, min_severity=config.min_severity,
+                               digest_mode=config.digest_mode, digest_interval_minutes=config.digest_interval_minutes)
     return await send_gotify_message(
         config=test_config,
-        title="[Vigilance] Test Notification",
-        message="This is a test message from Vigilance. If you see this, Gotify integration is working!",
+        title="[Vigilance] Testnachricht",
+        message="Testnachricht von Vigilance. Wenn du sie siehst, funktionieren die Benachrichtigungen.",
         priority=5,
         extras={"client::display": {"contentType": "text/markdown"}},
     )

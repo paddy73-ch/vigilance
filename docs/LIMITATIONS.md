@@ -36,6 +36,12 @@ verlässlich auf `github.com/moby/moby/v2` abbilden.
 NVD, der Debian Security Tracker und Ubuntu sind standardmässig ausgeschaltet. OSV enthält die Debian-
 und Ubuntu-Daten bereits; NVD kennt keine Paketversionen der Distributionen und würde nach Namen raten.
 
+Unter Verwaltung, Quellen lässt sich jede Quelle ein- und ausschalten; die Wahl dort gilt vor
+`config.yaml`. Ausschalten blendet die Befunde der Quelle sofort aus (sie zählen nirgends mehr mit),
+löscht sie aber nicht. Einschalten holt sie mit ihrem früheren Status zurück und gleicht die Quelle neu
+ab. Ohne OSV fehlen fast alle Befunde zu Debian-Paketen. Eine Lücke, die mehrere Quellen melden, bleibt
+sichtbar, solange eine davon eingeschaltet ist.
+
 ## Ob eine Lücke im Einzelfall zutrifft
 
 - **Konfiguration und Nutzung:** Vigilance sieht nur, dass eine betroffene Version installiert ist. Ob
@@ -106,7 +112,6 @@ und Ubuntu-Daten bereits; NVD kennt keine Paketversionen der Distributionen und 
   Programme noch geladen haben, bleiben bis zum Neustart des Programms aktiv.
 - Die Vorschau simuliert mit den vorhandenen Paketlisten; bei der Ausführung lädt `apt-get update` sie
   neu. Das tatsächliche Ergebnis kann deshalb leicht abweichen.
-
 - In einem Batch laufen bis zu 4 Container gleichzeitig. Ein Container mit apt-cacher-ng kommt zuerst
   und allein dran. Vigilance erkennt den Cache nur am installierten Paket `apt-cacher-ng`; einen
   anderen Proxy oder Cache (zum Beispiel squid) beachtet es dabei nicht.
@@ -115,6 +120,22 @@ und Ubuntu-Daten bereits; NVD kennt keine Paketversionen der Distributionen und 
 
 - Gotify-Meldungen gehen an neue Befunde ab der eingestellten Schwere. Den Link in der Meldung gibt es
   nur, wenn `VIGILANCE_PUBLIC_URL` gesetzt ist (Adresse der Oberfläche, wie der Browser sie aufruft).
+- Gotify lässt sich unter Verwaltung, Einstellungen einrichten. Einmal dort gespeichert, gelten diese
+  Werte vor `VIGILANCE_GOTIFY_*` und `config.yaml`.
+- Der App-Token liegt dann unverschlüsselt in der Datenbank, also auch in deren Sicherungen (der Deploy
+  legt vor jedem Update einen Dump unter `/tmp` im Container ab). Die Oberfläche und die API zeigen ihn
+  nie an. Wer die Datenbank lesen kann, kann über Gotify Nachrichten in deinem Namen senden, mehr nicht.
+- Eine Testnachricht an eine andere Adresse als die gespeicherte geht nur mit neu eingegebenem Token;
+  der gespeicherte Token wird nicht an fremde Server geschickt.
+- Gemeldet werden nur neue Befunde. Wird eine ausgeschaltete Quelle wieder eingeschaltet, kommen ihre
+  zurückgeholten Befunde ohne Meldung zurück.
+
+## Zugriff
+
+- Lesen geht ohne Anmeldung, für Änderungen und Aktionen braucht es den API-Token. Wer die Oberfläche
+  erreicht, sieht also alle Hosts, Pakete und Lücken. Schütze den Zugang über das Netz, zum Beispiel
+  mit Reverse-Proxy und Firewall, und rufe Vigilance über HTTPS auf, damit der Token verschlüsselt
+  übertragen wird.
 
 ## Kernel im Container
 

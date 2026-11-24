@@ -128,19 +128,53 @@ def _suppressed(suppressions: Sequence[Suppression], cve: CVEEntry, tool: Discov
     return False
 
 
+HIDEABLE = ("open", "suppressed", "unknown_version", "not_affected")
+
+
+def _hide(finding: VulnerabilityFinding) -> None:
+    """Hide a finding while its source is switched off; the previous status is kept to restore it."""
+    details = json.loads(finding.match_details or "{}")
+    details["status_before_off"] = finding.status
+    finding.match_details = json.dumps(details)
+    finding.status = "source_off"
+
+
+async def set_source_findings_hidden(db: AsyncSession, source: str, hidden: bool) -> int:
+    """Switch a CVE source off (hide its findings) or on (restore them). Returns how many changed.
+    Does not commit."""
+    rows = (await db.execute(
+        select(VulnerabilityFinding).join(CVEEntry, CVEEntry.id == VulnerabilityFinding.cve_entry_id)
+        .where(CVEEntry.source == source,
+               VulnerabilityFinding.status.in_(HIDEABLE) if hidden else VulnerabilityFinding.status == "source_off")
+    )).scalars().all()
+    for f in rows:
+        if hidden:
+            _hide(f)
+        else:
+            details = json.loads(f.match_details or "{}")
+            f.status = details.pop("status_before_off", "open")
+            f.match_details = json.dumps(details)
+    await db.flush()
+    return len(rows)
+
+
 async def match_findings(
     db: AsyncSession,
     tools: Iterable[DiscoveredTool],
     direct: Dict[str, DirectMatches],
     active_sources: Set[str],
     scan_run_id: Optional[int] = None,
+    disabled_sources: Optional[Set[str]] = None,
 ) -> MatchStats:
     """Create/update findings for all tools. Does not commit."""
     now = datetime.utcnow()
     stats = MatchStats()
     tools = list(tools)
 
+    off = disabled_sources or set()
     cves = (await db.execute(select(CVEEntry))).scalars().all()
+    off_ids = {c.id for c in cves if c.source in off}
+    cves = [c for c in cves if c.source not in off]  # switched off in the UI: neither matched nor closed
     by_cve_id = {c.cve_id: c for c in cves}
     by_name: Dict[str, List[CVEEntry]] = {}
     for cve in cves:
@@ -250,7 +284,11 @@ async def match_findings(
     # 3. Lifecycle: no longer matching -> fixed (only for sources that synced successfully)
     source_of = {c.id: c.source for c in cves}
     for key, finding in existing.items():
-        if key in seen or finding.status not in ("open", "suppressed", "unknown_version", "not_affected"):
+        if finding.cve_entry_id in off_ids:
+            if finding.status in HIDEABLE:
+                _hide(finding)
+            continue
+        if key in seen or finding.status not in ("open", "suppressed", "unknown_version", "not_affected", "source_off"):
             continue
         if source_of.get(finding.cve_entry_id) not in active_sources:
             continue

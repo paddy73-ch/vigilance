@@ -261,6 +261,50 @@
   window.V = V;
 
   // ------------------------------------------------------------ page chrome
+  // "Grenzen" oben rechts als Umschalter: der erste Klick merkt sich Seite und Scrollposition,
+  // ein Klick auf der Grenzen-Seite führt dorthin zurück.
+  const LIMITS_PATH = "/admin/limits";
+  const LIMITS_RETURN = "vigilance-limits-return";
+  const SCROLL_RESTORE = "vigilance-scroll-restore";
+  const store = {
+    get(k) { try { return JSON.parse(sessionStorage.getItem(k) || "null"); } catch (e) { return null; } },
+    set(k, v) { try { sessionStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* private mode */ } },
+    del(k) { try { sessionStorage.removeItem(k); } catch (e) { /* ignore */ } },
+  };
+  document.addEventListener("click", (e) => {
+    const a = e.target.closest && e.target.closest("a[href='" + LIMITS_PATH + "']");
+    if (!a || e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
+    const here = location.pathname + location.search + location.hash;
+    if (location.pathname !== LIMITS_PATH) {
+      store.set(LIMITS_RETURN, { url: here, y: Math.round(window.scrollY) });
+      return; // follow the link
+    }
+    if (!a.classList.contains("limits-link")) return; // other links on the page stay links
+    const ret = store.get(LIMITS_RETURN);
+    e.preventDefault();
+    const target = ret && ret.url ? ret.url : "/";
+    store.set(SCROLL_RESTORE, { url: target, y: ret ? ret.y : 0 });
+    store.del(LIMITS_RETURN);
+    let ref = null;
+    try { ref = document.referrer ? new URL(document.referrer) : null; } catch (err) { ref = null; }
+    if (ref && ref.origin === location.origin && ref.pathname + ref.search + ref.hash === target && history.length > 1) history.back();
+    else location.href = target;
+  });
+  // Scrollposition nach der Rückkehr wiederherstellen; die Seiten laden ihren Inhalt nach,
+  // daher einige Versuche, bis die Seite hoch genug ist.
+  window.addEventListener("pageshow", (ev) => {
+    const r = store.get(SCROLL_RESTORE);
+    if (!r || r.url !== location.pathname + location.search + location.hash) return;
+    store.del(SCROLL_RESTORE);
+    if (ev.persisted || !r.y) return; // aus dem Browser-Cache: Position stimmt schon
+    let tries = 0;
+    const attempt = () => {
+      window.scrollTo(0, r.y);
+      if (Math.abs(window.scrollY - r.y) > 2 && ++tries < 30) setTimeout(attempt, 100);
+    };
+    attempt();
+  });
+
   // Zurück-Pfeil: in Vigilance einen Schritt zurück (behält z. B. den Filter der Hosts-Seite), sonst der Link
   document.addEventListener("click", (e) => {
     const a = e.target.closest && e.target.closest("a[data-back]");

@@ -33,6 +33,9 @@ MAX_INDIVIDUAL_NOTIFICATIONS = 20
 
 
 def _source_enabled(source: str) -> bool:
+    from vigilance.core.runtime_settings import SOURCE_OVERRIDES
+    if source in SOURCE_OVERRIDES:  # switched in the UI
+        return SOURCE_OVERRIDES[source]
     if source == "tailscale":
         # Vendor source: on unless switched off; only queried when the package is installed
         cfg = getattr(settings.cve_sync, "tailscale", None) if settings.cve_sync else None
@@ -90,6 +93,8 @@ class CVESyncOrchestrator:
 
     async def sync_all(self, sources: Optional[Sequence[str]] = None, scan_run_id: Optional[int] = None) -> Dict[str, dict]:
         """Sync the given (default: all enabled) sources for the discovered tools, then match."""
+        from vigilance.core.runtime_settings import load_source_overrides
+        await load_source_overrides(self.db)  # the CLI runs in its own process
         wanted = [s for s in (sources or ALL_SOURCES) if s in ALL_SOURCES and (sources or _source_enabled(s))]
         tools = await self._load_tools()
         results: Dict[str, dict] = {}
@@ -161,7 +166,8 @@ class CVESyncOrchestrator:
             # A rollback expires all loaded objects; reload before matching (no lazy loads in async).
             tools = await self._load_tools()
         active = {s for s, r in results.items() if r.get("status") == "success"}
-        self.last_match = await match_findings(self.db, tools, direct, active, scan_run_id=scan_run_id)
+        off = {s for s in ALL_SOURCES if not _source_enabled(s)}
+        self.last_match = await match_findings(self.db, tools, direct, active, scan_run_id=scan_run_id, disabled_sources=off)
         from vigilance.core.snapshots import write_daily_snapshot
         await write_daily_snapshot(self.db)
         await self.db.commit()
@@ -268,9 +274,10 @@ class CVESyncOrchestrator:
         if not stats or not stats.new_findings:
             return
         from vigilance.core import notifications as notif
-        config = settings.notifications.gotify if settings.notifications else None
-        if not config:
+        from vigilance.core.runtime_settings import gotify_ready
+        if not gotify_ready():  # switched off or incomplete: nothing to send, nothing to log per finding
             return
+        config = settings.notifications.gotify
         relevant = [f for f in stats.new_findings
                     if notif.severity_meets_threshold(f.cve.severity or "NONE", config.min_severity)]
         if not relevant:
