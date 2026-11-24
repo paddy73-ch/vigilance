@@ -11,7 +11,12 @@ geprüften Daten“.
   ihre Angaben stammen vom letzten erfolgreichen Scan.
 - **Der Proxmox-Host selbst**, wenn `scan_host: true` gesetzt ist, als Benutzer `vigilance-scan` ohne
   Root-Rechte.
-- **Nicht gescannt werden VMs** (QEMU), also zum Beispiel Home Assistant oder Windows-VMs.
+- **VMs** (QEMU) nur, wenn sie in `config.yaml` unter `vms:` beim Node eingetragen sind und laufen. Sie
+  werden wie Container gescannt und behandelt: per SSH als root mit dem Schlüssel von Vigilance, nur mit
+  apt (Debian, Ubuntu). Die IP kommt aus `config.yaml` oder vom QEMU Guest Agent; dafür braucht der
+  Proxmox-Token das Recht `VM.GuestAgent.Audit`. Nicht eingetragene VMs erscheinen nirgends.
+- **Nicht gescannt werden** Windows-VMs (auch wenn eingetragen) und Home Assistant OS: Beide haben kein
+  apt, und Home Assistant OS lässt sich nicht wie ein Debian-System aktualisieren.
 - Erfasst werden die Pakete des Paketmanagers (dpkg, apk, rpm). **Nicht erfasst** werden:
   - Docker-Container und -Images und die Software darin (die Docker-Erkennung ist ausgeschaltet)
   - Sprachpakete ausserhalb des Paketmanagers: pip in virtuellen Umgebungen, npm, Go- und Rust-Programme,
@@ -89,7 +94,10 @@ sichtbar, solange eine davon eingeschaltet ist.
 
 ## Aktionen (Befehle ausführen)
 
-- Auf laufenden LXC-Containern mit Debian oder Ubuntu, als root. VMs werden nie verändert.
+- Auf laufenden LXC-Containern und eingetragenen VMs mit Debian oder Ubuntu, als root. „Alle“ auf der
+  Seite Hosts umfasst beide, nie den Proxmox-Host.
+- In einer VM wird ein neuer Kernel erst nach einem Neustart der VM aktiv; Vigilance startet sie nicht neu.
+  „Kernel aufräumen“ gibt es nur für Container, eine VM braucht ihren Kernel.
 - Der Proxmox-Host nur einzeln (nie zusammen mit „alle Container“), nur mit ausdrücklicher Bestätigung
   und nur, wenn du eine sudo-Regel für `apt-get` angelegt hast. Diese Regel gibt dem Scan-Benutzer
   faktisch Root-Rechte auf dem Host, denn apt-get kann über seine Optionen beliebige Befehle starten.

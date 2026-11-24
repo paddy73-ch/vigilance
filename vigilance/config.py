@@ -24,6 +24,20 @@ class ProxmoxNodeConfig:
         # not the root user that is used for the containers.
         self.scan_host = bool(ssh.get("scan_host", False))
         self.host_user = ssh.get("host_user", "vigilance-scan")
+        # VMs to scan like the containers (Linux with apt, root with the Vigilance key). Entries are
+        # a VM id or {vmid, ip}; without ip the address comes from the QEMU guest agent.
+        self.vms = []
+        for entry in data.get("vms") or []:
+            item = entry if isinstance(entry, dict) else {"vmid": entry}
+            try:
+                self.vms.append({"vmid": int(item["vmid"]), "ip": (str(item["ip"]).strip() or None) if item.get("ip") else None})
+            except (KeyError, TypeError, ValueError):
+                continue
+
+
+def configured_vm_ids() -> set:
+    """VM ids listed under `vms:` of any node in config.yaml (only these are scanned and shown)."""
+    return {v["vmid"] for n in settings.proxmox_nodes for v in getattr(n, "vms", [])}
 
 
 class DiscoveryConfig:

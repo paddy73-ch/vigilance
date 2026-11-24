@@ -60,7 +60,7 @@
           </template>
         </div>
         <details class="board-group" x-show="stopped().length">
-          <summary x-text="V.plural(stopped().length, 'gestoppter Container', 'gestoppte Container')"></summary>
+          <summary x-text="V.plural(stopped().length, 'gestoppter Host', 'gestoppte Hosts')"></summary>
           <div class="board nested">
             <template x-for="h in stopped()" :key="h.id">
               <a class="slot" :href="'/hosts/' + h.id" data-level="stopped">

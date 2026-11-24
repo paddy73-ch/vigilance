@@ -110,7 +110,71 @@ class DiscoveryOrchestrator:
             for vtype, lxc in all_targets:
                 await self._process_inventory_target(node, vtype, lxc, scan_run_id, result)
 
+            await self._discover_vms(client, node, scan_run_id, result)
+
         await self._scan_node_host(node, scan_run_id, result)
+
+    async def _discover_vms(self, client: ProxmoxClient, node: ProxmoxNode, scan_run_id: int, result: ScanResult):
+        """VMs listed under the node's `vms:` in config.yaml, scanned like the containers."""
+        node_config = next((c for c in settings.proxmox_nodes if c.name == node.name), None)
+        wanted = node_config.vms if node_config else []
+        if not wanted:
+            return
+        by_id = {vm.vmid: vm for vm in await client.get_vms(node.name)}
+        for entry in wanted:
+            vm = by_id.get(entry["vmid"])
+            if not vm:
+                logger.warning("VM %s from config.yaml does not exist on %s", entry["vmid"], node.name)
+                continue
+            vm.ip = entry["ip"]
+            ostype = ""
+            try:
+                ostype = (await client.get_vm_config(node.name, vm.vmid)).get("ostype") or ""
+            except Exception as exc:
+                logger.info("Could not read config of VM %s: %s", vm.vmid, exc)
+            if ostype.startswith("w"):  # win7 … win11, wxp, w2k*
+                await self._record_skipped(node, vm, "unsupported", "Windows-VMs werden nicht gescannt.", vtype="qemu")
+                continue
+            if vm.status != "running":
+                await self._record_skipped(node, vm, "stopped", None, vtype="qemu")
+                continue
+            reason = None
+            if not vm.ip:
+                vm.ip, reason = await self._vm_ip_from_agent(client, node.name, vm.vmid)
+            if not vm.ip:
+                await self._record_skipped(node, vm, "no_ip", reason, vtype="qemu")
+                continue
+            result.nodes_scanned += 1
+            await self._process_inventory_target(node, "qemu", vm, scan_run_id, result)
+
+    async def _vm_ip_from_agent(self, client: ProxmoxClient, node_name: str, vmid: int):
+        """(ip, reason if none) from the QEMU guest agent."""
+        try:
+            data = await client.get_vm_interfaces(node_name, vmid)
+        except Exception as exc:
+            status = getattr(exc, "status", None)
+            if status == 403:
+                return None, ("Keine IP: Der Proxmox-Token darf den Guest Agent nicht abfragen (Recht "
+                              "VM.GuestAgent.Audit fehlt). IP in config.yaml unter vms eintragen oder das Recht vergeben.")
+            return None, ("Keine IP: Der QEMU Guest Agent antwortet nicht (nicht installiert oder in der VM "
+                          "ausgeschaltet). IP in config.yaml unter vms eintragen.")
+        ip = self._ip_from_agent(data)
+        return ip, None if ip else "Keine IP: Der Guest Agent meldet keine IPv4-Adresse."
+
+    @staticmethod
+    def _ip_from_agent(data) -> Optional[str]:
+        """First IPv4 address of a physical-looking interface from agent/network-get-interfaces."""
+        skip = ("lo", "docker", "br-", "veth", "virbr", "tailscale", "wg", "cni", "flannel", "kube", "lxc", "vmbr", "tun", "tap")
+        ifaces = (data or {}).get("result") or []
+        for iface in ifaces:
+            name = iface.get("name") or ""
+            if name.startswith(skip):
+                continue
+            for addr in iface.get("ip-addresses") or []:
+                ip = addr.get("ip-address") or ""
+                if addr.get("ip-address-type") == "ipv4" and not ip.startswith(("127.", "169.254.")):
+                    return ip
+        return None
 
     async def _scan_node_host(self, node: ProxmoxNode, scan_run_id: int, result: ScanResult):
         """Scan the Proxmox host itself (inventory type "node", vmid 0) if enabled in the config."""
@@ -126,13 +190,13 @@ class DiscoveryOrchestrator:
         result.nodes_scanned += 1
         await self._run_ssh_discovery(inventory, ssh_config, scan_run_id, result)
 
-    async def _record_skipped(self, node: ProxmoxNode, lxc, status: str, error: Optional[str]):
+    async def _record_skipped(self, node: ProxmoxNode, lxc, status: str, error: Optional[str], vtype: str = "lxc"):
         inventory = await crud.upsert_inventory(
             self.db,
             proxmox_node_id=node.id,
             vmid=lxc.vmid,
             name=lxc.name,
-            type="lxc",
+            type=vtype,
             status=lxc.status,
             ip_address=getattr(lxc, "ip", None),
         )

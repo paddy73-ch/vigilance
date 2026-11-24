@@ -68,8 +68,14 @@ def blocked_reason(inv: Inventory, kind: str = "suggested") -> Optional[str]:
             return "Auf dem Proxmox-Host nicht verfügbar."
         if not node_config_for(inv):
             return "Der Proxmox-Host wird nicht gescannt (scan_host)."
+    elif inv.type == "qemu":
+        from vigilance.config import configured_vm_ids
+        if inv.vmid not in configured_vm_ids():
+            return "VM ist nicht für den Scan eingetragen (config.yaml, vms)."
+        if kind == "kernel_cleanup":
+            return "Eine VM nutzt ihren eigenen Kernel."
     elif inv.type != "lxc":
-        return "VMs werden nicht verändert."
+        return "Nicht unterstützt."
     if inv.status != "running":
         return "Host läuft nicht."
     if inv.last_scan_status != "ok":

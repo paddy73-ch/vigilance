@@ -293,6 +293,23 @@ chown vigilance-scan: /var/lib/vigilance-scan/.ssh/authorized_keys; chmod 600 /v
 ```
 
 and in `config.yaml` under the node's `ssh:` set `scan_host: true` (`host_user` defaults to `vigilance-scan`).
+
+### Scanning VMs
+
+VMs are scanned only when listed under the node in `config.yaml`. They are handled like the containers
+(SSH as root with Vigilance's key, apt only; Windows and Home Assistant OS are not supported):
+
+```yaml
+proxmox:
+  nodes:
+    - name: pve
+      vms:
+        - 201                              # IP from the QEMU guest agent
+        - {vmid: 202, ip: 192.0.2.202} # fixed IP
+```
+
+Put Vigilance's public key into `/root/.ssh/authorized_keys` of the VM. For the guest agent the Proxmox
+token needs `VM.GuestAgent.Audit` (Proxmox VE 9), e.g. added to the role used for the token.
 The host appears as "Proxmox-Host". Without root, the removal check cannot see processes of other
 users; the UI says so. Packages built by Proxmox (pve-*, proxmox-*) are not in the Debian advisory
 data, so findings cover the Debian packages on the host.
