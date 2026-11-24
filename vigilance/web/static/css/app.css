@@ -369,3 +369,15 @@ pre.log { margin: 0; padding: 10px 12px; max-height: 340px; overflow: auto; back
   opacity: 0; pointer-events: none; transition: opacity .12s; z-index: 80; }
 .info:hover::after, .info:focus::after { opacity: 1; }
 .drawer .info::after { left: auto; right: -8px; transform: none; }
+
+/* ---------- copy fallback, limits link ---------- */
+.copy-buffer { position: fixed; top: -1000px; left: -1000px; opacity: 0; }
+.topbar-end { display: flex; align-items: center; gap: 10px; }
+.limits-link { display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border-radius: var(--radius);
+  border: 1px solid var(--line-strong); color: var(--ink); font-weight: 500; text-decoration: none; }
+.limits-link svg { width: 17px; height: 17px; color: var(--action); }
+.limits-link:hover, .limits-link[aria-current="page"] { border-color: var(--action); color: var(--action); }
+@media (max-width: 700px) { .limits-link span { display: none; } .limits-link { padding: 7px; } }
+.page-foot { max-width: 1240px; margin: -40px auto 32px; padding: 0 24px; color: var(--muted); font-size: 14px; }
+.page-foot a { font-weight: 600; }
+@media (max-width: 700px) { .page-foot { margin-bottom: 96px; } }

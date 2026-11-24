@@ -134,9 +134,23 @@
     },
     hoursSince(iso) { return iso ? (Date.now() - new Date(iso).getTime()) / 3600000 : Infinity; },
     plural(n, one, many) { return num.format(n || 0) + " " + (n === 1 ? one : many); },
+    // navigator.clipboard only exists on HTTPS or localhost; Vigilance usually runs on plain
+    // http://<ip>:8000, so fall back to a hidden textarea and execCommand("copy").
     async copy(text) {
-      try { await navigator.clipboard.writeText(text); toast("In die Zwischenablage kopiert."); }
-      catch (e) { toast("Kopieren nicht möglich – bitte manuell markieren.", true); }
+      if (window.isSecureContext && navigator.clipboard) {
+        try { await navigator.clipboard.writeText(text); toast("In die Zwischenablage kopiert."); return; } catch (e) { /* fall back */ }
+      }
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.setAttribute("readonly", "");
+      ta.className = "copy-buffer";
+      document.body.appendChild(ta);
+      ta.select();
+      ta.setSelectionRange(0, text.length);
+      let ok = false;
+      try { ok = document.execCommand("copy"); } catch (e) { ok = false; }
+      document.body.removeChild(ta);
+      toast(ok ? "In die Zwischenablage kopiert." : "Kopieren nicht möglich – bitte den Befehl markieren und mit Cmd+C kopieren.", !ok);
     },
     scanReason(h) {
       if (h.status !== "running") return "Gestoppt";
