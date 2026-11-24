@@ -95,14 +95,17 @@
       <template x-if="h.foreign_sources && h.foreign_sources.length">
         <section class="panel">
           <details class="fold">
-            <summary>Pakete aus fremden Paketquellen <span class="muted" x-text="'(' + h.foreign_sources.reduce((n, g) => n + g.uncovered.length + g.covered.length, 0) + ')'"></span></summary>
+            <summary>Pakete aus fremden Paketquellen <span class="muted" x-text="'(' + h.foreign_sources.reduce((n, g) => n + g.uncovered.length + g.covered.length + (g.debian || []).length, 0) + ')'"></span></summary>
             <div class="panel-pad stack">
-              <p class="muted">Diese Pakete stammen nicht aus Debian. Debian hat für sie keine Sicherheitsmeldungen. Vigilance prüft sie nur, wenn es sie einem Go-Modul zuordnen kann.</p>
+              <p class="muted">Diese Pakete stammen nicht aus Debian. Wie gut Vigilance sie prüfen kann, hängt davon ab, ob es passende Sicherheitsdaten gibt.</p>
               <template x-for="g in h.foreign_sources" :key="g.source">
                 <div>
                   <p class="remedy-host" x-text="g.source"></p>
                   <p x-show="g.covered.length"><span class="tag tag-ok">Geprüft</span>
                     <span x-text="g.covered.map((c) => c.package + ' (Go-Modul ' + c.module + ')').join(', ')"></span></p>
+                  <p class="mt-6" x-show="(g.debian || []).length"><span class="tag tag-upgrade">Nur Debian-Daten</span>
+                    <span class="faint" x-text="'Debian hat gleichnamige Pakete, installiert ist aber der Build von ' + g.source + '. Treffer und Fix-Versionen können deshalb ungenau sein: '"></span>
+                    <span class="ver" x-text="g.debian.length > 12 ? g.debian.slice(0, 12).join(', ') + ' und ' + (g.debian.length - 12) + ' weitere' : g.debian.join(', ')"></span></p>
                   <p class="mt-6" x-show="g.uncovered.length"><span class="tag">Keine Sicherheitsdaten</span>
                     <span class="ver" x-text="g.uncovered.length > 12 ? g.uncovered.slice(0, 12).join(', ') + ' und ' + (g.uncovered.length - 12) + ' weitere' : g.uncovered.join(', ')"></span></p>
                 </div>
