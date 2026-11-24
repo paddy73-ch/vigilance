@@ -5,3 +5,6 @@
 .pytest_cache/
 __pycache__/
 config/config.yaml
+
+# local inventory (example: ansible/hosts.ini.example)
+ansible/hosts.ini
