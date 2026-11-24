@@ -216,6 +216,24 @@ Before suggesting a removal, each scan runs a read-only check on the host
 - ELF files under `/usr/local` and `/opt` that reference one of its sonames (not managed by dpkg, apt cannot see them)
 - `apt-cache policy`: whether the version is still in a package source, i.e. whether the removal can be undone
 
+### Running the fixes (Aktionen)
+
+Vigilance can run the apt commands itself, per container (host detail) or for all containers
+(Hosts page). Every run needs the API token and shows a preview first: the commands, what is
+skipped and why, and what `apt-get -s` says would change.
+
+- **Vorschläge umsetzen**: targeted `apt-get install --only-upgrade` for packages whose fix is in the
+  container's package sources, and `apt-get purge` for obsolete packages whose removal check is "ok".
+  Everything else is skipped and listed with the reason.
+- **Vollständiges Upgrade**: `apt-get update && apt-get full-upgrade`, non-interactive, existing
+  configuration files are kept (`--force-confdef --force-confold`).
+
+Only LXC containers are changed. The Proxmox host and VMs are refused in the code, also when their
+ID is sent to the API. One batch runs at a time; output and exit code of every run are kept
+(Verwaltung, Aktionen), and a scan starts afterwards. Each scan also records which newer versions the
+package sources offer (`apt list --upgradable`, without `apt update`), so a fix that apt cannot
+install is shown as such instead of a command that does nothing.
+
 ### Scanning the Proxmox host
 
 The containers are scanned as root. The Proxmox host itself is optional and uses its own

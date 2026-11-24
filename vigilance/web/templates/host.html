@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block title %}Host{% endblock %}
-{% block page_script %}<script defer src="/static/js/drawer.js?v={{ asset_version }}"></script><script defer src="/static/js/pages/host.js?v={{ asset_version }}"></script>{% endblock %}
+{% block page_script %}<script defer src="/static/js/actions.js?v={{ asset_version }}"></script><script defer src="/static/js/drawer.js?v={{ asset_version }}"></script><script defer src="/static/js/pages/host.js?v={{ asset_version }}"></script>{% endblock %}
 {% block content %}
 <div x-data="hostPage({{ inventory_id }})" x-cloak @vigilance-changed.window="load()">
   <p class="mb-10"><a href="/hosts">Alle Hosts</a></p>
@@ -18,6 +18,13 @@
         </div>
       </div>
 
+      <template x-if="h.type === 'lxc' && h.status === 'running'">
+        <div class="panel panel-pad action-bar">
+          <p class="muted">Vigilance kann die Befehle auf diesem Container selbst ausführen. Vorher siehst du in einer Simulation, was sich ändert.</p>
+          <button class="btn btn-primary" @click="$dispatch('open-actions', { kind: 'suggested', hostIds: [h.id], title: h.name })">Vorschläge umsetzen</button>
+          <button class="btn" @click="$dispatch('open-actions', { kind: 'full_upgrade', hostIds: [h.id], title: h.name })">Vollständiges Upgrade</button>
+        </div>
+      </template>
       <template x-if="h.type === 'node'">
         <div class="panel panel-pad note-node">
           <h2>Was hier nicht geprüft wird</h2>
@@ -116,5 +123,6 @@
     </div>
   </template>
   {% include "_drawer.html" %}
+  {% include "_actions.html" %}
 </div>
 {% endblock %}

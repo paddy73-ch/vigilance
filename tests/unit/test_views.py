@@ -234,8 +234,8 @@ async def test_remedy_and_removal_risk(client, any_engine):
     assert glib["remedy"]["risk"]["status"] == "ok" and glib["remedy"]["risk"]["libraries_checked"] is True
     assert glib["remedy"]["risk"]["not_reinstallable"] == ["libglib2.0-0"]
     curl = next(g for g in h["patchable_list"] if g["package"] == "curl")
-    assert curl["remedy"] == {"action": "upgrade", "target": "8.14.1-2+deb13u8",
-                              "command": "apt-get update && apt-get install --only-upgrade curl libcurl4t64"}
+    assert curl["remedy"]["target"] == "8.14.1-2+deb13u8" and curl["remedy"]["availability"]["status"] == "unknown"
+    assert curl["remedy"]["command"] == "apt-get update && apt-get install --only-upgrade curl libcurl4t64"
     p = next(i for i in (await client.get("/api/packages?fix=true")).json()["items"] if i["package"] == "glib2.0")
     assert p["display_name"] == "libglib2.0-0" and p["remedy"]["hosts"][0]["risk"]["status"] == "ok"
     top = {t["package"]: t for t in (await client.get("/api/overview")).json()["top_packages"]}
@@ -315,3 +315,33 @@ async def test_node_host_scan_uses_own_user(any_engine, monkeypatch):
         seen.clear()
         await orch._scan_node_host(node, 1, ScanResult())
         assert seen == {}
+
+
+
+def test_upgrade_availability():
+    from vigilance.api.routes.views import upgrade_availability
+    check = json.dumps({"lists_at": "2026-11-24T07:20:00Z", "candidates": {
+        "curl": "8.14.1-2+deb13u8", "libcurl4t64": "8.14.1-2+deb13u8", "old": "1.0-1"}})
+    assert upgrade_availability(None, ["curl"], "1")["status"] == "unknown"
+    a = upgrade_availability(check, ["curl", "libcurl4t64"], "8.14.1-2+deb13u8")
+    assert a["status"] == "available" and a["installable"] == ["curl", "libcurl4t64"]
+    assert upgrade_availability(check, ["curl", "intel-microcode"], "8.14.1-2+deb13u8")["status"] == "partial"
+    assert upgrade_availability(check, ["old"], "2.0-1")["status"] == "older"
+    m = upgrade_availability(check, ["intel-microcode"], "3.20260925.1~deb13u1")
+    assert m["status"] == "missing" and m["installable"] == []
+
+
+@pytest.mark.asyncio
+async def test_upgrade_not_in_sources_has_no_command(client, any_engine):
+    from vigilance.database.models import Inventory
+    maker = async_sessionmaker(any_engine, class_=AsyncSession, expire_on_commit=False)
+    async with maker() as db:
+        inv = await db.get(Inventory, client.hosts["adguard"].id)
+        inv.upgrade_check = json.dumps({"lists_at": "2026-11-24T07:20:00Z", "candidates": {}})
+        await db.commit()
+    h = (await client.get(f"/api/hosts/{client.hosts['adguard'].id}")).json()
+    curl = next(g for g in h["patchable_list"] if g["package"] == "curl")
+    assert curl["remedy"]["availability"]["status"] == "missing" and curl["remedy"]["command"] is None
+    assert h["upgrade_command"] is None
+    p = next(i for i in (await client.get("/api/packages?fix=true")).json()["items"] if i["package"] == "curl")
+    assert p["remedy"]["availability"]["missing_on"] == ["adguard"]

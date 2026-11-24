@@ -213,6 +213,17 @@
       });
       return [...groups.values()];
     },
+    // Is the fix offered by the host's package sources? (remedy.availability)
+    availabilityText(rem) {
+      const a = rem.availability;
+      if (!a || a.status === "unknown" || a.status === "available") return "";
+      const lists = a.lists_at ? " Stand der Paketlisten: " + V.date(a.lists_at) + "." : "";
+      const where = a.missing_on && a.missing_on.length ? " Betrifft: " + a.missing_on.join(", ") + "." : "";
+      if (a.status === "missing") return "Der Fix ist nicht in den Paketquellen" + (a.missing_on ? "" : " dieses Hosts")
+        + ". apt kann ihn so nicht installieren; apt-cache policy zeigt, aus welcher Quelle das Paket stammt." + where + lists;
+      if (a.status === "older") return "Die Paketquellen bieten nur eine ältere Version als den Fix." + where + lists;
+      return "Nicht für alle betroffenen Pakete oder Hosts ist der Fix in den Paketquellen; der Befehl enthält nur die installierbaren." + where + lists;
+    },
     reinstallText(risk, binaries) {
       if (!risk || risk.status === "unknown" || !risk.not_reinstallable) return "";
       const gone = risk.not_reinstallable;

@@ -1,10 +1,14 @@
 {% extends "base.html" %}
 {% block title %}Hosts{% endblock %}
-{% block page_script %}<script defer src="/static/js/pages/hosts.js?v={{ asset_version }}"></script>{% endblock %}
+{% block page_script %}<script defer src="/static/js/actions.js?v={{ asset_version }}"></script><script defer src="/static/js/pages/hosts.js?v={{ asset_version }}"></script>{% endblock %}
 {% block content %}
 <div x-data="hostsPage" x-cloak>
   <div class="page-head">
-    <div><h1>Hosts</h1><p class="muted">LXC-Container auf pve, der dringendste zuerst.</p></div>
+    <div><h1>Hosts</h1><p class="muted">LXC-Container und Proxmox-Host, der dringendste zuerst.</p></div>
+    <div class="action-bar">
+      <button class="btn btn-primary" @click="$dispatch('open-actions', { kind: 'suggested', hostIds: null, title: 'alle Container' })">Vorschläge auf allen Containern</button>
+      <button class="btn" @click="$dispatch('open-actions', { kind: 'full_upgrade', hostIds: null, title: 'alle Container' })">Upgrade aller Container</button>
+    </div>
   </div>
   <section class="panel">
     <template x-if="!hosts"><div class="panel-pad"><div class="skeleton"></div></div></template>
@@ -41,5 +45,6 @@
       </table>
     </details>
   </section>
+  {% include "_actions.html" %}
 </div>
 {% endblock %}

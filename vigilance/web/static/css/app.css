@@ -328,3 +328,20 @@ ul.plain { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
 .also { color: var(--faint); font-size: 13px; }
 .mb-16 { margin-bottom: 16px; }
 .remedy-block + .remedy-block { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--line); }
+
+/* ---------- remediation actions ---------- */
+.dialog-wide { width: min(820px, 100%); max-height: calc(100vh - 32px); grid-template-rows: auto 1fr auto; padding: 0; gap: 0; }
+.dialog-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; padding: 18px 22px; border-bottom: 1px solid var(--line); }
+.dialog-head p { margin-top: 4px; max-width: 70ch; }
+.dialog-body { padding: 16px 22px; overflow-y: auto; min-height: 120px; }
+.dialog-wide > .actions { padding: 14px 22px; border-top: 1px solid var(--line); }
+.act-host + .act-host { margin-top: 18px; padding-top: 18px; border-top: 1px solid var(--line); }
+.act-host-head { margin-bottom: 8px; }
+.act-changes, .act-skipped { margin: 8px 0 0; padding-left: 18px; display: grid; gap: 2px; font-size: 13px; }
+.act-changes { max-height: 180px; overflow-y: auto; }
+.act-remove { color: var(--high); }
+pre.log { margin: 0; padding: 10px 12px; max-height: 340px; overflow: auto; background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--radius); font: 12px/1.5 var(--mono); white-space: pre-wrap; word-break: break-word; }
+.action-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.action-bar p { flex: 1 1 260px; }
+.unavail { margin-top: 6px; padding: 8px 12px; border-left: 3px solid var(--high); background: var(--high-soft); border-radius: var(--radius); font-size: 14px; }
+.note { padding: 8px 12px; border-radius: var(--radius); background: var(--high-soft); color: var(--high); font-size: 14px; }

@@ -23,7 +23,7 @@ from vigilance.discovery.custom import run_all_custom_checks, CustomCheckResult
 from vigilance.discovery.ssh import get_ssh_pool
 from vigilance.discovery.osinfo import probe_os
 from vigilance.discovery.sshkey import ensure_ssh_key
-from vigilance.discovery.removal import check_removal, dumps as dump_removal, obsolete_binaries
+from vigilance.discovery.removal import check_removal, check_upgrades, dumps as dump_removal, obsolete_binaries
 
 logger = logging.getLogger(__name__)
 
@@ -253,6 +253,10 @@ class DiscoveryOrchestrator:
                 # What would removing the leftovers of an older release affect? (read-only)
                 check = await check_removal(host, port, user, key_path, known_hosts, obsolete_binaries(packages))
                 inventory.removal_check = dump_removal(check)
+                if any(p.manager == "dpkg" for p in packages):
+                    upgrades = await check_upgrades(host, port, user, key_path, known_hosts)
+                    if upgrades is not None:
+                        inventory.upgrade_check = dump_removal(upgrades)
 
         # 3. Service Discovery
         if settings.discovery and settings.discovery.services_enabled:

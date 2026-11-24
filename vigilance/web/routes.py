@@ -28,6 +28,7 @@ router.add_api_route("/vulnerabilities", _page("vulnerabilities.html"), response
 router.add_api_route("/admin/sources", _page("admin_sources.html"), response_class=HTMLResponse, include_in_schema=False)
 router.add_api_route("/admin/exceptions", _page("admin_exceptions.html"), response_class=HTMLResponse, include_in_schema=False)
 router.add_api_route("/admin/settings", _page("admin_settings.html"), response_class=HTMLResponse, include_in_schema=False)
+router.add_api_route("/admin/actions", _page("admin_actions.html"), response_class=HTMLResponse, include_in_schema=False)
 
 
 @router.get("/hosts/{inventory_id}", response_class=HTMLResponse, include_in_schema=False)

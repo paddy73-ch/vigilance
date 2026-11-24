@@ -222,6 +222,11 @@ async def lifespan(app):
                     setattr(settings, key, int(val))
                 except (ValueError, TypeError):
                     pass
+    # Remediation runs that were cut off by a restart
+    from vigilance.actions.runner import mark_interrupted
+    async with async_session_maker() as db:
+        if await mark_interrupted(db):
+            await db.commit()
     await start_scheduler()
     logger.info(
         "Application started. Scan interval: %sh, CVE sync: %sh, SSH timeout: %ss, SSH parallel: %s",

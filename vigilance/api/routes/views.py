@@ -185,6 +185,44 @@ async def newer_versions(db: AsyncSession, pairs: set) -> Dict[tuple, dict]:
     return out
 
 
+def upgrade_availability(check_json: Optional[str], binaries: List[str], fixed: Optional[str]) -> dict:
+    """Does the host's package source offer the fix? From the scan's `apt list --upgradable`.
+
+    status: "available" (all packages have a candidate >= fix), "partial" (some do),
+            "older" (newer versions exist, but below the fix), "missing" (no candidate at all),
+            "unknown" (not checked yet).
+    """
+    try:
+        check = json.loads(check_json or "null")
+    except ValueError:
+        check = None
+    if not check:
+        return {"status": "unknown", "lists_at": None, "installable": list(binaries), "candidates": {}}
+    cands = check.get("candidates") or {}
+    states = {}
+    for b in binaries:
+        c = cands.get(b)
+        if c is None:
+            states[b] = "missing"
+            continue
+        try:
+            states[b] = "ok" if not fixed or compare_debian_versions(c, fixed) >= 0 else "older"
+        except ValueError:
+            states[b] = "ok"
+    values = set(states.values())
+    if values == {"ok"}:
+        status = "available"
+    elif "ok" in values:
+        status = "partial"
+    elif "older" in values:
+        status = "older"
+    else:
+        status = "missing"
+    return {"status": status, "lists_at": check.get("lists_at"),
+            "installable": [b for b in binaries if states[b] != "missing"],
+            "candidates": {b: cands[b] for b in binaries if b in cands}}
+
+
 _KERNEL_RE = re.compile(r"(linux-image|proxmox-kernel|pve-kernel)-\d")
 _STEM_RE = re.compile(r"[a-z][a-z+.-]*?(?=[-.]?\d|$)")
 
@@ -405,8 +443,11 @@ async def get_host(inventory_id: int, db: AsyncSession = Depends(get_db),
                 "risk": removal_risk(inv.removal_check if inv else None, g["binaries"]),
             }
         else:
-            g["remedy"] = {"action": "upgrade", "command": upgrade_command(g["binaries"]), "target": g["fixed_version"]}
-    upgrade = sorted({b for g in patchable if not g["obsolete"] for b in g["binaries"]})
+            avail = upgrade_availability(inv.upgrade_check if inv else None, g["binaries"], g["fixed_version"])
+            g["remedy"] = {"action": "upgrade", "target": g["fixed_version"], "availability": avail,
+                           "command": upgrade_command(avail["installable"]) if avail["installable"] else None}
+    upgrade = sorted({b for g in patchable if not g["obsolete"]
+                      for b in g["remedy"]["availability"]["installable"]})
     remove = sorted({b for g in patchable if g["obsolete"] for b in g["binaries"]})
     return {
         **host,
@@ -611,9 +652,13 @@ async def list_packages(
     remove_pairs = {(h[0], r.package) for r in rows for h in detail[(r.package, r.version)]["hosts"]
                     if (h[0], r.package, r.version) in obsolete_all}
     newer = await newer_versions(db, remove_pairs)
-    checks = dict((await db.execute(
-        select(I.id, I.removal_check).where(I.id.in_({p[0] for p in remove_pairs}))
-    )).all()) if remove_pairs else {}
+    host_ids = {h[0] for r in rows for h in detail[(r.package, r.version)]["hosts"]}
+    checks, upgrades = {}, {}
+    if host_ids:
+        for i, rc, uc in (await db.execute(
+            select(I.id, I.removal_check, I.upgrade_check).where(I.id.in_(host_ids))
+        )).all():
+            checks[i], upgrades[i] = rc, uc
     items = []
     for r in rows:
         d = detail[(r.package, r.version)]
@@ -631,7 +676,16 @@ async def list_packages(
                 "risk": removal_risk(checks.get(i), sorted(d["binaries"][i])),
             } for i, n in hosts]}
         else:
-            remedy = {"action": "upgrade", "command": upgrade_command(binaries), "target": fixed}
+            per_host = {n: upgrade_availability(upgrades.get(i), sorted(d["binaries"][i]), fixed) for i, n in hosts}
+            installable = sorted({b for a in per_host.values() for b in a["installable"]})
+            statuses = {a["status"] for a in per_host.values()}
+            remedy = {"action": "upgrade", "target": fixed,
+                      "command": upgrade_command(installable) if installable else None,
+                      "availability": {
+                          "status": statuses.pop() if len(statuses) == 1 else "partial",
+                          "missing_on": sorted(n for n, a in per_host.items() if a["status"] in ("missing", "older")),
+                          "lists_at": min((a["lists_at"] for a in per_host.values() if a["lists_at"]), default=None),
+                      }}
         items.append({
             "package": r.package, "version": r.version, "severity": _sev(r.rank), "max_cvss": r.max_cvss,
             "hosts": r.hosts, "advisories": len(merge_advisories(d["advisories"].values())),
@@ -724,8 +778,9 @@ async def get_vulnerability(cve_entry_id: int, db: AsyncSession = Depends(get_db
                                  "replacement": successors(newer.get((i.id, pkg)), row["binaries"]),
                                  "risk": removal_risk(i.removal_check, row["binaries"])}
             else:
-                row["remedy"] = {"action": "upgrade", "command": upgrade_command(row["binaries"]),
-                                 "target": f.fixed_version}
+                avail = upgrade_availability(i.upgrade_check, row["binaries"], f.fixed_version)
+                row["remedy"] = {"action": "upgrade", "target": f.fixed_version, "availability": avail,
+                                 "command": upgrade_command(avail["installable"]) if avail["installable"] else None}
         affected.append(row)
     key = vuln_key(cve.cve_id, cve.upstream_ids)
     return {
