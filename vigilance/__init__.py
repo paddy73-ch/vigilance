@@ -1,6 +1,6 @@
 """Vigilance - Self-hosted Security & Patch Monitoring for Proxmox"""
 
-__version__ = "0.5.0"
+__version__ = "0.6.0"
 __author__ = "Vigilance Team"
 __description__ = "Self-hosted Security & Patch Monitoring for Proxmox"
 

@@ -17,7 +17,7 @@ import httpx
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from vigilance.cve.cvss import cvss3_base_score, score_to_severity
-from vigilance.cve.ecosystems import osv_ecosystem
+from vigilance.cve.ecosystems import osv_ecosystem, vendor_go_module
 from vigilance.cve.models import AffectedRange, CVEData, Reference
 
 logger = logging.getLogger(__name__)
@@ -43,6 +43,12 @@ _URGENCY_SEVERITY = {
 
 def tool_query_key(tool) -> Optional[QueryKey]:
     """Build the OSV query key for a discovered tool, or None if OSV cannot be queried for it."""
+    if (tool.package_manager or "").lower() == "dpkg":
+        # Vendor packages (tailscale, crowdsec, containerd.io): Go vulnerability data instead of Debian
+        for name in (getattr(tool, "source_name", None), tool.tool_name):
+            vendor = vendor_go_module(name, getattr(tool, "source_version", None) or tool.detected_version) if name else None
+            if vendor:
+                return "Go", vendor[0], vendor[1]
     inventory = getattr(tool, "inventory", None)
     ecosystem = osv_ecosystem(
         tool.package_manager,

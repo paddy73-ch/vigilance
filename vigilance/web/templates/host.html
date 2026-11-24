@@ -91,6 +91,26 @@
         </table>
       </section>
 
+      <template x-if="h.foreign_sources && h.foreign_sources.length">
+        <section class="panel">
+          <details class="fold">
+            <summary>Pakete aus fremden Paketquellen <span class="muted" x-text="'(' + h.foreign_sources.reduce((n, g) => n + g.uncovered.length + g.covered.length, 0) + ')'"></span></summary>
+            <div class="panel-pad stack">
+              <p class="muted">Diese Pakete stammen nicht aus Debian. Debian hat für sie keine Sicherheitsmeldungen. Vigilance prüft sie nur, wenn es sie einem Go-Modul zuordnen kann.</p>
+              <template x-for="g in h.foreign_sources" :key="g.source">
+                <div>
+                  <p class="remedy-host" x-text="g.source"></p>
+                  <p x-show="g.covered.length"><span class="tag tag-ok">Geprüft</span>
+                    <span x-text="g.covered.map((c) => c.package + ' (Go-Modul ' + c.module + ')').join(', ')"></span></p>
+                  <p class="mt-6" x-show="g.uncovered.length"><span class="tag">Keine Sicherheitsdaten</span>
+                    <span class="ver" x-text="g.uncovered.length > 12 ? g.uncovered.slice(0, 12).join(', ') + ' und ' + (g.uncovered.length - 12) + ' weitere' : g.uncovered.join(', ')"></span></p>
+                </div>
+              </template>
+            </div>
+          </details>
+        </section>
+      </template>
+
       <template x-for="sec in folds()" :key="sec.key">
         <section class="panel">
           <details class="fold">
