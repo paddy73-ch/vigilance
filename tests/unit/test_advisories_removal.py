@@ -72,6 +72,7 @@ def test_parse_check_output():
 def test_script_is_read_only():
     # the check must never change anything on the host
     assert "apt-get -s" in SCRIPT
+    assert "Dir::Log::Planner=/dev/null" in SCRIPT  # otherwise -s still writes /var/log/apt/eipp.log.xz
     import re
     body = SCRIPT.replace("apt-get -s", "")
     for forbidden in (r"apt-get\s+(purge|remove|install)", r"\bdpkg\s+-[rPi]", r"(^|[\s;|&])rm\s", r"[^2]>\s*/(?!dev/null)"):
