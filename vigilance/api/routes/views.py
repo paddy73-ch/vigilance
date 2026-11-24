@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from vigilance.api.deps import get_current_user_optional, get_db, require_write_access
 from vigilance.cve.advisories import merge_advisories, same_vulnerability, vuln_key
+from vigilance.cve.platforms import os_hint, os_label
 from vigilance.core.security import User
 from vigilance.cve.matcher import compare_debian_versions
 from vigilance.database.models import (
@@ -404,6 +405,9 @@ def _finding_row(f: F, t: T, c: C) -> dict:
         "first_seen": _iso(f.first_seen_at),
         "resolved_at": _iso(f.resolved_at),
         "binaries": details.get("binaries") or [t.tool_name],
+        # filtered: the advisory data restricts it to other systems; hint: only the title says so
+        "only_on": [os_label(g) for g in details.get("goos") or []],
+        "os_hint": os_hint(c.title, (c.description or "")[:300]),
     }
 
 
@@ -420,7 +424,7 @@ async def get_host(inventory_id: int, db: AsyncSession = Depends(get_db),
         .join(T, T.id == F.discovered_tool_id)
         .join(C, C.id == F.cve_entry_id)
         .where(T.inventory_id == inventory_id)
-        .where(or_(F.status.in_(["open", "suppressed"]), and_(F.status == "fixed", F.resolved_at >= since)))
+        .where(or_(F.status.in_(["open", "suppressed", "not_affected"]), and_(F.status == "fixed", F.resolved_at >= since)))
     )).all()
 
     # Installed binary packages per source package + version on this host
@@ -431,7 +435,8 @@ async def get_host(inventory_id: int, db: AsyncSession = Depends(get_db),
         binaries[(src, ver)].append(name)
     obsolete = await obsolete_keys(db, inventory_id)
 
-    groups: Dict[str, Dict[tuple, dict]] = {"patchable": {}, "without_fix": {}, "suppressed": {}, "fixed": {}}
+    groups: Dict[str, Dict[tuple, dict]] = {"patchable": {}, "without_fix": {}, "suppressed": {}, "fixed": {},
+                                            "not_affected": {}}
     for f, t, c in rows:
         if f.status == "open":
             bucket = "patchable" if f.fix_available else "without_fix"
@@ -487,6 +492,7 @@ async def get_host(inventory_id: int, db: AsyncSession = Depends(get_db),
         "without_fix_list": finish("without_fix"),
         "suppressed_list": finish("suppressed"),
         "fixed_list": finish("fixed"),
+        "not_affected_list": finish("not_affected"),
         "upgrade_command": upgrade_command(upgrade) if upgrade else None,
         "remove_command": remove_command(remove) if remove else None,
         "remove_simulation": f"apt-get -s purge {' '.join(remove)}" if remove else None,
@@ -775,7 +781,7 @@ async def list_vulnerabilities(
         "cve_entry_id": r.id, "id": r.cve_id, "upstream": [u for u in (r.upstream_ids or "").split(",") if u],
         "title": r.title, "severity": (r.severity or "NONE").upper(), "cvss": r.cvss_score,
         "hosts": r.hosts, "packages": r.packages, "package": r.package, "fix_available": bool(r.fix_available),
-        "fixed_version": r.fixed_version, "urgency": r.urgency,
+        "fixed_version": r.fixed_version, "urgency": r.urgency, "os_hint": os_hint(r.title),
     } for r in (await db.execute(stmt)).all()]
     merged = merge_advisories(rows, max_fields=("hosts", "packages", "cvss", "fix_available"))
     merged.sort(key=lambda v: (-SEVERITIES[::-1].index(v["severity"]), -(v["cvss"] or 0), v["label"]))
@@ -804,7 +810,8 @@ async def get_vulnerability(cve_entry_id: int, db: AsyncSession = Depends(get_db
         pkg, ver = t.source_name or t.tool_name, t.source_version or t.detected_version
         row = {
             **{k: v for k, v in _finding_row(f, t, cve).items() if k in (
-                "finding_id", "status", "fix_available", "fixed_version", "urgency", "first_seen", "resolved_at", "binaries")},
+                "finding_id", "status", "fix_available", "fixed_version", "urgency", "first_seen", "resolved_at", "binaries",
+                "only_on")},
             "host_id": i.id, "host": i.name, "package": pkg, "installed_version": ver,
         }
         row["display_name"] = ", ".join(row["binaries"]) if (i.id, pkg, ver) in obsolete else pkg
@@ -828,6 +835,7 @@ async def get_vulnerability(cve_entry_id: int, db: AsyncSession = Depends(get_db
         "published_at": _iso(cve.published_at), "modified_at": _iso(cve.modified_at),
         "links": _links(cve),
         "affected": affected,
+        "os_hint": next((h for h in (os_hint(a.title, (a.description or "")[:300]) for a in [cve, *siblings]) if h), None),
         "exceptions": [_exception_dict(x, host_names.get(x.inventory_id)) for x in exceptions],
     }
 

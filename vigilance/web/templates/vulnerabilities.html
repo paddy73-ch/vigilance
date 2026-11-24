@@ -17,6 +17,7 @@
         <button :aria-pressed="f.status === 'open'" @click="set('status', 'open')">Offen</button>
         <button :aria-pressed="f.status === 'suppressed'" @click="set('status', 'suppressed')">Ausnahmen</button>
         <button :aria-pressed="f.status === 'fixed'" @click="set('status', 'fixed')">Behoben</button>
+        <button :aria-pressed="f.status === 'not_affected'" @click="set('status', 'not_affected')" title="Laut Sicherheitsdaten nur andere Systeme als Linux">Anderes OS</button>
       </div>
       <div class="seg" role="group" aria-label="Fix" x-show="f.status === 'open'">
         <button :aria-pressed="f.fix === 'true'" @click="set('fix', 'true')">Mit Fix</button>
@@ -85,7 +86,7 @@
                       <td data-label="Schwere"><span class="sev" :class="'sev-' + v.severity" x-text="V.sevLabel(v.severity)"></span></td>
                       <td class="num" data-label="CVSS" x-text="v.cvss || '–'"></td>
                       <td data-label="Fix" class="ver" x-text="v.fixed_version || 'noch kein Fix'"></td>
-                      <td class="faint" x-text="v.urgency === 'unimportant' ? 'Debian: unwichtig' : ''"></td>
+                      <td class="faint" x-text="v.os_hint ? 'laut Meldung nur ' + v.os_hint : (v.urgency === 'unimportant' ? 'Debian: unwichtig' : '')"></td>
                     </tr>
                   </template>
                 </tbody>
@@ -105,7 +106,7 @@
       <tbody>
         <template x-for="v in items" :key="v.cve_entry_id">
           <tr class="clickable" @click="$dispatch('open-vuln', { id: v.cve_entry_id })">
-            <td><a href="#" @click.prevent x-text="v.label"></a><div class="also" x-show="v.also.length" x-text="'auch ' + v.also.join(', ')"></div><div class="faint" x-show="v.urgency === 'unimportant'">Debian: unwichtig</div></td>
+            <td><a href="#" @click.prevent x-text="v.label"></a><div class="also" x-show="v.also.length" x-text="'auch ' + v.also.join(', ')"></div><div class="faint" x-show="v.urgency === 'unimportant'">Debian: unwichtig</div><div class="os-hint" x-show="v.os_hint" x-text="'laut Meldung nur ' + v.os_hint"></div></td>
             <td data-label="Schwere"><span class="sev" :class="'sev-' + v.severity" x-text="V.sevLabel(v.severity)"></span></td>
             <td class="num" data-label="CVSS" x-text="v.cvss || '–'"></td>
             <td data-label="Paket" class="pkg" x-text="v.package + (v.packages > 1 ? ' +' + (v.packages - 1) : '')"></td>
