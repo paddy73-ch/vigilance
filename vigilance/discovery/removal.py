@@ -141,9 +141,11 @@ for f in /var/cache/apt/pkgcache.bin /var/lib/apt/lists; do
   [ -e "$f" ] && { echo "##LISTS $(stat -c %Y "$f")"; break; }
 done
 apt list --upgradable 2>/dev/null | awk '/upgradable from/ { split($1, a, "/"); print "##UPG " a[1] " " $2 }'
-# Where each installed version comes from (package sources listed under *** in apt-cache policy)
+# Where each installed version comes from (package sources listed under *** in apt-cache policy),
+# and whether Debian/Ubuntu also offer the package (any version from a debian.org/ubuntu.com source)
 apt-cache policy $(dpkg-query -W -f='${db:Status-Abbrev} ${Package}\n' 2>/dev/null | awk '$1 ~ /^[ih]i/ {print $2}') 2>/dev/null | awk '
-  /^[^ ].*:$/ { pkg = substr($0, 1, length($0) - 1); inst = 0; next }
+  /^[^ ].*:$/ { pkg = substr($0, 1, length($0) - 1); inst = 0; distro = 0; next }
+  /^        -?[0-9]+ / && $2 ~ /(debian\.org|ubuntu\.com)/ && !distro { print "##DISTRO " pkg; distro = 1 }
   /^ \*\*\* / { inst = 1; next }
   inst && /^        -?[0-9]+ / { if ($2 != "/var/lib/dpkg/status") print "##ORIGIN " pkg " " $2; next }
   inst && /^     [^ ]/ { inst = 0 }'
@@ -154,6 +156,7 @@ def parse_upgrade_output(output: str) -> dict:
     lists_at = None
     candidates = {}
     origins: dict = {}
+    distro = set()
     for line in output.splitlines():
         if line.startswith("##LISTS "):
             ts = line[8:].strip()
@@ -163,11 +166,16 @@ def parse_upgrade_output(output: str) -> dict:
             parts = line.split()
             if len(parts) >= 3:
                 candidates[parts[1]] = parts[2]
+        elif line.startswith("##DISTRO "):
+            distro.add(line[9:].strip())
         elif line.startswith("##ORIGIN "):
             parts = line.split()
             if len(parts) >= 3 and parts[2] not in origins.setdefault(parts[1], []):
                 origins[parts[1]].append(parts[2])
-    return {"lists_at": lists_at, "candidates": candidates, "origins": origins}
+    # Only kept for packages installed from somewhere else (e.g. Proxmox builds of Debian packages)
+    return {"lists_at": lists_at, "candidates": candidates, "origins": origins,
+            "distro_also": sorted(p for p in distro if p in origins
+                                  and not any(re.search(r"(debian\.org|ubuntu\.com)", u) for u in origins[p]))}
 
 
 async def check_upgrades(host: str, port: int, user: str, key_path: str, known_hosts: str) -> Optional[dict]:
