@@ -294,6 +294,16 @@ chown vigilance-scan: /var/lib/vigilance-scan/.ssh/authorized_keys; chmod 600 /v
 
 and in `config.yaml` under the node's `ssh:` set `scan_host: true` (`host_user` defaults to `vigilance-scan`).
 
+### Deploy with deploy.sh
+
+`deploy.sh` copies the current commit to the Proxmox host and rebuilds the container there. The target
+comes from `~/.config/vigilance/deploy.env` (or the environment), not from the repository:
+
+```bash
+PROXMOX_HOST=192.0.2.49   # Proxmox host, reachable as root via SSH
+CONTAINER_ID=123          # LXC running Vigilance
+```
+
 ### Scanning VMs
 
 VMs are scanned only when listed under the node in `config.yaml`. They are handled like the containers

@@ -1,10 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-PROXMOX_HOST="192.0.2.49"
-PROXMOX_USER="root"
-CONTAINER_ID="123"
-DEPLOY_DIR="/opt/vigilance"
+# Target from the environment or a local file outside the repository, e.g.
+#   ~/.config/vigilance/deploy.env:  PROXMOX_HOST=192.0.2.49  CONTAINER_ID=123
+DEPLOY_ENV="${VIGILANCE_DEPLOY_ENV:-$HOME/.config/vigilance/deploy.env}"
+# shellcheck disable=SC1090
+[ -f "$DEPLOY_ENV" ] && . "$DEPLOY_ENV"
+PROXMOX_HOST="${PROXMOX_HOST:?PROXMOX_HOST fehlt: in $DEPLOY_ENV oder als Umgebungsvariable setzen}"
+PROXMOX_USER="${PROXMOX_USER:-root}"
+CONTAINER_ID="${CONTAINER_ID:-123}"
+DEPLOY_DIR="${DEPLOY_DIR:-/opt/vigilance}"
 REMOTE="${PROXMOX_USER}@${PROXMOX_HOST}"
 COMMIT="$(git rev-parse --short HEAD)"
 ARCHIVE="$(mktemp "${TMPDIR:-/tmp}/vigilance-deploy.XXXXXX")"
