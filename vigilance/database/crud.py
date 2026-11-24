@@ -376,18 +376,24 @@ async def get_finding_stats(db: AsyncSession) -> dict:
             VulnerabilityFinding.status == "open", VulnerabilityFinding.urgency == "unimportant"
         )
     )
+    # Group by the raw column and normalise in Python: a bound literal inside the GROUP BY
+    # expression is a different parameter than in SELECT for PostgreSQL (GroupingError).
     rows = await db.execute(
-        select(func.upper(func.coalesce(CVEEntry.severity, "NONE")), func.count(VulnerabilityFinding.id))
+        select(CVEEntry.severity, func.count(VulnerabilityFinding.id))
         .join(CVEEntry, VulnerabilityFinding.cve_entry_id == CVEEntry.id)
         .where(VulnerabilityFinding.status == "open", VulnerabilityFinding.fix_available.is_(True))
-        .group_by(func.upper(func.coalesce(CVEEntry.severity, "NONE")))
+        .group_by(CVEEntry.severity)
     )
+    with_fix_by_severity: dict = {}
+    for sev, n in rows.all():
+        key = (sev or "NONE").upper()
+        with_fix_by_severity[key] = with_fix_by_severity.get(key, 0) + n
     return {
         "by_status": status_counts,
         "by_severity": severity_counts,
         "open_with_fix": open_with_fix,
         "open_unimportant": open_unimportant or 0,
-        "open_with_fix_by_severity": {sev: n for sev, n in rows.all()},
+        "open_with_fix_by_severity": with_fix_by_severity,
     }
 
 
