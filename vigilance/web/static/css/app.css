@@ -7,6 +7,7 @@
 @font-face { font-family: "Plex Mono"; src: url("/static/fonts/ibm-plex-mono-latin-500-normal.woff2") format("woff2"); font-weight: 500; font-display: swap; }
 
 :root {
+  color-scheme: light;
   --bg: #eef2f5;
   --surface: #ffffff;
   --surface-2: #f6f8fa;
@@ -34,27 +35,26 @@
   --shadow-drawer: -12px 0 32px rgba(19, 33, 44, 0.16);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #0d1419;
-    --surface: #141d24;
-    --surface-2: #1a252d;
-    --ink: #e2e9ef;
-    --muted: #9aa8b5;
-    --faint: #6f7d8a;
-    --line: #24323c;
-    --line-strong: #344653;
-    --action: #56b6c4;
-    --action-ink: #0d1419;
-    --action-soft: #173139;
-    --crit: #f2847a;  --crit-soft: #3a1b19;
-    --high: #f4a261;  --high-soft: #3a2615;
-    --med:  #e3c15a;  --med-soft:  #352d12;
-    --low:  #8fa8f2;  --low-soft:  #1c2647;
-    --none: #94a1ad;  --none-soft: #222d35;
-    --ok:   #6fcf97;  --ok-soft:   #15301f;
-    --shadow-drawer: -12px 0 32px rgba(0, 0, 0, 0.5);
-  }
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0d1419;
+  --surface: #141d24;
+  --surface-2: #1a252d;
+  --ink: #e2e9ef;
+  --muted: #9aa8b5;
+  --faint: #6f7d8a;
+  --line: #24323c;
+  --line-strong: #344653;
+  --action: #56b6c4;
+  --action-ink: #0d1419;
+  --action-soft: #173139;
+  --crit: #f2847a;  --crit-soft: #3a1b19;
+  --high: #f4a261;  --high-soft: #3a2615;
+  --med:  #e3c15a;  --med-soft:  #352d12;
+  --low:  #8fa8f2;  --low-soft:  #1c2647;
+  --none: #94a1ad;  --none-soft: #222d35;
+  --ok:   #6fcf97;  --ok-soft:   #15301f;
+  --shadow-drawer: -12px 0 32px rgba(0, 0, 0, 0.5);
 }
 
 *, *::before, *::after { box-sizing: border-box; }
@@ -385,3 +385,12 @@ pre.log { margin: 0; padding: 10px 12px; max-height: 340px; overflow: auto; back
 .host-warn { padding: 12px 14px; border-radius: var(--radius); border: 1px solid var(--high); background: var(--high-soft); display: grid; gap: 10px; }
 .host-warn .check { display: flex; gap: 8px; align-items: flex-start; font-weight: 500; }
 .grow { flex: 1 1 320px; }
+
+/* Hell/Dunkel-Schalter: zeigt das Ziel (Mond im hellen, Sonne im dunklen Modus) */
+.theme-toggle { display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; padding: 0;
+  border-radius: var(--radius); border: 1px solid var(--line); background: var(--surface); color: var(--muted); cursor: pointer; }
+.theme-toggle:hover { border-color: var(--action); color: var(--action); }
+.theme-toggle:focus-visible { outline: 2px solid var(--action); outline-offset: 2px; }
+.theme-toggle svg { width: 20px; height: 20px; fill: currentColor; }
+.theme-toggle .icon-sun, :root[data-theme="dark"] .theme-toggle .icon-moon { display: none; }
+:root[data-theme="dark"] .theme-toggle .icon-sun { display: block; }
