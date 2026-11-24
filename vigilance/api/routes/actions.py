@@ -38,6 +38,14 @@ async def _targets(db: AsyncSession, host_ids: Optional[List[int]]) -> List[Inve
     return invs
 
 
+@router.get("/actions/available")
+async def available(host_id: Optional[int] = Query(None), db: AsyncSession = Depends(get_db),
+                    _: Optional[User] = Depends(get_current_user_optional)):
+    """Which hosts have suggestions to apply, so the UI can disable the buttons. Read-only."""
+    invs = await _targets(db, [host_id] if host_id else None)
+    return {"suggested": await runner.hosts_with_suggestions(db, invs)}
+
+
 def _run_dict(r: ActionRun, with_output: bool = True) -> dict:
     iso = lambda d: d.isoformat() + "Z" if d else None  # noqa: E731
     out = {
