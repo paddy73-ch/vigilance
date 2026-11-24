@@ -95,6 +95,8 @@ async def test_overview(client):
     top = {t["package"]: t for t in d["top_packages"]}
     assert top["glib2.0"]["action"] == "remove" and top["glib2.0"]["severity"] == "CRITICAL"
     assert top["curl"]["action"] == "upgrade" and top["curl"]["hosts"] == 2
+    assert top["glib2.0"]["host_ids"] == [client.hosts["adguard"].id]  # one host -> link to its page
+    assert top["curl"]["host_ids"] == sorted([client.hosts["adguard"].id, client.hosts["dev"].id])
     levels = {h["name"]: h["level"] for h in d["hosts"]}
     assert levels == {"adguard": "critical", "dev": "warning", "box": "stopped"}
     assert d["hosts"][0]["name"] == "adguard"  # most urgent first

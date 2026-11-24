@@ -261,6 +261,15 @@
   window.V = V;
 
   // ------------------------------------------------------------ page chrome
+  // Zurück-Pfeil: in Vigilance einen Schritt zurück (behält z. B. den Filter der Hosts-Seite), sonst der Link
+  document.addEventListener("click", (e) => {
+    const a = e.target.closest && e.target.closest("a[data-back]");
+    if (!a || e.metaKey || e.ctrlKey || e.shiftKey) return;
+    let sameOrigin = false;
+    try { sameOrigin = !!document.referrer && new URL(document.referrer).origin === location.origin; } catch (err) { sameOrigin = false; }
+    if (sameOrigin && history.length > 1) { e.preventDefault(); history.back(); }
+  });
+
   document.addEventListener("DOMContentLoaded", async () => {
     auth.render();
     const el = document.getElementById("auth-state");

@@ -11,6 +11,10 @@
       <button class="btn" @click="$dispatch('open-actions', { kind: 'full_upgrade', hostIds: null, title: 'alle Container' })">Upgrade aller Container</button>
     </div>
   </div>
+  <p class="filter-note" x-show="only">
+    <span x-text="'Gefiltert: ' + V.plural(running().length + stopped().length, 'Host', 'Hosts') + (onlyFor ? ' mit ' + onlyFor : '')"></span>
+    <button class="btn btn-sm" @click="showAll()">Alle Hosts anzeigen</button>
+  </p>
   <section class="panel">
     <template x-if="!hosts"><div class="panel-pad"><div class="skeleton"></div></div></template>
     <table class="rows" x-show="hosts">

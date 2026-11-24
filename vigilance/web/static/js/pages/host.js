@@ -4,10 +4,7 @@ document.addEventListener("alpine:init", () => {
     error: null,
     open: {},
     suggested: null, // true/false once checked
-    async init() {
-      await this.load();
-      window.addEventListener("vigilance-changed", () => this.load());
-    },
+    async init() { await this.load(); },
     async load() {
       try { this.h = await V.api("/api/hosts/" + id); document.title = this.h.name + " – Vigilance"; }
       catch (e) { this.error = e.message; }
