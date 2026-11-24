@@ -2,13 +2,15 @@ from datetime import datetime
 from typing import List, Optional, Any
 from pydantic import BaseModel, Field
 
+from vigilance import __version__ as APP_VERSION
+
 
 # Health
 class HealthResponse(BaseModel):
     status: str
     timestamp: datetime
     database: str
-    version: str = "0.1.0"
+    version: str = APP_VERSION
 
 
 # Proxmox Nodes
@@ -232,8 +234,8 @@ class SettingResponse(BaseModel):
 
 
 class GotifyTestRequest(BaseModel):
-    url: str
-    token: str
+    url: str = ""  # empty = configured value
+    token: str = ""
 
 
 class GotifyTestResponse(BaseModel):

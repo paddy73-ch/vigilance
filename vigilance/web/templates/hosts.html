@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}Hosts{% endblock %}
+{% block page_script %}<script defer src="/static/js/pages/hosts.js?v={{ asset_version }}"></script>{% endblock %}
+{% block content %}
+<div x-data="hostsPage" x-cloak>
+  <div class="page-head">
+    <div><h1>Hosts</h1><p class="muted">LXC-Container auf pve, der dringendste zuerst.</p></div>
+  </div>
+  <section class="panel">
+    <template x-if="!hosts"><div class="panel-pad"><div class="skeleton"></div></div></template>
+    <table class="rows" x-show="hosts">
+      <thead><tr><th>Host</th><th>System</th><th>Zustand</th><th class="num">Updates</th><th class="num">Altpakete</th><th class="num">Kritisch/hoch behebbar</th><th class="num">Ohne Fix</th><th>Letzter Scan</th></tr></thead>
+      <tbody>
+        <template x-for="h in running()" :key="h.id">
+          <tr class="clickable" @click="location.href = '/hosts/' + h.id">
+            <td><a :href="'/hosts/' + h.id" class="pkg" x-text="h.name"></a> <span class="faint" x-text="'CT ' + h.vmid"></span></td>
+            <td data-label="System" x-text="h.os || '–'"></td>
+            <td data-label="Zustand"><span class="tag" :class="levelClass(h)" x-text="levelText(h)" :title="h.last_scan_error || ''"></span></td>
+            <td class="num" data-label="Updates" x-text="h.upgrade_packages || '–'"></td>
+            <td class="num" data-label="Altpakete" x-text="h.remove_packages || '–'"></td>
+            <td class="num" data-label="Kritisch/hoch behebbar" x-text="(h.patchable_critical + h.patchable_high) || '–'"></td>
+            <td class="num" data-label="Ohne Fix" x-text="V.n(h.without_fix)"></td>
+            <td data-label="Letzter Scan" class="nowrap" x-text="h.last_scan_at ? V.ago(h.last_scan_at) : '–'"></td>
+          </tr>
+        </template>
+      </tbody>
+    </table>
+  </section>
+  <section class="panel mt-16" x-show="stopped().length">
+    <details class="fold">
+      <summary>Gestoppt <span class="muted" x-text="'(' + stopped().length + ') – werden nicht gescannt, Angaben vom letzten Scan'"></span></summary>
+      <table class="rows">
+        <tbody>
+          <template x-for="h in stopped()" :key="h.id">
+            <tr class="clickable" @click="location.href = '/hosts/' + h.id">
+              <td><a :href="'/hosts/' + h.id" class="pkg" x-text="h.name"></a> <span class="faint" x-text="'CT ' + h.vmid"></span></td>
+              <td data-label="Behebbar (letzter Stand)" x-text="h.patchable ? V.plural(h.patchable, 'behebbarer Befund', 'behebbare Befunde') : 'keine Daten'"></td>
+            </tr>
+          </template>
+        </tbody>
+      </table>
+    </details>
+  </section>
+</div>
+{% endblock %}

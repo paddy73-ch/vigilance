@@ -76,7 +76,11 @@ class CVESyncOrchestrator:
         self._rolled_back = False
 
     async def _load_tools(self) -> List[DiscoveredTool]:
-        result = await self.db.execute(select(DiscoveredTool).options(selectinload(DiscoveredTool.inventory)))
+        result = await self.db.execute(
+            select(DiscoveredTool)
+            .where(DiscoveredTool.removed_at.is_(None))  # packages no longer installed are not matched
+            .options(selectinload(DiscoveredTool.inventory))
+        )
         return list(result.scalars().all())
 
     async def sync_all(self, sources: Optional[Sequence[str]] = None, scan_run_id: Optional[int] = None) -> Dict[str, dict]:
@@ -112,7 +116,7 @@ class CVESyncOrchestrator:
                 results["ghsa"] = await self._sync_source("ghsa", run_ghsa)
             else:
                 results["ghsa"] = {"status": "skipped", "count": 0,
-                                   "message": "No packages from GHSA ecosystems (pip, npm, ...) discovered"}
+                                   "message": "Keine Pakete aus pip, npm, Go usw. installiert. Für Debian-Pakete nicht nötig."}
                 await self._set_status("ghsa", status="skipped", entries_count=0,
                                        last_sync_at=datetime.utcnow(),
                                        error_message=results["ghsa"]["message"])
@@ -135,6 +139,8 @@ class CVESyncOrchestrator:
             tools = await self._load_tools()
         active = {s for s, r in results.items() if r.get("status") == "success"}
         self.last_match = await match_findings(self.db, tools, direct, active, scan_run_id=scan_run_id)
+        from vigilance.core.snapshots import write_daily_snapshot
+        await write_daily_snapshot(self.db)
         await self.db.commit()
         await self._notify(self.last_match)
         return results
@@ -169,6 +175,7 @@ class CVESyncOrchestrator:
                 published_at=cve_data.published_at,
                 modified_at=cve_data.modified_at,
                 raw_data=json.dumps(cve_data.raw_data),
+                upstream_ids=",".join(cve_data.aliases)[:512] or None,
                 fetched_at=datetime.utcnow(),
             )
         await self.db.flush()

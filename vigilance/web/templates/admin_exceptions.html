@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}Ausnahmen{% endblock %}
+{% block page_script %}<script defer src="/static/js/pages/admin.js?v={{ asset_version }}"></script>{% endblock %}
+{% block content %}
+{% include "_admin_tabs.html" %}
+<div x-data="exceptionsPage" x-cloak>
+  <section class="panel">
+    <template x-if="list && !list.length">
+      <div class="empty"><h3>Noch keine Ausnahmen</h3>
+        <p>Eine Ausnahme blendet einen Befund aus, den du bewusst in Kauf nimmst. Lege sie in der Detailansicht einer <a href="/vulnerabilities">Schwachstelle</a> an.</p></div>
+    </template>
+    <table class="rows" x-show="list && list.length">
+      <thead><tr><th>Advisory</th><th>Gilt für</th><th>Begründung</th><th>Ablauf</th><th class="num">Ausgeblendet</th><th></th></tr></thead>
+      <tbody>
+        <template x-for="e in list || []" :key="e.id">
+          <tr>
+            <td><a :href="'/vulnerabilities?view=cve&status=suppressed&q=' + encodeURIComponent(e.cve_id)" class="mono" x-text="e.cve_id"></a>
+              <div class="faint" x-text="'angelegt ' + V.day(e.created_at)"></div></td>
+            <td data-label="Gilt für" x-text="e.host ? e.host : 'alle Hosts'"></td>
+            <td data-label="Begründung" x-text="e.reason"></td>
+            <td data-label="Ablauf"><span x-text="e.expires_at ? V.day(e.expires_at) : 'unbefristet'"></span> <span class="tag tag-crit" x-show="e.expired">abgelaufen</span></td>
+            <td class="num" data-label="Ausgeblendet" x-text="V.plural(e.suppressed_findings, 'Befund', 'Befunde')"></td>
+            <td class="right"><button class="btn btn-sm btn-danger" @click="remove(e)">Aufheben</button></td>
+          </tr>
+        </template>
+      </tbody>
+    </table>
+  </section>
+</div>
+{% endblock %}

@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+{% block title %}Übersicht{% endblock %}
+{% block page_script %}<script defer src="/static/js/pages/overview.js?v={{ asset_version }}"></script>{% endblock %}
+{% block content %}
+<div x-data="overview" x-cloak>
+  <div class="status-strip" aria-live="polite">
+    <span><span class="dot" :class="scanDot()"></span><span x-text="scanText()"></span></span>
+    <template x-for="s in data?.sources || []" :key="s.source">
+      <span><span class="dot" :class="syncDot(s)"></span><span x-text="syncText(s)"></span></span>
+    </template>
+    <a href="/hosts" x-show="data?.hosts_unknown" x-text="V.plural(data?.hosts_unknown, 'Host nicht gescannt', 'Hosts nicht gescannt')"></a>
+    <span class="actions">
+      <button class="btn btn-sm" @click="scan()" :disabled="busy || scanning()">
+        <span x-text="scanning() ? 'Scan läuft …' : 'Jetzt scannen'"></span></button>
+      <button class="btn btn-sm" @click="sync()" :disabled="busy">CVE-Daten abgleichen</button>
+    </span>
+  </div>
+
+  <template x-if="!data && !error"><div class="panel verdict"><div class="skeleton w-60"></div></div></template>
+  <template x-if="error"><div class="panel empty"><h3>Übersicht nicht geladen</h3><p x-text="error"></p></div></template>
+
+  <template x-if="data">
+    <div class="stack">
+      <section class="panel verdict">
+        <h1 x-text="headline()"></h1>
+        <p class="sub" x-text="subline()"></p>
+        <div class="facts">
+          <div class="fact"><a href="/vulnerabilities?fix=true&severity=CRITICAL,HIGH"><b x-text="V.n(k.patchable_crit_high)"></b></a><span>davon kritisch oder hoch</span></div>
+          <div class="fact"><a href="/vulnerabilities?fix=false"><b x-text="V.n(k.without_fix)"></b></a><span x-text="'ohne Fix, ' + V.n(k.without_fix_unimportant) + ' laut Debian unwichtig'"></span></div>
+          <div class="fact"><b x-text="V.n(k.fixed_7d)"></b><span>behoben in 7 Tagen</span></div>
+          <div class="fact"><a href="/admin/exceptions"><b x-text="V.n(k.suppressed)"></b></a><span>als Ausnahme markiert</span></div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <h2>Hosts</h2>
+          <span class="muted" x-text="boardSummary()"></span>
+        </div>
+        <div class="board">
+          <template x-for="h in active()" :key="h.id">
+            <a class="slot" :href="'/hosts/' + h.id" :data-level="h.level">
+              <div class="slot-top"><span class="slot-name" x-text="h.name"></span><span class="slot-id" x-text="'CT ' + h.vmid"></span></div>
+              <div class="meter" :class="{ clear: h.level === 'ok' }">
+                <template x-for="seg in V.meter(h)"><span :class="'m-' + seg.sev" :style="{ width: seg.pct + '%' }"></span></template>
+              </div>
+              <div class="slot-line" x-text="slotText(h)"></div>
+            </a>
+          </template>
+        </div>
+        <details class="board-group" x-show="stopped().length">
+          <summary x-text="V.plural(stopped().length, 'gestoppter Container', 'gestoppte Container')"></summary>
+          <div class="board nested">
+            <template x-for="h in stopped()" :key="h.id">
+              <a class="slot" :href="'/hosts/' + h.id" data-level="stopped">
+                <div class="slot-top"><span class="slot-name" x-text="h.name"></span><span class="slot-id" x-text="'CT ' + h.vmid"></span></div>
+                <div class="slot-line" x-text="h.patchable ? V.plural(h.patchable, 'behebbarer Befund (letzter Stand)', 'behebbare Befunde (letzter Stand)') : 'Gestoppt'"></div>
+              </a>
+            </template>
+          </div>
+        </details>
+      </section>
+
+      <div class="grid-2">
+        <section class="panel">
+          <div class="panel-head"><h2>Was zuerst</h2><a href="/vulnerabilities?fix=true">Alle behebbaren</a></div>
+          <template x-if="!data.top_packages.length"><div class="empty"><h3>Nichts offen</h3><p>Für kein installiertes Paket gibt es derzeit einen Fix.</p></div></template>
+          <ul class="toplist">
+            <template x-for="p in data.top_packages" :key="p.package + p.version">
+              <li>
+                <a :href="'/vulnerabilities?fix=true&q=' + encodeURIComponent(p.package)"><span class="pkg" x-text="p.package"></span> <span class="ver mono muted" x-text="p.version"></span></a>
+                <span class="sev" :class="'sev-' + p.severity" x-text="V.sevLabel(p.severity)"></span>
+                <div class="meta">
+                  <span class="tag" :class="p.action === 'remove' ? 'tag-remove' : 'tag-upgrade'" x-text="p.action === 'remove' ? 'Altpaket entfernen' : 'Update'"></span>
+                  <span x-text="V.plural(p.advisories, 'Advisory', 'Advisories')"></span>
+                  <span x-text="V.plural(p.hosts, 'Host', 'Hosts')"></span>
+                </div>
+              </li>
+            </template>
+          </ul>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head"><h2>Verlauf</h2><span class="muted">letzte 30 Tage</span></div>
+          <div class="panel-pad trend">
+            <template x-if="trend()">
+              <div>
+                <svg viewBox="0 0 600 150" preserveAspectRatio="none" role="img" :aria-label="'Verlauf: aktuell ' + k.patchable + ' behebbar'">
+                  <line class="axis" x1="0" y1="149" x2="600" y2="149"/>
+                  <path class="l-nofix" :d="trend().without_fix"/>
+                  <path class="l-patch" :d="trend().patchable"/>
+                  <path class="l-fixed" :d="trend().fixed"/>
+                </svg>
+                <div class="legend mt-10">
+                  <span><i class="lg-patch"></i>behebbar</span>
+                  <span><i class="lg-nofix"></i>ohne Fix</span>
+                  <span><i class="lg-fixed"></i>behoben (gesamt)</span>
+                  <span x-text="'Skala bis ' + V.n(trend().max)"></span>
+                </div>
+              </div>
+            </template>
+            <template x-if="!trend()"><p class="muted">Der Verlauf erscheint ab dem zweiten Tag mit Daten. Ein Punkt wird nach jedem Abgleich gespeichert.</p></template>
+          </div>
+        </section>
+      </div>
+    </div>
+  </template>
+</div>
+{% endblock %}

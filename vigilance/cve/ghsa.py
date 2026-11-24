@@ -108,6 +108,7 @@ def parse_advisory(node: dict) -> Optional[CVEData]:
         published_at=_parse_date(node.get("published_at")),
         modified_at=_parse_date(node.get("updated_at")),
         raw_data=node,
+        aliases=[cve_id] if cve_id else [],
     )
 
 

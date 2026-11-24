@@ -1,7 +1,7 @@
-from datetime import datetime
+from datetime import date, datetime
 from typing import Optional, List
 from sqlalchemy import (
-    Integer, String, Text, Boolean, DateTime, ForeignKey, UniqueConstraint, Index, JSON
+    Integer, String, Text, Boolean, Date, DateTime, ForeignKey, UniqueConstraint, Index, JSON
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from vigilance.database.base import Base
@@ -38,6 +38,10 @@ class Inventory(Base):
     os_codename: Mapped[Optional[str]] = mapped_column(String(64))  # trixie, noble
     tags: Mapped[Optional[str]] = mapped_column(Text)  # JSON array
     last_seen: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    # Result of the last scan attempt: ok | unreachable | no_ip | stopped
+    last_scan_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    last_scan_status: Mapped[Optional[str]] = mapped_column(String(16))
+    last_scan_error: Mapped[Optional[str]] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -68,6 +72,8 @@ class DiscoveredTool(Base):
     # Source package / version (dpkg source:Package, apk origin). CVE data is keyed on these.
     source_name: Mapped[Optional[str]] = mapped_column(String(255))
     source_version: Mapped[Optional[str]] = mapped_column(String(128))
+    # Set when the package was no longer found on the host (kept for history; excluded from matching)
+    removed_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
     raw_data: Mapped[Optional[str]] = mapped_column(Text)  # JSON
     discovered_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     scan_run_id: Mapped[Optional[int]] = mapped_column(ForeignKey("scan_runs.id"))
@@ -119,6 +125,8 @@ class CVEEntry(Base):
     modified_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
     fetched_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     raw_data: Mapped[Optional[str]] = mapped_column(Text)  # JSON
+    # Upstream / alias IDs, comma separated (e.g. "CVE-2026-1234" for DEBIAN-CVE-2026-1234)
+    upstream_ids: Mapped[Optional[str]] = mapped_column(String(512))
 
     findings: Mapped[List["VulnerabilityFinding"]] = relationship(back_populates="cve")
 
@@ -205,3 +213,15 @@ class AppSetting(Base):
     value: Mapped[str] = mapped_column(Text, nullable=False)  # JSON
     description: Mapped[Optional[str]] = mapped_column(Text)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class FindingSnapshot(Base):
+    """Daily totals for the trend chart (one row per day, overwritten during the day)."""
+    __tablename__ = "finding_snapshots"
+
+    day: Mapped[date] = mapped_column(Date, primary_key=True)
+    patchable: Mapped[int] = mapped_column(Integer, default=0)
+    without_fix: Mapped[int] = mapped_column(Integer, default=0)
+    fixed_total: Mapped[int] = mapped_column(Integer, default=0)
+    patchable_by_severity: Mapped[Optional[str]] = mapped_column(Text)  # JSON {"CRITICAL": n, ...}
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

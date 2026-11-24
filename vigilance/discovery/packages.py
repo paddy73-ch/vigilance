@@ -29,21 +29,32 @@ class PackageInfo:
             self.source_version = self.version
 
 
-DPKG_QUERY_FORMAT = "${Package}\\t${Version}\\t${Architecture}\\t${source:Package}\\t${source:Version}\\t${binary:Summary}\\n"
+# First column: package state (db:Status-Abbrev, e.g. "ii " installed, "rc " removed with config files left).
+DPKG_QUERY_FORMAT = "${db:Status-Abbrev}\\t${Package}\\t${Version}\\t${Architecture}\\t${source:Package}\\t${source:Version}\\t${binary:Summary}\\n"
+_DPKG_STATUS_RE = re.compile(r"^[uirph][ncHUFWti][ R]$")  # e.g. "ii ", "rc "; never a package name
+# States in which the package files are actually present
+_DPKG_INSTALLED = ("ii", "hi", "iU", "iF", "hU", "hF")
 
 
 def parse_dpkg_output(output: str) -> List[PackageInfo]:
     """Parse dpkg-query output.
 
-    Expected columns: Package, Version, Architecture, source:Package,
-    source:Version, binary:Summary (see DPKG_QUERY_FORMAT). Older four-column
-    output (without source fields) is still accepted.
+    Expected columns: Status-Abbrev, Package, Version, Architecture, source:Package,
+    source:Version, binary:Summary (see DPKG_QUERY_FORMAT). Packages that are not
+    installed (e.g. "rc") are skipped. Output without the status column, and the
+    older four-column format, are still accepted.
     """
     packages = []
     for line in output.strip().split("\n"):
         if not line.strip():
             continue
-        parts = line.split("\t", 5)
+        parts = line.split("\t")
+        if parts and _DPKG_STATUS_RE.match(parts[0]) and len(parts) >= 3:
+            # dpkg-query -W also lists removed packages that left config files ("rc"): skip them
+            if parts[0].strip()[:2] not in _DPKG_INSTALLED:
+                continue
+            parts = parts[1:]
+        parts = parts[:5] + (["\t".join(parts[5:])] if len(parts) > 5 else [])
         if len(parts) < 2:
             continue
         if len(parts) >= 5:

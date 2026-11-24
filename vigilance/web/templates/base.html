@@ -1,187 +1,37 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="de-CH">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}Vigilance{% endblock %}</title>
-    <script>
-    // Write access: API token kept in this browser (localStorage) and sent as
-    // "Authorization: Bearer" on every non-GET /api request. Reading needs no token.
-    (function () {
-        const KEY = 'vigilance.apiToken';
-        let memoryToken = null;  // fallback when localStorage is unavailable
-        const auth = {
-            get() { try { return localStorage.getItem(KEY) || memoryToken; } catch (e) { return memoryToken; } },
-            set(token) { memoryToken = token; try { localStorage.setItem(KEY, token); } catch (e) {} auth.render(); },
-            clear() { memoryToken = null; try { localStorage.removeItem(KEY); } catch (e) {} auth.render(); },
-            render() {
-                const el = document.getElementById('auth-state');
-                if (!el) return;
-                const has = !!auth.get();
-                el.textContent = has ? 'Lock editing' : 'Unlock editing';
-                el.title = has ? 'Remove the API token from this browser' : 'Enter the API token to make changes';
-                el.dataset.unlocked = has ? 'true' : 'false';
-            },
-            ask(message) {
-                return new Promise((resolve) => {
-                    const overlay = document.createElement('div');
-                    overlay.id = 'vigilance-token-dialog';
-                    overlay.className = 'fixed inset-0 z-50 flex items-center justify-center p-4';
-                    overlay.style.background = 'rgba(17,24,39,0.5)';
-                    overlay.innerHTML = `
-                        <form class="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full p-6 space-y-4" autocomplete="on">
-                            <h3 class="text-lg font-semibold">API token required</h3>
-                            <p class="text-sm text-gray-600 dark:text-gray-300" data-msg></p>
-                            <input type="text" name="username" value="vigilance" autocomplete="username" hidden>
-                            <input type="password" name="token" autocomplete="current-password" required
-                                   class="w-full border border-gray-300 dark:border-gray-600 rounded px-3 py-2 bg-white dark:bg-gray-700"
-                                   placeholder="vig_...">
-                            <div class="flex justify-end gap-3">
-                                <button type="button" data-cancel class="px-4 py-2 rounded border border-gray-300 dark:border-gray-600">Cancel</button>
-                                <button type="submit" class="px-4 py-2 rounded bg-blue-600 text-white">Unlock</button>
-                            </div>
-                        </form>`;
-                    overlay.querySelector('[data-msg]').textContent = message || 'Changes need the API token. It is stored in this browser until you lock editing again.';
-                    const done = (value) => { overlay.remove(); resolve(value); };
-                    overlay.querySelector('[data-cancel]').addEventListener('click', () => done(null));
-                    overlay.addEventListener('keydown', (e) => { if (e.key === 'Escape') done(null); });
-                    overlay.querySelector('form').addEventListener('submit', (e) => {
-                        e.preventDefault();
-                        done(overlay.querySelector('input[name=token]').value.trim() || null);
-                    });
-                    document.body.appendChild(overlay);
-                    overlay.querySelector('input[name=token]').focus();
-                });
-            },
-        };
-        window.vigilanceAuth = auth;
-        window.vigilanceEscape = (value) => String(value ?? '').replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
-
-        // CVE source status, shared by dashboard / CVE database / settings
-        window.vigilanceSync = {
-            visible: (list) => (list || []).filter(s => s.enabled !== false),
-            label(s) {
-                if (s.status === 'running') return 'Läuft';
-                if (s.status === 'skipped') return 'Übersprungen';
-                if (s.status === 'error') return 'Fehler';
-                if (s.status === 'success') return 'OK';
-                return 'Noch nicht gestartet';
-            },
-            cls(s) {
-                if (s.status === 'running') return 'text-blue-600';
-                if (s.status === 'error') return 'text-red-600';
-                if (s.status === 'success') return 'text-green-600';
-                return 'text-gray-500';
-            },
-            canRetry: (s) => s.status === 'error',
-            title: (s) => s.error_message || '',
-        };
-
-        const originalFetch = window.fetch.bind(window);
-        const isWriteApi = (url, method) => {
-            const m = (method || 'GET').toUpperCase();
-            if (m === 'GET' || m === 'HEAD') return false;
-            try { const u = new URL(url, window.location.href); return u.origin === window.location.origin && u.pathname.startsWith('/api/'); }
-            catch (e) { return false; }
-        };
-        const withToken = (init, token) => {
-            const headers = new Headers((init && init.headers) || {});
-            if (token) headers.set('Authorization', 'Bearer ' + token);
-            return Object.assign({}, init || {}, { headers });
-        };
-        window.fetch = async function (input, init) {
-            const url = typeof input === 'string' ? input : (input && input.url) || '';
-            const method = (init && init.method) || (input && input.method) || 'GET';
-            if (typeof input !== 'string' || !isWriteApi(url, method)) return originalFetch(input, init);
-            let resp = await originalFetch(input, withToken(init, auth.get()));
-            if (resp.status !== 401) return resp;
-            if (auth.get()) auth.clear();  // stored token is no longer valid
-            const token = await auth.ask(auth.get() === null ? null : 'The stored token is no longer valid.');
-            if (!token) return resp;
-            resp = await originalFetch(input, withToken(init, token));
-            if (resp.status === 401) alert('Invalid token - nothing was changed.');
-            else if (resp.status === 429) alert('Too many failed attempts. Try again in 15 minutes.');
-            else auth.set(token);
-            return resp;
-        };
-
-        document.addEventListener('htmx:configRequest', (e) => {
-            const token = auth.get();
-            if (token && e.detail.verb !== 'get') e.detail.headers['Authorization'] = 'Bearer ' + token;
-        });
-        document.addEventListener('DOMContentLoaded', async () => {
-            auth.render();
-            const el = document.getElementById('auth-state');
-            if (el) el.addEventListener('click', async () => {
-                if (auth.get()) { auth.clear(); return; }
-                const token = await auth.ask();
-                if (!token) return;
-                const resp = await originalFetch('/api/auth/me', { headers: { Authorization: 'Bearer ' + token } });
-                if (resp.ok) auth.set(token); else alert(resp.status === 429 ? 'Too many failed attempts. Try again in 15 minutes.' : 'Invalid token.');
-            });
-            const token = auth.get();
-            if (token) {
-                const resp = await originalFetch('/api/auth/me', { headers: { Authorization: 'Bearer ' + token } });
-                if (resp.status === 401) auth.clear();
-            }
-        });
-    })();
-    </script>
-    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
-    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
-    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="/static/css/vigilance.css">
-    {% block extra_head %}{% endblock %}
+    <meta name="color-scheme" content="light dark">
+    <title>{% block title %}Vigilance{% endblock %} – Vigilance</title>
+    <link rel="icon" href="/static/images/vigilance-logo.jpeg">
+    <link rel="stylesheet" href="/static/css/app.css?v={{ asset_version }}">
+    <script defer src="/static/js/app.js?v={{ asset_version }}"></script>
+    {% block page_script %}{% endblock %}
+    <script defer src="/static/vendor/alpine-3.17.5.min.js"></script>
 </head>
-<body class="bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100 min-h-screen">
-    <nav class="bg-white dark:bg-gray-800 shadow-sm border-b border-gray-200 dark:border-gray-700">
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div class="flex justify-between h-16">
-                <div class="flex items-center">
-                    <a href="/" class="brand-link" aria-label="Vigilance dashboard">
-                        <img src="/static/images/vigilance-logo.jpeg" alt="" class="brand-logo">
-                        <span>Vigilance</span>
-                    </a>
-                    <div class="nav-tabs" aria-label="Main navigation">
-                        <a href="/" class="nav-link{% if request.url.path == '/' %} active{% endif %}"{% if request.url.path == '/' %} aria-current="page"{% endif %}>Dashboard</a>
-                        <a href="/nodes" class="nav-link{% if request.url.path == '/nodes' %} active{% endif %}"{% if request.url.path == '/nodes' %} aria-current="page"{% endif %}>Nodes</a>
-                        <a href="/findings" class="nav-link{% if request.url.path == '/findings' %} active{% endif %}"{% if request.url.path == '/findings' %} aria-current="page"{% endif %}>Findings</a>
-                        <a href="/containers" class="nav-link{% if request.url.path == '/containers' %} active{% endif %}"{% if request.url.path == '/containers' %} aria-current="page"{% endif %}>Containers</a>
-                        <a href="/cves" class="nav-link{% if request.url.path == '/cves' %} active{% endif %}"{% if request.url.path == '/cves' %} aria-current="page"{% endif %}>CVE Database</a>
-                        <a href="/suppressions" class="nav-link{% if request.url.path == '/suppressions' %} active{% endif %}"{% if request.url.path == '/suppressions' %} aria-current="page"{% endif %}>Suppressions</a>
-                        <a href="/overrides" class="nav-link{% if request.url.path == '/overrides' %} active{% endif %}"{% if request.url.path == '/overrides' %} aria-current="page"{% endif %}>Overrides</a>
-                        <a href="/settings" class="nav-link{% if request.url.path == '/settings' %} active{% endif %}"{% if request.url.path == '/settings' %} aria-current="page"{% endif %}>Settings</a>
-                    </div>
-                </div>
-                <div class="flex items-center space-x-4">
-                    <button type="button" id="auth-state" class="text-sm text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200">Unlock editing</button>
-                    <div x-data="{ dropdownOpen: false }" class="relative">
-                        <button @click="dropdownOpen = !dropdownOpen" class="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">
-                            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v3m0 0v3m0-3h3m-3 0H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-                            </svg>
-                        </button>
-                        <div x-show="dropdownOpen" @click.outside="dropdownOpen = false" class="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-800 rounded-md shadow-lg py-1 border border-gray-200 dark:border-gray-700 z-50">
-                            <a href="/settings" class="block px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700">Settings</a>
-                            <hr class="border-gray-200 dark:border-gray-700">
-                            <span class="block px-4 py-2 text-sm text-gray-500 dark:text-gray-400">v0.1.0</span>
-                        </div>
-                    </div>
-                </div>
+<body>
+    {% set path = request.url.path %}
+    <header class="topbar">
+        <div class="topbar-inner">
+            <a href="/" class="brand"><img src="/static/images/vigilance-logo.jpeg" alt=""><span>Vigilance</span></a>
+            <nav class="nav" aria-label="Hauptnavigation">
+                <a href="/" {% if path == '/' %}aria-current="page"{% endif %}>Übersicht</a>
+                <a href="/hosts" {% if path.startswith('/hosts') %}aria-current="page"{% endif %}>Hosts</a>
+                <a href="/vulnerabilities" {% if path.startswith('/vulnerabilities') %}aria-current="page"{% endif %}>Schwachstellen</a>
+                <a href="/admin/sources" {% if path.startswith('/admin') %}aria-current="page"{% endif %}>Verwaltung</a>
+            </nav>
+            <div class="topbar-end">
+                <button type="button" id="auth-state" class="lock" data-unlocked="false">
+                    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="4" y="9" width="12" height="8" rx="1.5"/><path d="M7 9V6.5a3 3 0 0 1 6 0V9"/></svg>
+                    <span data-label>Bearbeiten</span>
+                </button>
             </div>
         </div>
-    </nav>
-
-    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    </header>
+    <main class="page">
         {% block content %}{% endblock %}
     </main>
-
-    <footer class="bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 mt-12">
-        <div class="max-w-7xl mx-auto px-4 py-4 text-center text-sm text-gray-500 dark:text-gray-400">
-            Vigilance - Self-hosted Security & Patch Monitoring for Proxmox
-        </div>
-    </footer>
-
-    {% block extra_scripts %}{% endblock %}
 </body>
 </html>

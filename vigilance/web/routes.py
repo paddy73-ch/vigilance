@@ -1,53 +1,62 @@
-from fastapi import APIRouter, Request, Depends
-from fastapi.responses import HTMLResponse
-from fastapi.templating import Jinja2Templates
 from pathlib import Path
 
+from fastapi import APIRouter, Depends, Request
+from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.templating import Jinja2Templates
+
+from vigilance import __version__ as _app_version
 from vigilance.api.deps import get_current_user_optional
 from vigilance.core.security import User
 
 router = APIRouter()
 
-# Templates
 template_dir = Path(__file__).parent / "templates"
 templates = Jinja2Templates(directory=str(template_dir))
+# Cache busting for /static: changes with every release
+templates.env.globals["asset_version"] = _app_version
 
 
-@router.get("/", response_class=HTMLResponse)
-async def dashboard(request: Request, current_user: User = Depends(get_current_user_optional)):
-    return templates.TemplateResponse(request=request, name="dashboard.html", context={"request": request})
+def _page(name: str):
+    async def handler(request: Request, current_user: User = Depends(get_current_user_optional)):
+        return templates.TemplateResponse(request=request, name=name, context={"request": request})
+    return handler
 
 
-@router.get("/nodes", response_class=HTMLResponse)
-async def nodes_page(request: Request, current_user: User = Depends(get_current_user_optional)):
-    return templates.TemplateResponse(request=request, name="nodes.html", context={"request": request})
+router.add_api_route("/", _page("overview.html"), response_class=HTMLResponse, include_in_schema=False)
+router.add_api_route("/hosts", _page("hosts.html"), response_class=HTMLResponse, include_in_schema=False)
+router.add_api_route("/vulnerabilities", _page("vulnerabilities.html"), response_class=HTMLResponse, include_in_schema=False)
+router.add_api_route("/admin/sources", _page("admin_sources.html"), response_class=HTMLResponse, include_in_schema=False)
+router.add_api_route("/admin/exceptions", _page("admin_exceptions.html"), response_class=HTMLResponse, include_in_schema=False)
+router.add_api_route("/admin/settings", _page("admin_settings.html"), response_class=HTMLResponse, include_in_schema=False)
 
 
-@router.get("/findings", response_class=HTMLResponse)
-async def findings_page(request: Request, current_user: User = Depends(get_current_user_optional)):
-    return templates.TemplateResponse(request=request, name="findings.html", context={"request": request})
+@router.get("/hosts/{inventory_id}", response_class=HTMLResponse, include_in_schema=False)
+async def host_page(request: Request, inventory_id: int, current_user: User = Depends(get_current_user_optional)):
+    return templates.TemplateResponse(request=request, name="host.html",
+                                      context={"request": request, "inventory_id": inventory_id})
 
 
-@router.get("/containers", response_class=HTMLResponse)
-async def containers_page(request: Request, current_user: User = Depends(get_current_user_optional)):
-    return templates.TemplateResponse(request=request, name="containers.html", context={"request": request})
+# Old addresses (bookmarks) -> new pages
+_REDIRECTS = {
+    "/findings": "/vulnerabilities",
+    "/containers": "/hosts",
+    "/cves": "/vulnerabilities?view=cve",
+    "/nodes": "/admin/settings",
+    "/suppressions": "/admin/exceptions",
+    "/overrides": "/admin/settings",
+    "/settings": "/admin/settings",
+    "/admin": "/admin/sources",
+}
 
 
-@router.get("/cves", response_class=HTMLResponse)
-async def cves_page(request: Request, current_user: User = Depends(get_current_user_optional)):
-    return templates.TemplateResponse(request=request, name="cves.html", context={"request": request})
+def _redirect(target: str):
+    async def handler(request: Request):
+        query = request.url.query
+        if query and "?" not in target:
+            return RedirectResponse(f"{target}?{query}", status_code=301)
+        return RedirectResponse(target, status_code=301)
+    return handler
 
 
-@router.get("/suppressions", response_class=HTMLResponse)
-async def suppressions_page(request: Request, current_user: User = Depends(get_current_user_optional)):
-    return templates.TemplateResponse(request=request, name="suppressions.html", context={"request": request})
-
-
-@router.get("/overrides", response_class=HTMLResponse)
-async def overrides_page(request: Request, current_user: User = Depends(get_current_user_optional)):
-    return templates.TemplateResponse(request=request, name="overrides.html", context={"request": request})
-
-
-@router.get("/settings", response_class=HTMLResponse)
-async def settings_page(request: Request, current_user: User = Depends(get_current_user_optional)):
-    return templates.TemplateResponse(request=request, name="settings.html", context={"request": request})
+for _old, _new in _REDIRECTS.items():
+    router.add_api_route(_old, _redirect(_new), include_in_schema=False)

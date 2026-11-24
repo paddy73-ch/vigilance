@@ -164,3 +164,20 @@ def test_name_filter_is_exact():
     assert not cve_affects_names(cve("perl"), names)  # no substring matches any more
     assert not cve_affects_names(cve("libcurl"), names)
     assert cve_affects_names(cve("cpe:2.3:a:haxx:curl:*:*:*:*:*:*:*:*"), names)
+
+
+def test_parse_dpkg_skips_not_installed():
+    pkgs = parse_dpkg_output(
+        "ii \tlibssl3t64\t3.5.9-1~deb13u1\tamd64\topenssl\t3.5.9-1~deb13u1\tSSL toolkit\n"
+        "rc \tlibglib2.0-0\t2.74.6-2+deb12u7\tamd64\tglib2.0\t2.74.6-2+deb12u7\tGLib (config files only)\n"
+        "hi \tlibfoo\t1.0\tamd64\tfoo\t1.0\theld package\n"
+        "bar\t1\tall\tbar\t1\tline without status column\n"
+    )
+    assert [p.name for p in pkgs] == ["libssl3t64", "libfoo", "bar"]
+
+
+def test_interfaces_ip():
+    from vigilance.discovery.orchestrator import DiscoveryOrchestrator
+    ifaces = [{"name": "lo", "inet": "127.0.0.1/8"}, {"name": "eth0", "inet": "192.0.2.69/24"}]
+    assert DiscoveryOrchestrator._ip_from_interfaces(ifaces) == "192.0.2.69"
+    assert DiscoveryOrchestrator._ip_from_interfaces([{"name": "lo", "inet": "127.0.0.1/8"}]) is None

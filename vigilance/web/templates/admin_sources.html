@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}Quellen{% endblock %}
+{% block page_script %}<script defer src="/static/js/pages/admin.js?v={{ asset_version }}"></script>{% endblock %}
+{% block content %}
+{% include "_admin_tabs.html" %}
+<div x-data="sourcesPage" x-cloak>
+  <section class="panel">
+    <div class="panel-head">
+      <h2>CVE-Quellen</h2>
+      <button class="btn btn-sm" @click="sync()" :disabled="busy">Jetzt abgleichen</button>
+    </div>
+    <p class="panel-pad muted">Vigilance fragt nur Daten zu den Paketen ab, die auf deinen Hosts installiert sind, passend zum jeweiligen Debian-Release.</p>
+    <table class="rows">
+      <thead><tr><th>Quelle</th><th>Zustand</th><th class="num">Einträge</th><th>Letzter Abgleich</th><th>Hinweis</th></tr></thead>
+      <tbody>
+        <template x-for="s in sources" :key="s.source">
+          <tr>
+            <td class="pkg" x-text="name(s.source)"></td>
+            <td data-label="Zustand"><span class="tag" :class="tagClass(s)" x-text="stateText(s)"></span></td>
+            <td class="num" data-label="Einträge" x-text="V.n(s.entries_count)"></td>
+            <td data-label="Letzter Abgleich" x-text="s.last_success_at ? V.ago(s.last_success_at) : 'nie'" :title="V.date(s.last_success_at)"></td>
+            <td data-label="Hinweis" class="faint" x-text="s.error_message || ''"></td>
+          </tr>
+        </template>
+      </tbody>
+    </table>
+    <p class="panel-pad faint" x-show="disabled.length" x-text="'Ausgeschaltet: ' + disabled.map(name).join(', ') + '. Einschalten in config.yaml unter cve_sync.sources.'"></p>
+  </section>
+</div>
+{% endblock %}

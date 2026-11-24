@@ -21,7 +21,7 @@ from vigilance.discovery.packages import discover_packages_on_host, PackageInfo
 from vigilance.discovery.services import discover_services_on_host, ServiceInfo
 from vigilance.discovery.custom import run_all_custom_checks, CustomCheckResult
 from vigilance.discovery.ssh import get_ssh_pool
-from vigilance.discovery.osinfo import discover_os_on_host
+from vigilance.discovery.osinfo import probe_os
 from vigilance.discovery.sshkey import ensure_ssh_key
 
 logger = logging.getLogger(__name__)
@@ -86,18 +86,42 @@ class DiscoveryOrchestrator:
                     lxc.ip = self._ip_from_lxc_config(config)
                 except Exception as exc:
                     logger.warning("Could not read LXC network config for %s: %s", lxc.vmid, exc)
+                if not getattr(lxc, "ip", None) and lxc.status == "running":
+                    # DHCP: ask Proxmox for the current address of the running container
+                    try:
+                        lxc.ip = self._ip_from_interfaces(await client.get_lxc_interfaces(node.name, lxc.vmid))
+                    except Exception as exc:
+                        logger.info("Could not read interfaces of LXC %s: %s", lxc.vmid, exc)
 
-            # Filter: only LXCs with a known IP address
+            # Running LXCs with a fixed IP are scanned; the others are recorded with the reason
             for lxc in lxcs:
                 ip = getattr(lxc, "ip", None) or getattr(lxc, "ip_address", None)
-                if ip:
+                if lxc.status != "running":
+                    await self._record_skipped(node, lxc, "stopped", None)
+                elif not ip:
+                    await self._record_skipped(
+                        node, lxc, "no_ip", "Keine IP-Adresse gefunden (weder fest konfiguriert noch per DHCP gemeldet)")
+                else:
                     all_targets.append(("lxc", lxc))
 
             result.nodes_scanned += len(all_targets)
 
-            # Process each LXC with IP
             for vtype, lxc in all_targets:
                 await self._process_inventory_target(node, vtype, lxc, scan_run_id, result)
+
+    async def _record_skipped(self, node: ProxmoxNode, lxc, status: str, error: Optional[str]):
+        inventory = await crud.upsert_inventory(
+            self.db,
+            proxmox_node_id=node.id,
+            vmid=lxc.vmid,
+            name=lxc.name,
+            type="lxc",
+            status=lxc.status,
+            ip_address=getattr(lxc, "ip", None),
+        )
+        inventory.last_scan_at = datetime.utcnow()
+        inventory.last_scan_status = status
+        inventory.last_scan_error = error
 
     @staticmethod
     def _ip_from_lxc_config(config: dict) -> Optional[str]:
@@ -107,6 +131,17 @@ class DiscoveryOrchestrator:
             match = re.search(r"(?:^|,)ip=([^/,]+)", value)
             if match and match.group(1) not in {"dhcp", "manual"}:
                 return match.group(1).split("/")[0]
+        return None
+
+    @staticmethod
+    def _ip_from_interfaces(interfaces) -> Optional[str]:
+        """First IPv4 address of a non-loopback interface from /lxc/{vmid}/interfaces."""
+        for iface in interfaces or []:
+            if iface.get("name") == "lo":
+                continue
+            inet = iface.get("inet") or ""
+            if inet and not inet.startswith("127."):
+                return inet.split("/")[0]
         return None
 
     async def _process_inventory_target(
@@ -173,12 +208,19 @@ class DiscoveryOrchestrator:
         key_path = ssh_config["key_path"]
         known_hosts = ssh_config["known_hosts"]
 
-        # 0. OS release (needed for release-specific CVE lookups, e.g. OSV "Debian:13")
-        os_info = await discover_os_on_host(host, port, user, key_path, known_hosts)
-        if os_info:
-            inventory.os_id = os_info.id or None
-            inventory.os_version_id = os_info.version_id or None
-            inventory.os_codename = os_info.codename or None
+        # 0. OS release (needed for release-specific CVE lookups, e.g. OSV "Debian:13");
+        #    also tells whether the host is reachable at all
+        inventory.last_scan_at = datetime.utcnow()
+        os_info, error = await probe_os(host, port, user, key_path, known_hosts)
+        if not os_info:
+            inventory.last_scan_status = "unreachable"
+            inventory.last_scan_error = error
+            return
+        inventory.os_id = os_info.id or None
+        inventory.os_version_id = os_info.version_id or None
+        inventory.os_codename = os_info.codename or None
+        inventory.last_scan_status = "ok"
+        inventory.last_scan_error = None
 
         # 1. Docker Discovery
         if settings.discovery and settings.discovery.docker_enabled:
@@ -257,13 +299,10 @@ class DiscoveryOrchestrator:
         scan_run_id: int,
         result: ScanResult,
     ):
-        """Save discovered packages as tools."""
+        """Save discovered packages as tools; packages no longer installed are marked as removed."""
+        seen_ids = set()
         for pkg in packages:
-            # Check for tool override
-            override = await crud.get_tool_override(self.db, pkg.name)
-            cpe_name = override.cpe_name if override else f"cpe:2.3:a:{pkg.name}:{pkg.name}"
-            ecosystem = override.ecosystem if override else pkg.manager
-
+            cpe_name = f"cpe:2.3:a:{pkg.name}:{pkg.name}"
             tool = await crud.upsert_discovered_tool(
                 self.db,
                 inventory_id=inventory.id,
@@ -281,7 +320,12 @@ class DiscoveryOrchestrator:
                 }),
                 scan_run_id=scan_run_id,
             )
+            seen_ids.add(tool.id)
             result.tools_found += 1
+
+        # An empty list means the query failed - never mark everything as removed then
+        if seen_ids:
+            await crud.mark_removed_tools(self.db, inventory.id, "ssh_pkg", seen_ids)
 
     async def _save_service_discovery(
         self,
@@ -292,8 +336,7 @@ class DiscoveryOrchestrator:
     ):
         """Save discovered services as tools."""
         for svc in services:
-            override = await crud.get_tool_override(self.db, svc.name)
-            cpe_name = override.cpe_name if override else f"cpe:2.3:a:{svc.name}:{svc.name}"
+            cpe_name = f"cpe:2.3:a:{svc.name}:{svc.name}"
 
             tool = await crud.upsert_discovered_tool(
                 self.db,
@@ -324,9 +367,8 @@ class DiscoveryOrchestrator:
             if not check.success or not check.version:
                 continue
 
-            override = await crud.get_tool_override(self.db, check.check_name)
-            ecosystem = override.ecosystem if override else "custom"
-            cpe_name = override.cpe_name if override else f"cpe:2.3:a:{check.check_name}:{check.check_name}"
+            ecosystem = "custom"
+            cpe_name = f"cpe:2.3:a:{check.check_name}:{check.check_name}"
 
             tool = await crud.upsert_discovered_tool(
                 self.db,

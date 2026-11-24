@@ -10,10 +10,10 @@ Vigilance automatically discovers webapps, services, Docker images, and tools on
 - **SSH-based Discovery**: Deep scanning of Docker containers, system packages (dpkg/apk/rpm), systemd services, and custom checks
 - **CVE Matching**: Integration with OSV.dev, GitHub Security Advisories (GHSA), NVD, Debian & Ubuntu Security Trackers
 - **Smart Version Matching**: SemVer, Debian version, and Docker tag/digest comparison
-- **Suppression Management**: Ignore specific CVEs with optional expiration dates
-- **Tool Overrides**: Map tool names to CPE/package names for better matching
+- **Patch view**: per host what an `apt` update fixes, and which old packages left over from a previous Debian release should be removed
+- **Exceptions**: Accept specific advisories (per host or everywhere) with a reason and optional expiry
 - **Gotify Notifications**: Rich Markdown notifications with severity-based priority and digest mode
-- **Web Dashboard**: Modern UI built with Jinja2, HTMX, and Alpine.js
+- **Web UI** (German): Jinja2 + Alpine.js, own CSS, no external resources (strict Content-Security-Policy), light/dark, phone-friendly
 - **Docker Deployment**: Docker Compose with PostgreSQL database
 
 ## Architecture
@@ -162,7 +162,6 @@ See `config/config.yaml.example` for full configuration including:
 - CVE sync sources and intervals
 - Notification settings (Gotify, webhooks)
 - Scan settings
-- Tool overrides (tool name → CPE mapping)
 - Default suppressions
 
 ## CLI Commands
@@ -186,19 +185,22 @@ docker compose exec vigilance python -m vigilance config-check
 # List configured nodes
 docker compose exec vigilance python -m vigilance list-nodes
 
-# List tool overrides
-docker compose exec vigilance python -m vigilance list-overrides
+# API token for write access (shown once)
+docker compose exec vigilance vigilance token-rotate
+
+# Show / replace Vigilance's SSH key
+docker compose exec vigilance vigilance ssh-key-show
+docker compose exec -u vigilance vigilance vigilance ssh-key-rotate
 ```
 
-## Dashboard Features
+## Web UI
 
-- **Dashboard**: Overview stats, severity breakdown, recent scans, CVE sync status
-- **Nodes**: Manage Proxmox nodes, view VMs/LXCs
-- **Findings**: Filterable table of vulnerabilities with suppress/unsuppress actions
-- **CVE Database**: Browse local CVE cache with details, references, affected ranges
-- **Suppressions**: Manage CVE suppressions with patterns and expiration
-- **Overrides**: Map tool names to CPE/package names for better matching
-- **Settings**: View configuration, test Gotify, view API token status
+- **Übersicht** (`/`): status of scan and CVE sync, what can be fixed now (update vs. remove old packages), host board, top packages, 30-day trend
+- **Hosts** (`/hosts`, `/hosts/{id}`): per container the packages to fix with copyable `apt-get` commands, open findings without fix, exceptions, fixed in the last 30 days, scan problems (stopped, no IP, unreachable)
+- **Schwachstellen** (`/vulnerabilities`): grouped by package or by advisory, filters (status, fix, severity, host, Debian "unimportant"), search incl. CVE IDs, detail panel with links and "Ausnahme anlegen"
+- **Verwaltung** (`/admin/...`): CVE sources, exceptions, schedule, API token, Gotify, Proxmox/SSH info
+
+Reading needs no login; every change needs the API token ("Bearbeiten" in the header).
 
 ## Authentication
 
