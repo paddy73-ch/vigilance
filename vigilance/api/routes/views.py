@@ -17,6 +17,7 @@ from sqlalchemy import and_, case, distinct, func, not_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from vigilance.api.deps import get_current_user_optional, get_db, require_write_access
+from vigilance.config import configured_vm_ids
 from vigilance.cve.advisories import merge_advisories, same_vulnerability, vuln_key
 from vigilance.cve.platforms import os_hint, os_label
 from vigilance.core.security import User
@@ -394,7 +395,7 @@ async def host_summaries(db: AsyncSession, inventory_id: Optional[int] = None) -
         .outerjoin(T, T.inventory_id == I.id)
         .outerjoin(F, F.discovered_tool_id == T.id)
         .outerjoin(C, C.id == F.cve_entry_id)
-        .where(I.type.in_(["lxc", "node"]))
+        .where(or_(I.type.in_(["lxc", "node"]), and_(I.type == "qemu", I.vmid.in_(configured_vm_ids() or {-1}))))
         .group_by(I.id)
     )
     if inventory_id is not None:

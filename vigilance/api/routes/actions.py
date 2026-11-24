@@ -5,7 +5,7 @@ from typing import List, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from vigilance.actions import runner
@@ -28,8 +28,11 @@ async def _targets(db: AsyncSession, host_ids: Optional[List[int]]) -> List[Inve
     if host_ids:
         stmt = stmt.where(Inventory.id.in_(host_ids))
     else:
-        # "all": running containers only; the Proxmox host and VMs are never targets
-        stmt = stmt.where(Inventory.type == "lxc", Inventory.status == "running")
+        # "all": running containers and the VMs from config.yaml; never the Proxmox host
+        from vigilance.config import configured_vm_ids
+        vms = configured_vm_ids()
+        stmt = stmt.where(Inventory.status == "running", or_(
+            Inventory.type == "lxc", and_(Inventory.type == "qemu", Inventory.vmid.in_(vms or {-1}))))
     invs = list((await db.execute(stmt)).scalars().all())
     if host_ids and len(invs) != len(set(host_ids)):
         raise HTTPException(status_code=404, detail="Host nicht gefunden")

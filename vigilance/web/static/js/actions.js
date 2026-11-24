@@ -40,6 +40,7 @@ document.addEventListener("alpine:init", () => {
       if (this.kind === "full_upgrade" && this.hasNode()) return "dist-upgrade auf dem Proxmox-Host";
       return KIND_LABEL[this.kind];
     },
+    hasVM() { return !!(this.preview && this.runnable().some((h) => h.type === "qemu")); },
     hasNode() { return !!(this.preview && this.preview.hosts.some((h) => h.type === "node")); },
     intro() {
       if (this.kind === "kernel_cleanup") return "Entfernt die Kernel-Pakete im Container und was dadurch unbenutzt wird (purge --autoremove). Der Container läuft weiter mit dem Kernel des Proxmox-Hosts.";
@@ -48,7 +49,7 @@ document.addEventListener("alpine:init", () => {
     },
     parallelText() {
       const n = (this.preview && this.preview.parallel) || 1;
-      return "Bis zu " + n + " Container laufen gleichzeitig. Ein Container mit apt-cacher-ng kommt zuerst und allein dran, weil die anderen ihre Pakete darüber laden können.";
+      return "Bis zu " + n + " Hosts laufen gleichzeitig. Ein Host mit apt-cacher-ng kommt zuerst und allein dran, weil die anderen ihre Pakete darüber laden können.";
     },
     statusLabel(s) { return STATUS[s] || s; },
     statusClass(s) { return { ok: "tag-ok", failed: "tag-crit", running: "tag-upgrade", interrupted: "tag-crit" }[s] || ""; },
@@ -89,7 +90,7 @@ document.addEventListener("alpine:init", () => {
     summary() {
       const n = (s) => this.runs.filter((r) => r.status === s).length;
       if (this.phase === "running") return "Läuft: " + n("ok") + " von " + this.runs.filter((r) => r.status !== "skipped").length + " fertig";
-      const parts = [V.plural(n("ok"), "Container fertig", "Container fertig")];
+      const parts = [V.plural(n("ok"), "Host fertig", "Hosts fertig")];
       if (n("failed")) parts.push(n("failed") + " mit Fehler");
       return parts.join(", ") + ". Ein neuer Scan läuft, die Befunde aktualisieren sich in ein paar Minuten.";
     },

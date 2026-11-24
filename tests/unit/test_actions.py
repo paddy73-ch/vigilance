@@ -44,8 +44,13 @@ def test_blocked_reason(monkeypatch):
     monkeypatch.setattr(runner, "node_config_for", lambda i: object())
     assert runner.blocked_reason(inv, "suggested") is None
     assert runner.blocked_reason(inv, "kernel_cleanup") == "Auf dem Proxmox-Host nicht verfügbar."
-    inv.type = "qemu"
-    assert runner.blocked_reason(inv) == "VMs werden nicht verändert."
+    inv.type, inv.vmid = "qemu", 201
+    from vigilance.config import ProxmoxNodeConfig, settings
+    monkeypatch.setattr(settings, "proxmox_nodes", [])
+    assert "nicht für den Scan eingetragen" in runner.blocked_reason(inv)
+    monkeypatch.setattr(settings, "proxmox_nodes", [ProxmoxNodeConfig({"name": "pve", "vms": [201]})])
+    assert runner.blocked_reason(inv) is None  # listed VM: like a container
+    assert runner.blocked_reason(inv, "kernel_cleanup") == "Eine VM nutzt ihren eigenen Kernel."
     inv.type, inv.status = "lxc", "stopped"
     assert runner.blocked_reason(inv) == "Host läuft nicht."
     inv.status = "running"

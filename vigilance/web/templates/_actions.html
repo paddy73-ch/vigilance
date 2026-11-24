@@ -18,7 +18,7 @@
           <p class="error" x-show="error" x-text="error"></p>
 
           <!-- preview -->
-          <template x-if="phase === 'preview' && !preview && !error"><div class="stack"><div class="skeleton"></div><p class="faint">Simulation läuft auf den Containern …</p></div></template>
+          <template x-if="phase === 'preview' && !preview && !error"><div class="stack"><div class="skeleton"></div><p class="faint">Simulation läuft …</p></div></template>
           <template x-if="phase === 'preview' && preview">
             <div class="stack">
               <p class="note" x-show="preview.busy">Es läuft bereits eine Aktion. Starten geht erst, wenn sie fertig ist.</p>
@@ -59,14 +59,15 @@
                 </div>
               </template>
               <p class="faint" x-show="runnable().length > 1" x-text="parallelText()"></p>
-              <p class="faint">Die Simulation nutzt die Paketlisten, wie sie auf den Containern liegen. Bei der Ausführung lädt <code>apt-get update</code> sie neu, daher kann das Ergebnis leicht abweichen.</p>
+              <p class="faint" x-show="hasVM() && kind !== 'kernel_cleanup'">Ein neuer Kernel in einer VM wird erst nach deren Neustart aktiv; den führt Vigilance nicht aus.</p>
+              <p class="faint">Die Simulation nutzt die Paketlisten, wie sie auf den Hosts liegen. Bei der Ausführung lädt <code>apt-get update</code> sie neu, daher kann das Ergebnis leicht abweichen.</p>
             </div>
           </template>
 
           <!-- running / done -->
           <template x-if="phase !== 'preview'">
             <table class="rows">
-              <thead><tr><th>Container</th><th>Status</th><th></th></tr></thead>
+              <thead><tr><th>Host</th><th>Status</th><th></th></tr></thead>
               <template x-for="r in runs" :key="r.id">
                 <tbody>
                   <tr>
@@ -84,7 +85,7 @@
         <div class="actions">
           <button class="btn" @click="close()" x-text="phase === 'preview' ? 'Abbrechen' : 'Schliessen'"></button>
           <button class="btn btn-primary" x-show="phase === 'preview'" :disabled="!preview || preview.busy || !runnable().length || starting || (hasNode() && !confirmHost)"
-                  @click="run()" x-text="!runnable().length ? 'Nichts auszuführen' : (hasNode() ? 'Auf dem Proxmox-Host ausführen' : 'Auf ' + V.plural(runnable().length, 'Container', 'Containern') + ' ausführen')"></button>
+                  @click="run()" x-text="!runnable().length ? 'Nichts auszuführen' : (hasNode() ? 'Auf dem Proxmox-Host ausführen' : 'Auf ' + V.plural(runnable().length, 'Host', 'Hosts') + ' ausführen')"></button>
         </div>
       </div>
     </div>

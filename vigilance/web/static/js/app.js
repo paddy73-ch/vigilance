@@ -180,7 +180,7 @@
       debianData: "Debian hat ein gleichnamiges Paket, installiert ist aber der Build dieser Paketquelle. Vigilance nutzt die Debian-Daten; Treffer und Fix-Versionen können deshalb ungenau sein.",
       noData: "Für diese Pakete gibt es keine Sicherheitsdaten, die Vigilance abfragt. Lücken darin werden nicht erkannt.",
     },
-    hostLabel(h) { return h.type === "node" ? "Proxmox-Host" : "CT " + h.vmid; },
+    hostLabel(h) { return h.type === "node" ? "Proxmox-Host" : (h.type === "qemu" ? "VM " : "CT ") + h.vmid; },
     // ---- solution and removal risk (see /api remedy objects)
     replacementText(rem) {
       const r = rem.replacement;

@@ -4,11 +4,12 @@
 {% block content %}
 <div x-data="hostsPage" x-cloak>
   <div class="page-head">
-    <div><h1>Hosts</h1><p class="muted">LXC-Container und Proxmox-Host, der dringendste zuerst.</p></div>
+    <div><h1>Hosts</h1><p class="muted">Container, VMs aus config.yaml und Proxmox-Host, der dringendste zuerst.</p></div>
     <div class="action-bar">
       <button class="btn btn-primary" :disabled="!suggested || !suggested.length" :title="suggestTitle()"
-              @click="$dispatch('open-actions', { kind: 'suggested', hostIds: null, title: 'alle Container' })">Vorschläge auf allen Containern</button>
-      <button class="btn" @click="$dispatch('open-actions', { kind: 'full_upgrade', hostIds: null, title: 'alle Container' })">Upgrade aller Container</button>
+              @click="$dispatch('open-actions', { kind: 'suggested', hostIds: null, title: allTitle() })" x-text="'Vorschläge auf allen ' + allWord()"></button>
+      <button class="btn" @click="$dispatch('open-actions', { kind: 'full_upgrade', hostIds: null, title: allTitle() })" x-text="'Upgrade aller ' + allGen()"
+              title="Alle laufenden Container und eingetragenen VMs, nie der Proxmox-Host"></button>
     </div>
   </div>
   <p class="filter-note" x-show="only">
