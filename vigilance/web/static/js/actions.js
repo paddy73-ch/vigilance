@@ -46,6 +46,10 @@ document.addEventListener("alpine:init", () => {
       if (this.kind === "full_upgrade") return "apt-get update und " + (this.hasNode() ? "apt-get dist-upgrade" : "apt-get full-upgrade") + ". Geänderte Konfigurationsdateien bleiben, wie sie sind.";
       return "Nur die Vorschläge von Vigilance: Updates mit Fix in den Paketquellen und Altpakete, deren Risikoprüfung unbedenklich ist.";
     },
+    parallelText() {
+      const n = (this.preview && this.preview.parallel) || 1;
+      return "Bis zu " + n + " Container laufen gleichzeitig. Ein Container mit apt-cacher-ng kommt zuerst und allein dran, weil die anderen ihre Pakete darüber laden können.";
+    },
     statusLabel(s) { return STATUS[s] || s; },
     statusClass(s) { return { ok: "tag-ok", failed: "tag-crit", running: "tag-upgrade", interrupted: "tag-crit" }[s] || ""; },
     runnable() { return this.preview ? this.preview.hosts.filter((h) => !h.blocked && h.commands.length) : []; },

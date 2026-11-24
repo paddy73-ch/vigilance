@@ -226,3 +226,36 @@ async def test_removed_packages_are_marked_and_not_matched(db_session):
     again = await crud.upsert_discovered_tool(db, inventory_id=inv_id, source_type="ssh_pkg", tool_name="libssl3t64",
                                               detected_version="3.5.9-1~deb13u2", package_manager="dpkg")
     assert again.removed_at is None  # seen again -> active
+
+
+@pytest.mark.asyncio
+async def test_notify_new_findings_loads_relations(db_session, monkeypatch):
+    """Regression: the Gotify message reads inventory.node; that lazy load failed (MissingGreenlet)."""
+    from vigilance.config import GotifyConfig, NotificationsConfig, settings
+    from vigilance.core import notifications as notif
+    from vigilance.cve.sync import CVESyncOrchestrator
+
+    db = db_session
+    tools, osv_cve, _ = await _setup(db)
+    hit = {"osv": DirectMatches(tool_query_key, {tool_query_key(tools[0]): {"DEBIAN-CVE-2026-1"}})}
+    stats = await match_findings(db, tools, hit, {"osv", "debian"})
+    await db.commit()
+    db.expunge_all()  # like a fresh session: nothing beyond what match_findings set is loaded
+
+    sent = []
+
+    async def fake_send(config, title, message, priority=5, extras=None):
+        sent.append((title, message))
+        return True, None
+
+    notifications = NotificationsConfig({"gotify": {"url": "http://gotify", "token": "x", "min_severity": "HIGH"}})
+    monkeypatch.setattr(settings, "notifications", notifications)
+    monkeypatch.setattr(settings, "public_url", "https://vigilance.test/")
+    monkeypatch.setattr(notif, "send_gotify_message", fake_send)
+
+    await CVESyncOrchestrator(db)._notify(stats)
+
+    assert len(sent) == 1  # HIGH only; the MEDIUM tracker finding is below the threshold
+    title, message = sent[0]
+    assert "DEBIAN-CVE-2026-1" in message and "**Proxmox Node:** pve" in message
+    assert "https://vigilance.test/hosts/" in message and "8006" not in message

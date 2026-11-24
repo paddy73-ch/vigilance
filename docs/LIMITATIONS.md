@@ -107,6 +107,15 @@ und Ubuntu-Daten bereits; NVD kennt keine Paketversionen der Distributionen und 
 - Die Vorschau simuliert mit den vorhandenen Paketlisten; bei der Ausführung lädt `apt-get update` sie
   neu. Das tatsächliche Ergebnis kann deshalb leicht abweichen.
 
+- In einem Batch laufen bis zu 4 Container gleichzeitig. Ein Container mit apt-cacher-ng kommt zuerst
+  und allein dran. Vigilance erkennt den Cache nur am installierten Paket `apt-cacher-ng`; einen
+  anderen Proxy oder Cache (zum Beispiel squid) beachtet es dabei nicht.
+
+## Benachrichtigungen
+
+- Gotify-Meldungen gehen an neue Befunde ab der eingestellten Schwere. Den Link in der Meldung gibt es
+  nur, wenn `VIGILANCE_PUBLIC_URL` gesetzt ist (Adresse der Oberfläche, wie der Browser sie aufruft).
+
 ## Kernel im Container
 
 - Ein LXC-Container lädt nie einen eigenen Kernel. Kernel-Pakete darin erkennt Vigilance und bietet

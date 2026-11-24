@@ -58,6 +58,7 @@
                   <label class="check"><input type="checkbox" x-model="confirmHost"> Ich habe die Simulation geprüft und will den Proxmox-Host ändern.</label>
                 </div>
               </template>
+              <p class="faint" x-show="runnable().length > 1" x-text="parallelText()"></p>
               <p class="faint">Die Simulation nutzt die Paketlisten, wie sie auf den Containern liegen. Bei der Ausführung lädt <code>apt-get update</code> sie neu, daher kann das Ergebnis leicht abweichen.</p>
             </div>
           </template>

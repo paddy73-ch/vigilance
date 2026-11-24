@@ -52,8 +52,8 @@ def format_finding_message(finding: VulnerabilityFinding, tool: DiscoveredTool, 
         "",
     ]
 
-    if cve.fixed_version:
-        lines.append(f"**Fixed in version:** {cve.fixed_version}")
+    if finding.fixed_version:
+        lines.append(f"**Fixed in version:** {finding.fixed_version}")
 
     if cve.references:
         try:
@@ -71,7 +71,8 @@ def format_finding_message(finding: VulnerabilityFinding, tool: DiscoveredTool, 
 
     lines.append("")
     lines.append(f"*First seen: {finding.first_seen_at.strftime('%Y-%m-%d %H:%M:%S')}*")
-    lines.append(f"[View in Vigilance Dashboard]({settings.proxmox_url}/findings/{finding.id})")
+    if settings.public_url:
+        lines.append(f"[Open in Vigilance]({settings.public_url.rstrip('/')}/hosts/{inventory.id})")
 
     return "\n".join(lines)
 

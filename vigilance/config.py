@@ -131,6 +131,9 @@ class Settings(BaseSettings):
     ssh_parallel_jobs: int = 10
 
     # App
+    # Address of the Vigilance UI as seen from a browser, e.g. "https://vigilance.example.ch".
+    # Used for links in notifications; empty = no link.
+    public_url: str = ""
     log_level: str = "INFO"
     secret_key: str = "change-me-in-production"
 
