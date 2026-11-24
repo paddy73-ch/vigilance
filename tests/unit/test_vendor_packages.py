@@ -73,3 +73,16 @@ def test_foreign_sources():
     assert groups["download.docker.com"]["covered"] == [{"package": "containerd.io",
                                                           "module": "github.com/containerd/containerd/v2"}]
     assert foreign_sources(None, {}) == []
+
+
+def test_debian_data_group():
+    from vigilance.api.routes.views import foreign_sources
+    out = "\n".join(["##DISTRO corosync", "##DISTRO curl",
+                     "##ORIGIN corosync http://download.proxmox.com/debian/pve",
+                     "##ORIGIN pve-manager http://download.proxmox.com/debian/pve",
+                     "##ORIGIN curl http://deb.debian.org/debian"])
+    r = parse_upgrade_output(out)
+    assert r["distro_also"] == ["corosync"]  # curl comes from Debian anyway
+    g = foreign_sources(json.dumps(r), {})[0]
+    assert g["source"] == "download.proxmox.com" and g["debian"] == ["corosync"] and g["uncovered"] == ["pve-manager"]
+    assert "##DISTRO" in UPGRADE_SCRIPT

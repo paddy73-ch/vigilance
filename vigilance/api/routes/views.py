@@ -194,29 +194,37 @@ _DISTRO_URL = re.compile(r"(^|[/.])(debian\.org|ubuntu\.com)(/|$)")
 def foreign_sources(check_json: Optional[str], tools: Dict[str, str]) -> List[dict]:
     """Installed packages from package sources other than Debian/Ubuntu, grouped by source.
 
-    tools: {package name: installed version}. Packages that Vigilance checks through the Go
-    vulnerability data (VENDOR_GO_MODULES) are marked as covered.
+    tools: {package name: installed version}. Three groups per source:
+    covered    - checked through the Go vulnerability data (VENDOR_GO_MODULES)
+    debian     - Debian/Ubuntu have a package of that name, so the Debian data is used; the
+                 installed version is a build from this source, so results may be inexact
+    uncovered  - no security data at all (e.g. pve-manager, docker-ce)
     """
     from vigilance.cve.ecosystems import vendor_go_module
 
     try:
-        origins = (json.loads(check_json or "null") or {}).get("origins") or {}
+        check = json.loads(check_json or "null") or {}
     except ValueError:
         return []
+    origins = check.get("origins") or {}
+    distro_also = set(check.get("distro_also") or [])
     groups: Dict[str, dict] = {}
     for pkg, urls in origins.items():
         if any(_DISTRO_URL.search(u) for u in urls):
             continue
         url = urls[0]
         host = url.split("://", 1)[-1].split("/", 1)[0]
-        g = groups.setdefault(host, {"source": host, "url": url, "covered": [], "uncovered": []})
+        g = groups.setdefault(host, {"source": host, "url": url, "covered": [], "debian": [], "uncovered": []})
         vendor = vendor_go_module(pkg, tools.get(pkg))
         if vendor:
             g["covered"].append({"package": pkg, "module": vendor[0]})
+        elif pkg in distro_also:
+            g["debian"].append(pkg)
         else:
             g["uncovered"].append(pkg)
     for g in groups.values():
         g["uncovered"].sort()
+        g["debian"].sort()
     return sorted(groups.values(), key=lambda g: (-len(g["uncovered"]), g["source"]))
 
 
