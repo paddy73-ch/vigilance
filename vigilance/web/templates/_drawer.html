@@ -6,7 +6,7 @@
       <aside class="drawer" role="dialog" aria-modal="true" :aria-label="item ? item.id : 'Details'">
         <div class="drawer-head">
           <div>
-            <h2 x-text="item ? item.label : 'Lädt …'"></h2>
+            <h2><span x-text="item ? item.label : 'Lädt …'"></span><span class="info" tabindex="0" role="img" x-show="item && item.note" :aria-label="item && item.note" :data-tip="item && item.note" @click.stop>i</span></h2>
             <p class="muted mono" x-show="item && (item.label !== item.id || item.also.length)" x-text="item && [item.id].concat(item.also).filter((x) => x !== item.label).join(', ')"></p>
           </div>
           <button class="icon-btn" @click="close()" aria-label="Schliessen">
@@ -93,6 +93,7 @@
                   <template x-for="l in item.links" :key="l.url">
                     <li><a :href="l.url" target="_blank" rel="noopener noreferrer" x-text="l.label"></a> <span class="faint mono" x-text="host(l.url)"></span></li>
                   </template>
+                  <li><a href="/admin/limits">Grenzen von Vigilance</a> <span class="faint">was Vigilance nicht sieht</span></li>
                 </ul>
               </section>
             </div>

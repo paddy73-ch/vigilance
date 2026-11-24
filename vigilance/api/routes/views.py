@@ -394,6 +394,14 @@ async def list_hosts(db: AsyncSession = Depends(get_db), _: Optional[User] = Dep
     return await host_summaries(db)
 
 
+def source_note(source: Optional[str], title: Optional[str], description: Optional[str]) -> Optional[str]:
+    """Limitation shown as (i) next to findings of sources whose data is less precise."""
+    if source == "tailscale":
+        from vigilance.cve.tailscale import limitation_note
+        return limitation_note(title, description)
+    return None
+
+
 def _finding_row(f: F, t: T, c: C) -> dict:
     details = {}
     try:
@@ -418,6 +426,7 @@ def _finding_row(f: F, t: T, c: C) -> dict:
         # filtered: the advisory data restricts it to other systems; hint: only the title says so
         "only_on": [os_label(g) for g in details.get("goos") or []],
         "os_hint": os_hint(c.title, (c.description or "")[:300]),
+        "note": source_note(c.source, c.title, c.description),
     }
 
 
@@ -770,7 +779,7 @@ async def list_vulnerabilities(
     """Findings grouped by advisory."""
     stmt = _filters(
         _base().add_columns(
-            C.id, C.cve_id, C.upstream_ids, C.title, C.severity, C.cvss_score,
+            C.id, C.cve_id, C.upstream_ids, C.title, C.severity, C.cvss_score, C.source,
             func.count(distinct(T.inventory_id)).label("hosts"),
             func.count(distinct(PKG_NAME)).label("packages"),
             func.max(case((IS_FIX, 1), else_=0)).label("fix_available"),
@@ -784,7 +793,7 @@ async def list_vulnerabilities(
         stmt = stmt.where(PKG_NAME == package)
     if version:
         stmt = stmt.where(PKG_VERSION == version)
-    stmt = stmt.group_by(C.id, C.cve_id, C.upstream_ids, C.title, C.severity, C.cvss_score)
+    stmt = stmt.group_by(C.id, C.cve_id, C.upstream_ids, C.title, C.severity, C.cvss_score, C.source)
     # Merge advisories for the same CVE (DEBIAN-CVE-… + DSA-…) before paging; the filtered set
     # is at most a few thousand rows, so this happens in Python.
     rows = [{
@@ -792,6 +801,7 @@ async def list_vulnerabilities(
         "title": r.title, "severity": (r.severity or "NONE").upper(), "cvss": r.cvss_score,
         "hosts": r.hosts, "packages": r.packages, "package": r.package, "fix_available": bool(r.fix_available),
         "fixed_version": r.fixed_version, "urgency": r.urgency, "os_hint": os_hint(r.title),
+        "note": source_note(r.source, r.title, None),
     } for r in (await db.execute(stmt)).all()]
     merged = merge_advisories(rows, max_fields=("hosts", "packages", "cvss", "fix_available"))
     merged.sort(key=lambda v: (-SEVERITIES[::-1].index(v["severity"]), -(v["cvss"] or 0), v["label"]))
@@ -846,6 +856,7 @@ async def get_vulnerability(cve_entry_id: int, db: AsyncSession = Depends(get_db
         "links": _links(cve),
         "affected": affected,
         "os_hint": next((h for h in (os_hint(a.title, (a.description or "")[:300]) for a in [cve, *siblings]) if h), None),
+        "note": next((n for n in (source_note(a.source, a.title, a.description) for a in [cve, *siblings]) if n), None),
         "exceptions": [_exception_dict(x, host_names.get(x.inventory_id)) for x in exceptions],
     }
 

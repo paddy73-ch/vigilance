@@ -28,6 +28,28 @@ router.add_api_route("/vulnerabilities", _page("vulnerabilities.html"), response
 router.add_api_route("/admin/sources", _page("admin_sources.html"), response_class=HTMLResponse, include_in_schema=False)
 router.add_api_route("/admin/exceptions", _page("admin_exceptions.html"), response_class=HTMLResponse, include_in_schema=False)
 router.add_api_route("/admin/settings", _page("admin_settings.html"), response_class=HTMLResponse, include_in_schema=False)
+
+# docs/LIMITATIONS.md (repository root, copied into the image) rendered as a page
+LIMITATIONS_FILE = Path(__file__).resolve().parents[2] / "docs" / "LIMITATIONS.md"
+
+
+def render_limitations() -> str:
+    from markdown_it import MarkdownIt
+
+    try:
+        text = LIMITATIONS_FILE.read_text(encoding="utf-8")
+    except OSError:
+        return "<p>docs/LIMITATIONS.md wurde nicht gefunden.</p>"
+    # html=False: raw HTML in the file is escaped, not rendered
+    return MarkdownIt("commonmark", {"html": False}).enable("table").render(text)
+
+
+async def limitations_page(request: Request, current_user: User = Depends(get_current_user_optional)):
+    return templates.TemplateResponse(request=request, name="admin_limits.html",
+                                      context={"request": request, "content": render_limitations()})
+
+
+router.add_api_route("/admin/limits", limitations_page, response_class=HTMLResponse, include_in_schema=False)
 router.add_api_route("/admin/actions", _page("admin_actions.html"), response_class=HTMLResponse, include_in_schema=False)
 
 

@@ -161,6 +161,11 @@
       const path = (k) => points.map((p, i) => (i ? "L" : "M") + x(i).toFixed(1) + " " + y(p[k]).toFixed(1)).join(" ");
       return { patchable: path("patchable"), without_fix: path("without_fix"), fixed: path("fixed_total"), max };
     },
+    notes: {
+      goModule: "Über die Go-Sicherheitsdaten des Herstellers geprüft. Diese Daten sagen oft nicht, welches Betriebssystem betroffen ist.",
+      debianData: "Debian hat ein gleichnamiges Paket, installiert ist aber der Build dieser Paketquelle. Vigilance nutzt die Debian-Daten; Treffer und Fix-Versionen können deshalb ungenau sein.",
+      noData: "Für diese Pakete gibt es keine Sicherheitsdaten, die Vigilance abfragt. Lücken darin werden nicht erkannt.",
+    },
     hostLabel(h) { return h.type === "node" ? "Proxmox-Host" : "CT " + h.vmid; },
     // ---- solution and removal risk (see /api remedy objects)
     replacementText(rem) {

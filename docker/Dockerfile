@@ -24,6 +24,7 @@ WORKDIR /app
 COPY pyproject.toml .
 COPY vigilance/ ./vigilance/
 COPY config/ ./config/
+COPY docs/ ./docs/
 COPY alembic.ini .
 
 # Create data directory with correct ownership before switching user

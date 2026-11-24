@@ -60,6 +60,38 @@ VECTOR = re.compile(r"(CVSS:3\.[01]/[A-Z:/]+)")
 CVE_ID = re.compile(r"CVE-\d{4}-\d{4,}")
 
 
+# Features a bulletin can be limited to; Vigilance cannot see whether a host uses them
+FEATURES = [
+    (r"Tailscale SSH|\bSSH\b", "Tailscale SSH"),
+    (r"\bFunnel\b|(?i:tailscale funnel)", "Funnel"),
+    (r"\bServe\b|(?i:tailscale serve)", "Serve"),
+    (r"subnet router", "Subnet-Router"),
+    (r"exit node", "Exit-Nodes"),
+    (r"app connector", "App-Connectors"),
+    (r"\bMDM\b", "MDM-Verwaltung"),
+    (r"4via6", "4via6-Routing"),
+    (r"\bServices\b", "Tailscale Services"),
+    (r"tsrecorder|session recording", "SSH-Sitzungsaufzeichnung"),
+    (r"web interface|web client", "Web-Oberfläche des Clients"),
+]
+
+
+def features(*texts: Optional[str]) -> List[str]:
+    text = " ".join(t for t in texts if t)
+    return [label for pattern, label in FEATURES if re.search(pattern, text)]
+
+
+def limitation_note(title: Optional[str], description: Optional[str] = None) -> str:
+    """Hover text for findings from this source. Features only from the title: the body mentions
+    features in passing too often (e.g. Serve in a certificate bulletin)."""
+    found = features(title)
+    base = "Aus den Tailscale Security Bulletins; die Fix-Version wurde aus dem Text gelesen."
+    if found:
+        return (f"Laut Titel geht es um {', '.join(found)}. Oft sind nur Hosts betroffen, die diese Funktion "
+                f"nutzen; ob das zutrifft, sieht Vigilance nicht. {base}")
+    return f"{base} Ob eine betroffene Funktion auf dem Host genutzt wird, sieht Vigilance nicht."
+
+
 def html_to_text(fragment: str) -> str:
     text = re.sub(r"<[^>]+>", " ", html.unescape(fragment or ""))
     return re.sub(r"\s+", " ", text).strip()

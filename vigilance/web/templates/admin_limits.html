@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block title %}Grenzen{% endblock %}
+{% block content %}
+{% include "_admin_tabs.html" %}
+<section class="panel panel-pad">
+  <p class="faint mb-10">Inhalt von <code>docs/LIMITATIONS.md</code> im Repository.</p>
+  <article class="prose">{{ content|safe }}</article>
+</section>
+{% endblock %}
