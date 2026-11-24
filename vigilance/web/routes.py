@@ -74,9 +74,9 @@ _REDIRECTS = {
 
 def _redirect(target: str):
     async def handler(request: Request):
-        query = request.url.query
-        if query and "?" not in target:
-            return RedirectResponse(f"{target}?{query}", status_code=301)
+        query = request.url.query  # keep the old query, e.g. /cves?cve_id=… (the page maps cve_id to its search)
+        if query:
+            return RedirectResponse(f"{target}{'&' if '?' in target else '?'}{query}", status_code=301)
         return RedirectResponse(target, status_code=301)
     return handler
 

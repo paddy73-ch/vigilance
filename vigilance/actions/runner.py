@@ -134,7 +134,9 @@ async def plan(db: AsyncSession, inv: Inventory, kind: str) -> dict:
             upgrades.update(ok)
             for b in g["binaries"]:
                 if b not in ok:
-                    result["skipped"].append({"package": b, "reason": "Fix nicht in den Paketquellen"})
+                    reason = ("Paketquelle bietet nur eine Version unter dem Fix" if b in avail.get("older", [])
+                              else "Fix nicht in den Paketquellen")
+                    result["skipped"].append({"package": b, "reason": reason})
         elif remedy["action"] == "remove":
             risk = remedy.get("risk") or {}
             if risk.get("status") == "ok":

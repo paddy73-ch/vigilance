@@ -8,7 +8,7 @@ import fnmatch
 import json
 import re
 from collections import defaultdict
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -291,7 +291,9 @@ def upgrade_availability(check_json: Optional[str], binaries: List[str], fixed: 
     else:
         status = "missing"
     return {"status": status, "lists_at": check.get("lists_at"),
-            "installable": [b for b in binaries if states[b] != "missing"],
+            # only candidates at or above the fix: a newer version below the fix would not close the gap
+            "installable": [b for b in binaries if states[b] == "ok"],
+            "older": [b for b in binaries if states[b] == "older"],
             "candidates": {b: cands[b] for b in binaries if b in cands}}
 
 
@@ -654,6 +656,8 @@ def _filters(stmt, status: str, fix: Optional[bool], hide_unimportant: bool, sev
              host_id: Optional[int], q: Optional[str]):
     if status and status != "all":
         stmt = stmt.where(F.status == status)
+    elif status == "all":
+        stmt = stmt.where(F.status != "source_off")  # findings of switched-off sources stay hidden
     if fix is True:
         stmt = stmt.where(IS_FIX)
     elif fix is False:
@@ -846,13 +850,21 @@ async def get_vulnerability(cve_entry_id: int, db: AsyncSession = Depends(get_db
     cve = await db.get(C, cve_entry_id)
     if not cve:
         raise HTTPException(status_code=404, detail="Eintrag nicht gefunden")
-    rows = (await db.execute(
-        select(F, T, I).join(T, T.id == F.discovered_tool_id).join(I, I.id == T.inventory_id)
-        .where(F.cve_entry_id == cve_entry_id).order_by(I.name)
-    )).all()
     siblings = await related_advisories(db, cve.cve_id)
-    exceptions = [x for x in (await db.execute(select(Suppression))).scalars().all()
-                  if same_vulnerability(x.cve_id, cve.cve_id, cve.upstream_ids)]
+    # findings of all advisories for this vulnerability, one row per package (this advisory's first)
+    all_rows = (await db.execute(
+        select(F, T, I).join(T, T.id == F.discovered_tool_id).join(I, I.id == T.inventory_id)
+        .where(F.cve_entry_id.in_({cve_entry_id, *[s.id for s in siblings]})).order_by(I.name)
+    )).all()
+    rows, seen_tools = [], set()
+    for f, t, i in sorted(all_rows, key=lambda r: (r[0].cve_entry_id != cve_entry_id, r[2].name, r[1].tool_name)):
+        if t.id not in seen_tools:
+            seen_tools.add(t.id)
+            rows.append((f, t, i))
+    rows.sort(key=lambda r: (r[2].name, r[1].tool_name))
+    sups = (await db.execute(select(Suppression))).scalars().all()
+    ups = await exception_upstreams(db, sups)
+    exceptions = [x for x in sups if same_vulnerability(x.cve_id, cve.cve_id, cve.upstream_ids, ups.get(x.cve_id))]
     host_names = {i.id: i.name for _, _, i in rows}
     obsolete = await obsolete_keys(db)
     newer = await newer_versions(db, {(i.id, t.source_name or t.tool_name) for _, t, i in rows
@@ -891,6 +903,14 @@ async def get_vulnerability(cve_entry_id: int, db: AsyncSession = Depends(get_db
         "note": next((n for n in (source_note(a.source, a.title, a.description) for a in [cve, *siblings]) if n), None),
         "exceptions": [_exception_dict(x, host_names.get(x.inventory_id)) for x in exceptions],
     }
+
+
+async def exception_upstreams(db: AsyncSession, sups) -> Dict[str, Optional[str]]:
+    """upstream_ids of the advisories the exceptions were created for (see same_vulnerability)."""
+    ids = {s.cve_id for s in sups}
+    if not ids:
+        return {}
+    return dict((await db.execute(select(C.cve_id, C.upstream_ids).where(C.cve_id.in_(ids)))).all())
 
 
 async def related_advisories(db: AsyncSession, advisory_id: str) -> List[C]:
@@ -946,13 +966,14 @@ async def _reapply(db: AsyncSession, cve_id: str) -> int:
     if not entries:
         return 0
     sups = (await db.execute(select(Suppression))).scalars().all()
+    ups = await exception_upstreams(db, sups)
     rows = (await db.execute(
         select(F, T, C).join(T, T.id == F.discovered_tool_id).join(C, C.id == F.cve_entry_id)
         .where(C.id.in_([e.id for e in entries]), F.status.in_(["open", "suppressed"]))
     )).all()
     changed = 0
     for f, t, c in rows:
-        applies = [x for x in sups if same_vulnerability(x.cve_id, c.cve_id, c.upstream_ids)]
+        applies = [x for x in sups if same_vulnerability(x.cve_id, c.cve_id, c.upstream_ids, ups.get(x.cve_id))]
         new = "suppressed" if any(_matches(x, t, now) for x in applies) else "open"
         if f.status != new:
             f.status = new
@@ -970,8 +991,10 @@ async def list_exceptions(db: AsyncSession = Depends(get_db), _: Optional[User] 
         .where(F.status == "suppressed").group_by(C.cve_id, C.upstream_ids)
     )).all()
 
+    ups = await exception_upstreams(db, [s for s, _ in rows])
+
     def count(s: Suppression) -> int:
-        return sum(n for adv, up, n in suppressed if same_vulnerability(s.cve_id, adv, up))
+        return sum(n for adv, up, n in suppressed if same_vulnerability(s.cve_id, adv, up, ups.get(s.cve_id)))
 
     return [{**_exception_dict(s, host), "suppressed_findings": count(s)} for s, host in rows]
 
@@ -983,7 +1006,10 @@ async def create_exception(body: ExceptionCreate, db: AsyncSession = Depends(get
         raise HTTPException(status_code=404, detail="Unbekannte Advisory-ID")
     if body.inventory_id and not await db.get(I, body.inventory_id):
         raise HTTPException(status_code=404, detail="Host nicht gefunden")
-    expires = body.expires_at.replace(tzinfo=None) if body.expires_at else None
+    expires = body.expires_at
+    if expires is not None and expires.tzinfo is not None:
+        expires = expires.astimezone(timezone.utc)  # stored as naive UTC, like everything else
+    expires = expires.replace(tzinfo=None) if expires else None
     s = Suppression(cve_id=body.cve_id, inventory_id=body.inventory_id, reason=body.reason.strip(),
                     expires_at=expires, created_by=user.username)
     db.add(s)

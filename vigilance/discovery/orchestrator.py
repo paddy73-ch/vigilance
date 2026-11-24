@@ -414,9 +414,11 @@ class DiscoveryOrchestrator:
             seen_ids.add(tool.id)
             result.tools_found += 1
 
-        # An empty list means the query failed - never mark everything as removed then
+        # A manager without packages in this scan may have failed (or is not installed): its earlier
+        # packages are left alone, only those of managers that answered can be marked as removed.
+        managers = {p.manager for p in packages}
         if seen_ids:
-            await crud.mark_removed_tools(self.db, inventory.id, "ssh_pkg", seen_ids)
+            await crud.mark_removed_tools(self.db, inventory.id, "ssh_pkg", seen_ids, managers=managers)
 
     async def _save_service_discovery(
         self,

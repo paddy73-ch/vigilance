@@ -135,11 +135,13 @@ def dumps(result: dict) -> str:
 # Which newer versions the host's configured package sources offer. Uses the package lists
 # as they are (no `apt update`, nothing is changed); their age is reported with the result.
 UPGRADE_SCRIPT = r"""LC_ALL=C; export LC_ALL
-# Age of the package lists: apt rebuilds pkgcache.bin after `apt update`. (The *Release files
-# keep the server's timestamp and say nothing about when the lists were fetched.)
-for f in /var/cache/apt/pkgcache.bin /var/lib/apt/lists; do
-  [ -e "$f" ] && { echo "##LISTS $(stat -c %Y "$f")"; break; }
-done
+# Age of the package lists: newest change time (ctime) of the list files. apt sets their mtime to
+# the server's date, and pkgcache.bin is also rebuilt after any install or removal, so neither says
+# when the lists were fetched. A list the server did not change is not rewritten; the age shown is
+# then the last change, which can be older than the last `apt update` (never younger).
+t=$(find /var/lib/apt/lists -maxdepth 1 -type f ! -name lock -printf '%C@\n' 2>/dev/null | sort -n | tail -1 | cut -d. -f1)
+[ -n "$t" ] || t=$(stat -c %Y /var/cache/apt/pkgcache.bin 2>/dev/null)
+[ -n "$t" ] && echo "##LISTS $t"
 apt list --upgradable 2>/dev/null | awk '/upgradable from/ { split($1, a, "/"); print "##UPG " a[1] " " $2 }'
 # Where each installed version comes from (package sources listed under *** in apt-cache policy),
 # and whether Debian/Ubuntu also offer the package (any version from a debian.org/ubuntu.com source)

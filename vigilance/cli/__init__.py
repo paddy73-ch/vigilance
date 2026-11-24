@@ -30,7 +30,11 @@ def test_gotify():
 def scan_now(full: bool = typer.Option(False, "--full", help="Run full scan instead of incremental")):
     """Trigger a discovery scan."""
     console.print(f"Starting {'full' if full else 'incremental'} scan...")
-    scan_run_id = asyncio.run(trigger_scan_now(full=full, wait=True))
+    try:
+        scan_run_id = asyncio.run(trigger_scan_now(full=full, wait=True))
+    except Exception as exc:
+        console.print(f"[red]✗[/red] Scan failed: {exc}")
+        raise typer.Exit(code=1)
     console.print(f"[green]✓[/green] Scan completed (run ID: {scan_run_id})")
 
 

@@ -28,3 +28,13 @@ def test_tailscale_note():
     # the body is ignored: a certificate bulletin that mentions Serve in passing gets the general note
     n = limitation_note("Leaked private keys for TLS intermediates", "certificates used by Serve")
     assert "Laut Titel" not in n and "sieht Vigilance nicht" in n
+
+
+@pytest.mark.asyncio
+async def test_legacy_cve_link_keeps_its_query():
+    """Regression: /cves?cve_id=… lost the advisory on the redirect to /vulnerabilities?view=cve."""
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as c:
+        r = await c.get("/cves?cve_id=DEBIAN-CVE-2026-1", follow_redirects=False)
+        assert r.status_code == 301 and r.headers["location"] == "/vulnerabilities?view=cve&cve_id=DEBIAN-CVE-2026-1"
+        r = await c.get("/findings?status=fixed", follow_redirects=False)
+        assert r.headers["location"] == "/vulnerabilities?status=fixed"

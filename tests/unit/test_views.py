@@ -156,6 +156,9 @@ async def test_exceptions_apply_immediately(client):
     assert (await client.get("/api/overview")).json()["kpis"]["patchable"] == 3
     bad = await client.post("/api/exceptions", json={**body, "cve_id": "NOPE-1"}, headers=AUTH)
     assert bad.status_code == 404
+    # an expiry with a time zone is converted to UTC, not just stripped of its offset
+    r = await client.post("/api/exceptions", json={**body, "expires_at": "2099-06-01T12:00:00+02:00"}, headers=AUTH)
+    assert r.json()["expires_at"].startswith("2099-06-01T10:00:00")
 
 
 @pytest.mark.asyncio
@@ -328,7 +331,9 @@ def test_upgrade_availability():
     a = upgrade_availability(check, ["curl", "libcurl4t64"], "8.14.1-2+deb13u8")
     assert a["status"] == "available" and a["installable"] == ["curl", "libcurl4t64"]
     assert upgrade_availability(check, ["curl", "intel-microcode"], "8.14.1-2+deb13u8")["status"] == "partial"
-    assert upgrade_availability(check, ["old"], "2.0-1")["status"] == "older"
+    o = upgrade_availability(check, ["old"], "2.0-1")
+    # a newer version below the fix must not be suggested as the remedy
+    assert o["status"] == "older" and o["installable"] == [] and o["older"] == ["old"]
     m = upgrade_availability(check, ["intel-microcode"], "3.20260925.1~deb13u1")
     assert m["status"] == "missing" and m["installable"] == []
 
@@ -364,3 +369,28 @@ async def test_overview_lists_containers_with_kernel_packages(client, any_engine
     ks = (await client.get("/api/overview")).json()["kernels"]
     assert ks == [{"id": client.hosts["dev"].id, "name": "dev", "vmid": 110, "installed": 1, "remnants": 1,
                    "extra": ["wireguard"]}]
+
+
+@pytest.mark.asyncio
+async def test_dsa_exception_and_detail_cover_sibling_advisories(client, any_engine):
+    """Regression: an exception created on a DSA row must also cover DEBIAN-CVE-… of the same CVE,
+    and the detail view of the DSA must list the hosts that only have the sibling advisory."""
+    await _add_dsa_and_check(any_engine, client.hosts, CHECK_OK)
+    from sqlalchemy import select
+    from vigilance.database.models import CVEEntry
+    maker = async_sessionmaker(any_engine, class_=AsyncSession, expire_on_commit=False)
+    async with maker() as db:
+        dsa_id = (await db.execute(select(CVEEntry.id).where(CVEEntry.cve_id == "DSA-6001-1"))).scalar_one()
+    detail = (await client.get(f"/api/vulnerabilities/{dsa_id}")).json()
+    assert {a["host"] for a in detail["affected"]} == {"adguard", "dev"}  # dev only via DEBIAN-CVE-2026-2001
+    assert len([a for a in detail["affected"] if a["host"] == "adguard"]) == 1  # one row per package
+
+    r = await client.post("/api/exceptions", json={"cve_id": "DSA-6001-1", "reason": "nur intern"}, headers=AUTH)
+    assert r.status_code == 200
+    async with maker() as db:
+        rows = (await db.execute(
+            select(VulnerabilityFinding.status, CVEEntry.cve_id).join(CVEEntry, CVEEntry.id == VulnerabilityFinding.cve_entry_id)
+            .where(CVEEntry.cve_id.in_(["DSA-6001-1", "DEBIAN-CVE-2026-2001"])))).all()
+    assert rows and all(status == "suppressed" for status, _ in rows), rows
+    ex = (await client.get("/api/exceptions")).json()
+    assert ex[0]["suppressed_findings"] == len(rows)
