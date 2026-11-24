@@ -135,8 +135,11 @@ def dumps(result: dict) -> str:
 # Which newer versions the host's configured package sources offer. Uses the package lists
 # as they are (no `apt update`, nothing is changed); their age is reported with the result.
 UPGRADE_SCRIPT = r"""LC_ALL=C; export LC_ALL
-f=$(ls -t /var/lib/apt/lists/*Release 2>/dev/null | head -n 1)
-[ -n "$f" ] && echo "##LISTS $(stat -c %Y "$f")"
+# Age of the package lists: apt rebuilds pkgcache.bin after `apt update`. (The *Release files
+# keep the server's timestamp and say nothing about when the lists were fetched.)
+for f in /var/cache/apt/pkgcache.bin /var/lib/apt/lists; do
+  [ -e "$f" ] && { echo "##LISTS $(stat -c %Y "$f")"; break; }
+done
 apt list --upgradable 2>/dev/null | awk '/upgradable from/ { split($1, a, "/"); print "##UPG " a[1] " " $2 }'
 # Where each installed version comes from (package sources listed under *** in apt-cache policy)
 apt-cache policy $(dpkg-query -W -f='${db:Status-Abbrev} ${Package}\n' 2>/dev/null | awk '$1 ~ /^[ih]i/ {print $2}') 2>/dev/null | awk '
