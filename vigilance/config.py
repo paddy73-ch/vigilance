@@ -108,8 +108,11 @@ class Settings(BaseSettings):
 
     # Auth
     auth_mode: str = "proxy"  # proxy, builtin, both
-    api_token: str = ""
+    api_token: str = ""  # only used until a token is generated (Settings page / `vigilance token rotate`)
     remote_user_header: str = "Remote-User"
+    # Reverse proxies whose Remote-User header is trusted (IPs/CIDRs, comma separated).
+    # Empty = the header is ignored, e.g. "192.0.2.101" for Zoraxy.
+    trusted_proxies: str = ""
 
     # CVE Sync
     cve_sync_interval_hours: int = 6

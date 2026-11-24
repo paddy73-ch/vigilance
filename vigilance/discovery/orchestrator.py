@@ -22,7 +22,7 @@ from vigilance.discovery.services import discover_services_on_host, ServiceInfo
 from vigilance.discovery.custom import run_all_custom_checks, CustomCheckResult
 from vigilance.discovery.ssh import get_ssh_pool
 from vigilance.discovery.osinfo import discover_os_on_host
-from vigilance.discovery.proxmox_ssh_setup import auto_distribute_ssh_keys, ensure_ssh_key
+from vigilance.discovery.sshkey import ensure_ssh_key
 
 logger = logging.getLogger(__name__)
 
@@ -43,25 +43,9 @@ class DiscoveryOrchestrator:
         result = ScanResult()
         scan_run = await self.db.get(ScanRun, scan_run_id)
 
-        # Ensure SSH key exists and auto-distribute to all running VMs before scanning
+        # Make sure this instance has an SSH key (distribution to the LXCs happens via Ansible)
         ssh_pub_key = ensure_ssh_key()
-        logger.info(f"SSH key ready: {ssh_pub_key[:50]}...")
-
-        for node_config in settings.proxmox_nodes:
-            if node_config.url and node_config.token_id and node_config.token_secret:
-                try:
-                    stats = await auto_distribute_ssh_keys(
-                        api_url=node_config.url,
-                        token=f"{node_config.token_id}={node_config.token_secret}",
-                        node_name=node_config.name,
-                        ssh_pub_key=ssh_pub_key,
-                    )
-                    logger.info(
-                        f"SSH key auto-distribution on {node_config.name}: "
-                        f"{stats['key_distributed']}/{stats['vms_found']} VMs configured"
-                    )
-                except Exception as e:
-                    logger.error(f"SSH key auto-distribution failed on {node_config.name}: {e}")
+        logger.info("SSH key: %s", ssh_pub_key.split()[-1] if ssh_pub_key else "missing")
 
         # Get or create Proxmox nodes in DB
         for node_config in settings.proxmox_nodes:
@@ -75,6 +59,13 @@ class DiscoveryOrchestrator:
                     token_secret=node_config.token_secret,
                     verify_tls=node_config.verify_tls,
                 )
+            else:
+                # config.yaml is the source of truth: pick up a rotated token or changed URL/TLS setting
+                for attr in ("url", "token_id", "token_secret", "verify_tls"):
+                    value = getattr(node_config, attr)
+                    if value is not None and getattr(node, attr) != value:
+                        setattr(node, attr, value)
+                        logger.info("Proxmox node %s: %s updated from config", node.name, attr)
 
             # Discover via Proxmox API
             await self._discover_proxmox_node(node, scan_run_id, result)

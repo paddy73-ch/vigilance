@@ -39,8 +39,8 @@
                 <span class="font-medium capitalize" x-text="sync.source"></span>
                 <span class="text-sm text-gray-500 dark:text-gray-400" x-text="sync.entries_count + ' entries, Last: ' + (sync.last_success_at ? formatDate(sync.last_success_at) : 'Never')"></span>
                 <div class="flex items-center gap-3">
-                    <span :class="sync.status === 'running' ? 'text-blue-600' : (sync.status === 'error' || sync.error_message ? 'text-red-600' : 'text-green-600')" x-text="sync.status === 'running' ? 'Läuft' : (sync.status === 'error' || sync.error_message ? 'Fehler' : (sync.status === 'success' ? 'OK' : 'Noch nicht gestartet'))"></span>
-                    <button x-show="(sync.status === 'error' || sync.error_message) && sync.status !== 'running'" @click="retrySource(sync)" class="shrink-0 text-blue-600 hover:text-blue-800" title="Quelle erneut synchronisieren" aria-label="Quelle erneut synchronisieren">
+                    <span :class="vigilanceSync.cls(sync)" :title="vigilanceSync.title(sync)" x-text="vigilanceSync.label(sync)"></span>
+                    <button x-show="vigilanceSync.canRetry(sync)" @click="retrySource(sync)" class="shrink-0 text-blue-600 hover:text-blue-800" title="Quelle erneut synchronisieren" aria-label="Quelle erneut synchronisieren">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h5m11 11v-5h-5M5.5 9A7 7 0 0117 6.5L20 9m-1.5 6A7 7 0 017 17.5L4 15"></path></svg>
                     </button>
                 </div>
@@ -65,7 +65,7 @@
             </thead>
             <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
                 <template x-for="cve in cves" :key="cve.id">
-                    <tr class="hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer" @click="viewDetails(cve.id)">
+                    <tr class="hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer" @click="viewDetails(cve.cve_id)">
                         <td class="px-4 py-3 font-mono text-blue-600 hover:underline" x-text="cve.cve_id"></td>
                         <td class="px-4 py-3 text-sm text-gray-500 dark:text-gray-400 capitalize" x-text="cve.source"></td>
                         <td class="px-4 py-3">
@@ -94,7 +94,7 @@
         <div class="flex min-h-full items-center justify-center p-4">
             <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-3xl w-full p-6 max-h-[80vh] overflow-y-auto">
                 <div class="flex items-center justify-between mb-4">
-                    <h3 class="text-lg font-semibold" x-text="selectedCve.cve_id"></h3>
+                    <h3 class="text-lg font-semibold" x-text="selectedCve?.cve_id || ''"></h3>
                     <button @click="closeDetailsModal()" class="text-gray-500 hover:text-gray-700">
                         <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
@@ -149,7 +149,7 @@ function cvesPage() {
         async loadSyncStatus() {
             try {
                 const resp = await fetch('/api/cves/sync/status');
-                this.syncStatus = await resp.json();
+                this.syncStatus = vigilanceSync.visible(await resp.json());
                 if (this.syncStatus.some(s => s.status === 'running')) {
                     setTimeout(() => this.loadSyncStatus(), 2000);
                 }
@@ -187,7 +187,7 @@ function cvesPage() {
         },
         async viewDetails(id) {
             try {
-                const resp = await fetch('/api/cves/' + id);
+                const resp = await fetch('/api/cves/' + encodeURIComponent(id));
                 if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
                 const data = await resp.json();
                 this.selectedCve = data.cve || data;
@@ -198,31 +198,32 @@ function cvesPage() {
             }
         },
         renderDetails(cve) {
+            const e = window.vigilanceEscape;
             let html = `
                 <div class="space-y-4">
                     <div class="p-4 bg-gray-50 dark:bg-gray-700 rounded">
-                        <h4 class="font-semibold">${cve.cve_id || 'Unknown CVE'}</h4>
-                        <p class="text-sm text-gray-500">${cve.title || 'No title'}</p>
+                        <h4 class="font-semibold">${e(cve.cve_id || 'Unknown CVE')}</h4>
+                        <p class="text-sm text-gray-500">${e(cve.title || 'No title')}</p>
                     </div>
                     <dl class="space-y-2 text-sm grid grid-cols-2 gap-x-4 gap-y-2">
                         <dt class="font-medium">Source:</dt>
-                        <dd class="capitalize">${cve.source || 'Unknown'}</dd>
+                        <dd class="capitalize">${e(cve.source || 'Unknown')}</dd>
                         <dt class="font-medium">Severity:</dt>
-                        <dd class="text-${this.getSeverityColor(cve.severity)}">${cve.severity || 'NONE'}</dd>
+                        <dd class="text-${this.getSeverityColor(cve.severity)}">${e(cve.severity || 'NONE')}</dd>
                         <dt class="font-medium">CVSS Score:</dt>
-                        <dd>${cve.cvss_score || 'N/A'}</dd>
+                        <dd>${e(cve.cvss_score || 'N/A')}</dd>
                         <dt class="font-medium">CVSS Vector:</dt>
-                        <dd class="font-mono text-xs">${cve.cvss_vector || 'N/A'}</dd>
+                        <dd class="font-mono text-xs">${e(cve.cvss_vector || 'N/A')}</dd>
                         <dt class="font-medium">Published:</dt>
-                        <dd>${this.formatDate(cve.published_at)}</dd>
+                        <dd>${e(this.formatDate(cve.published_at))}</dd>
                         <dt class="font-medium">Modified:</dt>
-                        <dd>${this.formatDate(cve.modified_at)}</dd>
+                        <dd>${e(this.formatDate(cve.modified_at))}</dd>
                         <dt class="font-medium">Fetched:</dt>
-                        <dd>${this.formatDate(cve.fetched_at)}</dd>
+                        <dd>${e(this.formatDate(cve.fetched_at))}</dd>
                     </dl>
                     <div>
                         <h5 class="font-medium mb-2">Description:</h5>
-                        <p class="whitespace-pre-wrap text-sm">${cve.description || 'No description'}</p>
+                        <p class="whitespace-pre-wrap text-sm">${e(cve.description || 'No description')}</p>
                     </div>
             `;
 
@@ -232,7 +233,7 @@ function cvesPage() {
                     if (ranges.length) {
                         html += '<div><h5 class="font-medium mb-2">Affected Ranges:</h5><ul class="space-y-1 text-sm">';
                         ranges.forEach(r => {
-                            html += `<li><code>${r.type}: introduced=${r.introduced}, fixed=${r.fixed || 'N/A'}, repo=${r.repo || 'N/A'}</code></li>`;
+                            html += `<li><code>${e(r.type)}: introduced=${e(r.introduced)}, fixed=${e(r.fixed || 'N/A')}, repo=${e(r.repo || 'N/A')}</code></li>`;
                         });
                         html += '</ul></div>';
                     }
@@ -245,7 +246,8 @@ function cvesPage() {
                     if (refs.length) {
                         html += '<div class="mt-4"><h5 class="font-medium mb-2">References:</h5><ul class="space-y-1 text-sm">';
                         refs.slice(0, 15).forEach(r => {
-                            html += `<li><a href="${r.url}" target="_blank" class="text-blue-600">${r.type}: ${r.url}</a></li>`;
+                            if (!/^https?:\/\//i.test(r.url || '')) return;
+                            html += `<li><a href="${e(r.url)}" target="_blank" rel="noopener noreferrer" class="text-blue-600">${e(r.type)}: ${e(r.url)}</a></li>`;
                         });
                         html += '</ul></div>';
                     }

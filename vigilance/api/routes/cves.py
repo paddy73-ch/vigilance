@@ -46,7 +46,8 @@ async def get_sync_status(
     current_user: User = Depends(get_current_user_optional),
 ):
     """Get CVE sync status for all sources."""
-    return await crud.get_all_sync_status(db)
+    from vigilance.cve.sync import annotate_enabled
+    return annotate_enabled(await crud.get_all_sync_status(db))
 
 
 @router.get("/cves/sync/status/{source}/entries", response_model=CVESyncStatusWithEntriesResponse)
@@ -79,7 +80,7 @@ async def get_sync_status_entries(
 async def trigger_cve_sync(
     source: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
-    current_user: Optional[User] = Depends(get_current_user_optional),
+    current_user: User = Depends(require_write_access),
 ):
     """Trigger CVE sync (+ re-match) for all enabled sources or one specific source."""
     from vigilance.core.scheduler import _spawn, run_pipeline
