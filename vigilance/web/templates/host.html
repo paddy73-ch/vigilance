@@ -18,12 +18,37 @@
         </div>
       </div>
 
-      <template x-if="h.type === 'lxc' && h.status === 'running'">
+      <template x-if="(h.type === 'lxc' || h.type === 'node') && h.status === 'running'">
         <div class="panel panel-pad action-bar">
-          <p class="muted">Vigilance kann die Befehle auf diesem Container selbst ausführen. Vorher siehst du in einer Simulation, was sich ändert.</p>
+          <p class="muted" x-text="h.type === 'node'
+            ? 'Vigilance kann die Befehle auf dem Proxmox-Host ausführen, über eine sudo-Regel für apt-get. Vorher siehst du in einer Simulation, was sich ändert, und bestätigst ausdrücklich.'
+            : 'Vigilance kann die Befehle auf diesem Container selbst ausführen. Vorher siehst du in einer Simulation, was sich ändert.'"></p>
           <button class="btn btn-primary" @click="$dispatch('open-actions', { kind: 'suggested', hostIds: [h.id], title: h.name })">Vorschläge umsetzen</button>
-          <button class="btn" @click="$dispatch('open-actions', { kind: 'full_upgrade', hostIds: [h.id], title: h.name })">Vollständiges Upgrade</button>
+          <button class="btn" @click="$dispatch('open-actions', { kind: 'full_upgrade', hostIds: [h.id], title: h.name })" x-text="h.type === 'node' ? 'dist-upgrade' : 'Vollständiges Upgrade'"></button>
         </div>
+      </template>
+      <template x-if="h.kernel">
+        <section class="panel panel-pad stack">
+          <div class="action-bar">
+            <div class="grow">
+              <h2>Kernel im Container</h2>
+              <p class="muted mt-6">Ein LXC-Container verwendet immer den Kernel des Proxmox-Hosts<span x-text="h.kernel.running_kernel ? ' (' + h.kernel.running_kernel + ')' : ''"></span>. Kernel-Pakete im Container werden nie geladen. Meist kommen sie als Abhängigkeit mit, zum Beispiel mit dem Paket <code>wireguard</code>.</p>
+            </div>
+            <button class="btn" x-show="h.status === 'running'" @click="$dispatch('open-actions', { kind: 'kernel_cleanup', hostIds: [h.id], title: h.name })">Kernel aufräumen</button>
+          </div>
+          <p x-show="h.kernel.installed.length"><span class="tag">Installiert</span> <span class="ver" x-text="h.kernel.installed.join(', ')"></span></p>
+          <p x-show="h.kernel.remnants.length"><span class="tag">Reste (rc)</span> <span class="ver" x-text="h.kernel.remnants.join(', ')"></span></p>
+          <div class="cmd"><code x-text="h.kernel.command"></code><button class="btn btn-sm" @click="V.copy(h.kernel.command)">Kopieren</button></div>
+          <div class="risk" :data-status="h.kernel.error ? 'unknown' : (h.kernel.extra.length ? 'check' : 'ok')">
+            <p class="risk-head" x-text="h.kernel.error ? 'Simulation fehlgeschlagen' : (h.kernel.extra.length ? 'Vor dem Ausführen prüfen' : 'Geprüft: nur Kernel-Pakete')"></p>
+            <ul>
+              <li x-show="h.kernel.error" x-text="h.kernel.error"></li>
+              <li x-show="h.kernel.extra.length" x-text="'apt würde zusätzlich entfernen: ' + h.kernel.extra.join(', ') + '. Prüfe, ob du das noch brauchst.' + (h.kernel.extra.includes('wireguard') ? ' wireguard ist ein Meta-Paket, das den Kernel nachzieht; die eigentlichen Werkzeuge stecken in wireguard-tools.' : '')"></li>
+              <li x-text="'Simulation beim letzten Scan: ' + h.kernel.would_remove.length + ' Pakete würden entfernt, darunter initramfs-tools und Kernel-Firmware, falls vorhanden.'"></li>
+              <li x-show="!h.kernel.extra.length && !h.kernel.error">„Vorschläge umsetzen“ führt das mit aus.</li>
+            </ul>
+          </div>
+        </section>
       </template>
       <template x-if="h.type === 'node'">
         <div class="panel panel-pad note-node">

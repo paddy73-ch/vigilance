@@ -23,6 +23,10 @@
                 <a href="/admin/sources" {% if path.startswith('/admin') %}aria-current="page"{% endif %}>Verwaltung</a>
             </nav>
             <div class="topbar-end">
+                <a href="/admin/limits" class="limits-link" {% if path == '/admin/limits' %}aria-current="page"{% endif %} title="Was Vigilance nicht prüft oder nur ungenau beurteilt">
+                    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="10" cy="10" r="7.5"/><path d="M10 9v5M10 6.2v.1"/></svg>
+                    <span>Grenzen</span>
+                </a>
                 <button type="button" id="auth-state" class="lock" data-unlocked="false">
                     <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="4" y="9" width="12" height="8" rx="1.5"/><path d="M7 9V6.5a3 3 0 0 1 6 0V9"/></svg>
                     <span data-label>Bearbeiten</span>
@@ -33,5 +37,8 @@
     <main class="page">
         {% block content %}{% endblock %}
     </main>
+    <footer class="page-foot">
+        Vigilance zeigt bekannte Lücken in den geprüften Daten, nicht alles. <a href="/admin/limits">Grenzen von Vigilance</a>
+    </footer>
 </body>
 </html>

@@ -97,3 +97,15 @@ def test_parse_upgrade_output():
     assert "apt list --upgradable" in UPGRADE_SCRIPT and "pkgcache.bin" in UPGRADE_SCRIPT and "ls -t /var/lib/apt/lists" not in UPGRADE_SCRIPT 
     import re
     assert not re.search(r"^\s*apt(-get)?\s+update", UPGRADE_SCRIPT, re.M)  # never refreshes the lists
+
+
+def test_parse_kernel_output():
+    from vigilance.discovery.removal import KERNEL_SCRIPT, parse_kernel_output
+    out = "\n".join(["##KERNEL 7.0.14-30-pve", "##KPKG rc linux-image-6.12.95+deb13-rt-amd64",
+                     "##KPKG ii linux-image-rt-amd64", "##KSIM busybox", "##KSIM wireguard", "##KSIM initramfs-tools",
+                     "##KSIM linux-image-rt-amd64", "##KSIM dracut-install", "##KSIM linux-base"])
+    k = parse_kernel_output(out)
+    assert [p["name"] for p in k["packages"]] == ["linux-image-6.12.95+deb13-rt-amd64", "linux-image-rt-amd64"]
+    assert k["extra"] == ["wireguard"] and k["running_kernel"] == "7.0.14-30-pve"
+    assert parse_kernel_output("") is None
+    assert "--autoremove purge" in KERNEL_SCRIPT and "apt-get -s" in KERNEL_SCRIPT

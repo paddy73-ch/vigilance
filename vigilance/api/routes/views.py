@@ -157,6 +157,20 @@ async def patchable_split(db: AsyncSession, inventory_id: Optional[int] = None) 
 # ---------------------------------------------------------------- remediation
 
 
+def kernel_section(inv) -> Optional[dict]:
+    """Kernel packages inside a container (from the scan's kernel check), with the cleanup command."""
+    if not inv or inv.type != "lxc":
+        return None
+    from vigilance.actions.runner import kernel_command, kernel_info
+
+    info = kernel_info(inv)
+    if not info:
+        return None
+    return {**info, "command": kernel_command(info),
+            "installed": [p["name"] for p in info["packages"] if p["status"] != "rc"],
+            "remnants": [p["name"] for p in info["packages"] if p["status"] == "rc"]}
+
+
 def upgrade_command(binaries: List[str]) -> str:
     return "apt-get update && apt-get install --only-upgrade " + " ".join(sorted(binaries))
 
@@ -516,6 +530,7 @@ async def get_host(inventory_id: int, db: AsyncSession = Depends(get_db),
         "remove_command": remove_command(remove) if remove else None,
         "remove_simulation": f"apt-get -s purge {' '.join(remove)}" if remove else None,
         "remove_risk": removal_risk(inv.removal_check if inv else None, remove) if remove else None,
+        "kernel": kernel_section(inv),
         "foreign_sources": foreign_sources(inv.upgrade_check if inv else None, {
             n: v for n, v in (await db.execute(
                 select(T.tool_name, T.detected_version).where(T.inventory_id == inventory_id, T.removed_at.is_(None))

@@ -1,7 +1,7 @@
 // Remediation dialog: preview (simulation) -> execute -> follow the runs.
 // Open with: window.dispatchEvent(new CustomEvent("open-actions", { detail: { kind, hostIds, title } }))
 document.addEventListener("alpine:init", () => {
-  const KIND_LABEL = { suggested: "Vorschläge umsetzen", full_upgrade: "Vollständiges Upgrade" };
+  const KIND_LABEL = { suggested: "Vorschläge umsetzen", full_upgrade: "Vollständiges Upgrade", kernel_cleanup: "Kernel aufräumen" };
   const STATUS = { queued: "Wartet", running: "Läuft", ok: "Fertig", failed: "Fehler", skipped: "Übersprungen", interrupted: "Abgebrochen" };
 
   Alpine.data("actionDialog", () => ({
@@ -15,12 +15,13 @@ document.addEventListener("alpine:init", () => {
     batchId: null,
     error: null,
     starting: false,
+    confirmHost: false,
     openLog: {},
     timer: null,
 
     async open(detail) {
       Object.assign(this, { visible: true, phase: "preview", kind: detail.kind, hostIds: detail.hostIds || null,
-        title: detail.title || "", preview: null, runs: [], batchId: null, error: null, openLog: {} });
+        title: detail.title || "", preview: null, runs: [], batchId: null, error: null, openLog: {}, confirmHost: false });
       try {
         this.preview = await V.api("/api/actions/preview", { method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ kind: this.kind, host_ids: this.hostIds }) });
@@ -35,7 +36,16 @@ document.addEventListener("alpine:init", () => {
       this.visible = false;
       if (this.phase !== "preview") window.dispatchEvent(new CustomEvent("vigilance-changed"));
     },
-    kindLabel() { return KIND_LABEL[this.kind]; },
+    kindLabel() {
+      if (this.kind === "full_upgrade" && this.hasNode()) return "dist-upgrade auf dem Proxmox-Host";
+      return KIND_LABEL[this.kind];
+    },
+    hasNode() { return !!(this.preview && this.preview.hosts.some((h) => h.type === "node")); },
+    intro() {
+      if (this.kind === "kernel_cleanup") return "Entfernt die Kernel-Pakete im Container und was dadurch unbenutzt wird (purge --autoremove). Der Container läuft weiter mit dem Kernel des Proxmox-Hosts.";
+      if (this.kind === "full_upgrade") return "apt-get update und " + (this.hasNode() ? "apt-get dist-upgrade" : "apt-get full-upgrade") + ". Geänderte Konfigurationsdateien bleiben, wie sie sind.";
+      return "Nur die Vorschläge von Vigilance: Updates mit Fix in den Paketquellen und Altpakete, deren Risikoprüfung unbedenklich ist.";
+    },
     statusLabel(s) { return STATUS[s] || s; },
     statusClass(s) { return { ok: "tag-ok", failed: "tag-crit", running: "tag-upgrade", interrupted: "tag-crit" }[s] || ""; },
     runnable() { return this.preview ? this.preview.hosts.filter((h) => !h.blocked && h.commands.length) : []; },
@@ -55,7 +65,7 @@ document.addEventListener("alpine:init", () => {
       this.starting = true;
       try {
         const r = await V.api("/api/actions", { method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ kind: this.kind, host_ids: this.runnable().map((h) => h.host_id) }) });
+          body: JSON.stringify({ kind: this.kind, host_ids: this.runnable().map((h) => h.host_id), confirm_host: this.confirmHost }) });
         this.batchId = r.batch_id;
         this.phase = "running";
         this.poll();

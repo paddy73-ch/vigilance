@@ -17,8 +17,10 @@ router = APIRouter()
 
 
 class ActionRequest(BaseModel):
-    kind: Literal["suggested", "full_upgrade"]
+    kind: Literal["suggested", "full_upgrade", "kernel_cleanup"]
     host_ids: Optional[List[int]] = Field(None, description="Leer = alle laufenden LXC-Container")
+    # Required to change the Proxmox host; the host is only accepted as the sole target
+    confirm_host: bool = False
 
 
 async def _targets(db: AsyncSession, host_ids: Optional[List[int]]) -> List[Inventory]:
@@ -31,6 +33,8 @@ async def _targets(db: AsyncSession, host_ids: Optional[List[int]]) -> List[Inve
     invs = list((await db.execute(stmt)).scalars().all())
     if host_ids and len(invs) != len(set(host_ids)):
         raise HTTPException(status_code=404, detail="Host nicht gefunden")
+    if any(i.type == "node" for i in invs) and len(invs) > 1:
+        raise HTTPException(status_code=400, detail="Der Proxmox-Host kann nur einzeln ausgewählt werden.")
     return invs
 
 
@@ -56,8 +60,11 @@ async def preview(body: ActionRequest, db: AsyncSession = Depends(get_db), _: Us
 
 @router.post("/actions")
 async def execute(body: ActionRequest, db: AsyncSession = Depends(get_db), user: User = Depends(require_write_access)):
+    targets = await _targets(db, body.host_ids)
+    if any(i.type == "node" for i in targets) and not body.confirm_host:
+        raise HTTPException(status_code=400, detail="Für den Proxmox-Host ist eine ausdrückliche Bestätigung nötig.")
     try:
-        batch_id = await runner.start_batch(db, await _targets(db, body.host_ids), body.kind, user.username)
+        batch_id = await runner.start_batch(db, targets, body.kind, user.username)
     except runner.ActionBusy:
         raise HTTPException(status_code=409, detail="Es läuft bereits eine Aktion. Bitte warten, bis sie fertig ist.")
     return {"batch_id": batch_id}

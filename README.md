@@ -234,8 +234,9 @@ skipped and why, and what `apt-get -s` says would change.
 - **Vollständiges Upgrade**: `apt-get update && apt-get full-upgrade`, non-interactive, existing
   configuration files are kept (`--force-confdef --force-confold`).
 
-Only LXC containers are changed. The Proxmox host and VMs are refused in the code, also when their
-ID is sent to the API. One batch runs at a time; output and exit code of every run are kept
+Containers are changed as root. The Proxmox host only alone, with an explicit confirmation and a
+sudo rule for apt-get (see "Scanning the Proxmox host"); VMs never. "Kernel aufräumen" removes kernel
+packages from a container (never loaded there). One batch runs at a time; output and exit code of every run are kept
 (Verwaltung, Aktionen), and a scan starts afterwards. Each scan also records which newer versions the
 package sources offer (`apt list --upgradable`, without `apt update`), so a fix that apt cannot
 install is shown as such instead of a command that does nothing.
@@ -292,6 +293,20 @@ and in `config.yaml` under the node's `ssh:` set `scan_host: true` (`host_user` 
 The host appears as "Proxmox-Host". Without root, the removal check cannot see processes of other
 users; the UI says so. Packages built by Proxmox (pve-*, proxmox-*) are not in the Debian advisory
 data, so findings cover the Debian packages on the host.
+
+Optional, to let Vigilance run apt on the host too (Hosts > pve > "Vorschläge umsetzen" /
+"dist-upgrade", always alone and with an explicit confirmation), add a sudo rule. Note that sudo for
+apt-get is effectively root: apt-get options can run arbitrary commands.
+
+```bash
+visudo -f /etc/sudoers.d/vigilance-scan
+# content:
+Defaults:vigilance-scan env_keep += "DEBIAN_FRONTEND NEEDRESTART_MODE NEEDRESTART_SUSPEND APT_LISTCHANGES_FRONTEND LC_ALL"
+vigilance-scan ALL=(root) NOPASSWD: /usr/bin/apt-get
+```
+
+Without it the preview says that the rule is missing and nothing runs. On the host, apt runs detached
+(nohup) and Vigilance polls for the result, so a dropped SSH connection does not interrupt it.
 
 Advisories for the same CVE (e.g. `DEBIAN-CVE-2026-1234` and `DSA-6000-1`) are shown and counted as one
 vulnerability. An exception for one of them covers all advisories of that CVE.

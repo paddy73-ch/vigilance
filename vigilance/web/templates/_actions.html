@@ -6,9 +6,7 @@
         <div class="dialog-head">
           <div>
             <h2 x-text="kindLabel() + (title ? ': ' + title : '')"></h2>
-            <p class="muted" x-show="phase === 'preview'" x-text="kind === 'full_upgrade'
-              ? 'apt-get update und apt-get full-upgrade. Geänderte Konfigurationsdateien bleiben, wie sie sind.'
-              : 'Nur die Vorschläge von Vigilance: Updates mit Fix in den Paketquellen und Altpakete, deren Risikoprüfung unbedenklich ist.'"></p>
+            <p class="muted" x-show="phase === 'preview'" x-text="intro()"></p>
             <p class="muted" x-show="phase !== 'preview'" x-text="summary()"></p>
           </div>
           <button class="icon-btn" @click="close()" aria-label="Schliessen">
@@ -54,6 +52,12 @@
               <template x-if="blocked().length">
                 <p class="faint" x-text="'Nicht verändert: ' + blocked().map((h) => h.host + ' (' + h.blocked + ')').join('; ')"></p>
               </template>
+              <template x-if="hasNode() && runnable().length">
+                <div class="host-warn">
+                  <p><strong>Das verändert den Proxmox-Host.</strong> Vigilance läuft selbst in einem Container auf diesem Host. Proxmox-Pakete können Dienste wie pveproxy oder lxcfs neu starten. Ein neuer Kernel wird erst nach einem Neustart von pve aktiv; den führt Vigilance nicht aus. apt läuft auf dem Host losgelöst weiter, auch wenn die Verbindung abbricht.</p>
+                  <label class="check"><input type="checkbox" x-model="confirmHost"> Ich habe die Simulation geprüft und will den Proxmox-Host ändern.</label>
+                </div>
+              </template>
               <p class="faint">Die Simulation nutzt die Paketlisten, wie sie auf den Containern liegen. Bei der Ausführung lädt <code>apt-get update</code> sie neu, daher kann das Ergebnis leicht abweichen.</p>
             </div>
           </template>
@@ -78,8 +82,8 @@
 
         <div class="actions">
           <button class="btn" @click="close()" x-text="phase === 'preview' ? 'Abbrechen' : 'Schliessen'"></button>
-          <button class="btn btn-primary" x-show="phase === 'preview'" :disabled="!preview || preview.busy || !runnable().length || starting"
-                  @click="run()" x-text="runnable().length ? 'Auf ' + V.plural(runnable().length, 'Container', 'Containern') + ' ausführen' : 'Nichts auszuführen'"></button>
+          <button class="btn btn-primary" x-show="phase === 'preview'" :disabled="!preview || preview.busy || !runnable().length || starting || (hasNode() && !confirmHost)"
+                  @click="run()" x-text="!runnable().length ? 'Nichts auszuführen' : (hasNode() ? 'Auf dem Proxmox-Host ausführen' : 'Auf ' + V.plural(runnable().length, 'Container', 'Containern') + ' ausführen')"></button>
         </div>
       </div>
     </div>
