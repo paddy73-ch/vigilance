@@ -44,6 +44,8 @@ class Inventory(Base):
     last_scan_error: Mapped[Optional[str]] = mapped_column(Text)
     # JSON: result of the read-only removal check for obsolete packages (discovery/removal.py)
     removal_check: Mapped[Optional[str]] = mapped_column(Text)
+    # JSON: newer versions offered by the host's package sources (apt list --upgradable)
+    upgrade_check: Mapped[Optional[str]] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -227,3 +229,25 @@ class FindingSnapshot(Base):
     fixed_total: Mapped[int] = mapped_column(Integer, default=0)
     patchable_by_severity: Mapped[Optional[str]] = mapped_column(Text)  # JSON {"CRITICAL": n, ...}
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class ActionRun(Base):
+    """One remediation run on one host (apt commands executed by Vigilance)."""
+
+    __tablename__ = "action_runs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    batch_id: Mapped[str] = mapped_column(String(36), index=True, nullable=False)
+    inventory_id: Mapped[Optional[int]] = mapped_column(ForeignKey("inventories.id", ondelete="SET NULL"))
+    host_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    kind: Mapped[str] = mapped_column(String(16), nullable=False)  # suggested | full_upgrade
+    # queued | running | ok | failed | skipped | interrupted
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="queued")
+    commands: Mapped[Optional[str]] = mapped_column(Text)  # JSON list
+    skipped: Mapped[Optional[str]] = mapped_column(Text)  # JSON list of {package, reason}
+    output: Mapped[Optional[str]] = mapped_column(Text)
+    exit_code: Mapped[Optional[int]] = mapped_column(Integer)
+    created_by: Mapped[Optional[str]] = mapped_column(String(255))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    started_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    finished_at: Mapped[Optional[datetime]] = mapped_column(DateTime)

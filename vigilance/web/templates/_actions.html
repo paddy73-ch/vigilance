@@ -1,0 +1,87 @@
+{# Remediation dialog. Open with: $dispatch('open-actions', { kind, hostIds, title }) #}
+<div x-data="actionDialog" @open-actions.window="open($event.detail)" @keydown.escape.window="visible && close()">
+  <template x-if="visible">
+    <div class="dialog-scrim" @click.self="close()">
+      <div class="dialog dialog-wide" role="dialog" aria-modal="true" :aria-label="kindLabel()">
+        <div class="dialog-head">
+          <div>
+            <h2 x-text="kindLabel() + (title ? ': ' + title : '')"></h2>
+            <p class="muted" x-show="phase === 'preview'" x-text="kind === 'full_upgrade'
+              ? 'apt-get update und apt-get full-upgrade. Geänderte Konfigurationsdateien bleiben, wie sie sind.'
+              : 'Nur die Vorschläge von Vigilance: Updates mit Fix in den Paketquellen und Altpakete, deren Risikoprüfung unbedenklich ist.'"></p>
+            <p class="muted" x-show="phase !== 'preview'" x-text="summary()"></p>
+          </div>
+          <button class="icon-btn" @click="close()" aria-label="Schliessen">
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 5l10 10M15 5L5 15"/></svg>
+          </button>
+        </div>
+
+        <div class="dialog-body">
+          <p class="error" x-show="error" x-text="error"></p>
+
+          <!-- preview -->
+          <template x-if="phase === 'preview' && !preview && !error"><div class="stack"><div class="skeleton"></div><p class="faint">Simulation läuft auf den Containern …</p></div></template>
+          <template x-if="phase === 'preview' && preview">
+            <div class="stack">
+              <p class="note" x-show="preview.busy">Es läuft bereits eine Aktion. Starten geht erst, wenn sie fertig ist.</p>
+              <template x-for="h in runnable()" :key="h.host_id">
+                <div class="act-host">
+                  <div class="act-host-head"><strong x-text="h.host"></strong> <span class="muted" x-text="changeText(h)"></span></div>
+                  <div class="cmd"><code x-text="h.commands.join('\n')"></code></div>
+                  <template x-if="h.changes">
+                    <ul class="act-changes">
+                      <template x-for="c in h.changes.upgrade" :key="'u' + c"><li class="ver" x-text="c"></li></template>
+                      <template x-for="c in h.changes.install" :key="'i' + c"><li class="ver" x-text="'neu: ' + c"></li></template>
+                      <template x-for="c in h.changes.remove" :key="'r' + c"><li class="ver act-remove" x-text="'entfernt: ' + c"></li></template>
+                    </ul>
+                  </template>
+                  <pre class="log" x-show="h.simulation_error" x-text="h.simulation_error"></pre>
+                  <template x-if="h.skipped.length">
+                    <ul class="act-skipped">
+                      <template x-for="s in h.skipped" :key="s.package"><li><span class="pkg" x-text="s.package"></span> <span class="faint" x-text="'übersprungen: ' + s.reason"></span></li></template>
+                    </ul>
+                  </template>
+                </div>
+              </template>
+              <template x-if="idle().length">
+                <p class="faint" x-text="'Nichts zu tun auf ' + idle().map((h) => h.host).join(', ') + '.'"></p>
+              </template>
+              <template x-for="h in idle().filter((x) => x.skipped.length)" :key="'s' + h.host_id">
+                <ul class="act-skipped">
+                  <template x-for="s in h.skipped" :key="s.package"><li><strong x-text="h.host"></strong> <span class="pkg" x-text="s.package"></span> <span class="faint" x-text="'übersprungen: ' + s.reason"></span></li></template>
+                </ul>
+              </template>
+              <template x-if="blocked().length">
+                <p class="faint" x-text="'Nicht verändert: ' + blocked().map((h) => h.host + ' (' + h.blocked + ')').join('; ')"></p>
+              </template>
+              <p class="faint">Die Simulation nutzt die Paketlisten, wie sie auf den Containern liegen. Bei der Ausführung lädt <code>apt-get update</code> sie neu, daher kann das Ergebnis leicht abweichen.</p>
+            </div>
+          </template>
+
+          <!-- running / done -->
+          <template x-if="phase !== 'preview'">
+            <table class="rows">
+              <thead><tr><th>Container</th><th>Status</th><th></th></tr></thead>
+              <template x-for="r in runs" :key="r.id">
+                <tbody>
+                  <tr>
+                    <td x-text="r.host"></td>
+                    <td><span class="tag" :class="statusClass(r.status)" x-text="statusLabel(r.status)"></span></td>
+                    <td class="right"><button class="btn btn-sm" x-show="r.output" @click="openLog[r.id] = !openLog[r.id]" x-text="openLog[r.id] ? 'Ausgabe schliessen' : 'Ausgabe'"></button></td>
+                  </tr>
+                  <tr class="sub" x-show="openLog[r.id]"><td colspan="3"><pre class="log" x-text="r.output"></pre></td></tr>
+                </tbody>
+              </template>
+            </table>
+          </template>
+        </div>
+
+        <div class="actions">
+          <button class="btn" @click="close()" x-text="phase === 'preview' ? 'Abbrechen' : 'Schliessen'"></button>
+          <button class="btn btn-primary" x-show="phase === 'preview'" :disabled="!preview || preview.busy || !runnable().length || starting"
+                  @click="run()" x-text="runnable().length ? 'Auf ' + V.plural(runnable().length, 'Container', 'Containern') + ' ausführen' : 'Nichts auszuführen'"></button>
+        </div>
+      </div>
+    </div>
+  </template>
+</div>

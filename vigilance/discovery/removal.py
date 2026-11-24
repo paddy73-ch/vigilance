@@ -128,3 +128,39 @@ async def check_removal(host: str, port: int, user: str, key_path: str, known_ho
 
 def dumps(result: dict) -> str:
     return json.dumps(result, separators=(",", ":"))
+
+
+# ---------------------------------------------------------------- upgrade availability
+#
+# Which newer versions the host's configured package sources offer. Uses the package lists
+# as they are (no `apt update`, nothing is changed); their age is reported with the result.
+UPGRADE_SCRIPT = r"""LC_ALL=C; export LC_ALL
+f=$(ls -t /var/lib/apt/lists/*Release 2>/dev/null | head -n 1)
+[ -n "$f" ] && echo "##LISTS $(stat -c %Y "$f")"
+apt list --upgradable 2>/dev/null | awk '/upgradable from/ { split($1, a, "/"); print "##UPG " a[1] " " $2 }'
+"""
+
+
+def parse_upgrade_output(output: str) -> dict:
+    lists_at = None
+    candidates = {}
+    for line in output.splitlines():
+        if line.startswith("##LISTS "):
+            ts = line[8:].strip()
+            if ts.isdigit():
+                lists_at = datetime.utcfromtimestamp(int(ts)).isoformat() + "Z"
+        elif line.startswith("##UPG "):
+            parts = line.split()
+            if len(parts) >= 3:
+                candidates[parts[1]] = parts[2]
+    return {"lists_at": lists_at, "candidates": candidates}
+
+
+async def check_upgrades(host: str, port: int, user: str, key_path: str, known_hosts: str) -> Optional[dict]:
+    pool = get_ssh_pool()
+    client = pool.get_client(host, port, user, key_path, known_hosts, CHECK_TIMEOUT)
+    res = client.run_command(f"sh -s <<'VIGILANCE_EOF'\n{UPGRADE_SCRIPT}\nVIGILANCE_EOF", timeout=CHECK_TIMEOUT)
+    if not res.stdout and not res.success:
+        logger.warning("Upgrade check on %s failed: %s", host, res.stderr)
+        return None
+    return {"checked_at": datetime.utcnow().isoformat() + "Z", **parse_upgrade_output(res.stdout)}

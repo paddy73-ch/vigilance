@@ -87,3 +87,11 @@ def test_parse_header():
 
 def test_script_reports_root_and_kernel():
     assert '[ "$(id -u)" = 0 ] || echo "##NOROOT"' in SCRIPT and "##KERNEL $(uname -r)" in SCRIPT
+
+
+
+def test_parse_upgrade_output():
+    from vigilance.discovery.removal import UPGRADE_SCRIPT, parse_upgrade_output
+    r = parse_upgrade_output("##LISTS 1764000000\n##UPG curl 8.14.1-2+deb13u8\n##UPG libfoo:amd64 2")
+    assert r["candidates"] == {"curl": "8.14.1-2+deb13u8", "libfoo:amd64": "2"} and r["lists_at"].startswith("2025-")
+    assert "apt list --upgradable" in UPGRADE_SCRIPT and "update" not in UPGRADE_SCRIPT.replace("--upgradable", "")
