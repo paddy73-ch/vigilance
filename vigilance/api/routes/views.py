@@ -95,6 +95,8 @@ def _links(cve: C) -> List[dict]:
         links.append({"label": "NVD", "url": f"https://nvd.nist.gov/vuln/detail/{cve_ids[0]}"})
     if cve.source == "osv":
         links.append({"label": "OSV", "url": f"https://osv.dev/vulnerability/{cve.cve_id}"})
+    if cve.source == "tailscale":
+        links.append({"label": "Tailscale Security Bulletin", "url": f"https://tailscale.com/security-bulletins/#{cve.cve_id.lower()}"})
     if cve.source == "ghsa":
         links.append({"label": "GitHub Advisory", "url": f"https://github.com/advisories/{cve.cve_id}"})
     try:

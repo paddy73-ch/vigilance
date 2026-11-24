@@ -1,5 +1,5 @@
 document.addEventListener("alpine:init", () => {
-  const NAMES = { osv: "OSV", ghsa: "GitHub Advisories", nvd: "NVD", debian: "Debian Security Tracker", ubuntu: "Ubuntu" };
+  const NAMES = { osv: "OSV", ghsa: "GitHub Advisories", tailscale: "Tailscale Security Bulletins", nvd: "NVD", debian: "Debian Security Tracker", ubuntu: "Ubuntu" };
 
   Alpine.data("sourcesPage", () => ({
     sources: [], disabled: [], busy: false,

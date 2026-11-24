@@ -247,6 +247,15 @@ checked against the Go vulnerability data on OSV instead, by their Go module:
 | `crowdsec` | `github.com/crowdsecurity/crowdsec` |
 | `containerd.io` | `github.com/containerd/containerd` (`/v2` for 2.x) |
 
+**Tailscale security bulletins.** Recent Tailscale issues are not in the Go data. If a `tailscale`
+package is installed, Vigilance reads https://tailscale.com/security-bulletins/index.xml as its own
+source. Versions and platforms are only in the text, so each bulletin is classified: client issue
+with a recognised fixed version (becomes an advisory for the `tailscale` package), other product or
+no action needed (Kubernetes operator, libtailscale, coordination server, DERP, ...), other platform
+only (structured "Affected platforms" line without Linux), or no fixed version recognised. Only the
+first kind produces findings; the sources page shows the counts and lists the unrecognised ones.
+Platform hints from the text ("on macOS and iOS") appear as "laut Meldung nur macOS".
+
 `docker-ce` is deliberately not mapped: the advisories on `github.com/docker/docker` carry no fixed
 version (every release would match), and Docker 29 releases do not map onto the
 `github.com/moby/moby/v2` module versions. Operating-system restrictions: reviewed
