@@ -381,3 +381,7 @@ pre.log { margin: 0; padding: 10px 12px; max-height: 340px; overflow: auto; back
 .page-foot { max-width: 1240px; margin: -40px auto 32px; padding: 0 24px; color: var(--muted); font-size: 14px; }
 .page-foot a { font-weight: 600; }
 @media (max-width: 700px) { .page-foot { margin-bottom: 96px; } }
+
+.host-warn { padding: 12px 14px; border-radius: var(--radius); border: 1px solid var(--high); background: var(--high-soft); display: grid; gap: 10px; }
+.host-warn .check { display: flex; gap: 8px; align-items: flex-start; font-weight: 500; }
+.grow { flex: 1 1 320px; }

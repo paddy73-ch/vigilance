@@ -83,7 +83,21 @@ und Ubuntu-Daten bereits; NVD kennt keine Paketversionen der Distributionen und 
 
 ## Aktionen (Befehle ausführen)
 
-- Nur auf laufenden LXC-Containern mit Debian oder Ubuntu. Der Proxmox-Host und VMs werden nie verändert.
+- Auf laufenden LXC-Containern mit Debian oder Ubuntu, als root. VMs werden nie verändert.
+- Der Proxmox-Host nur einzeln (nie zusammen mit „alle Container“), nur mit ausdrücklicher Bestätigung
+  und nur, wenn du eine sudo-Regel für `apt-get` angelegt hast. Diese Regel gibt dem Scan-Benutzer
+  faktisch Root-Rechte auf dem Host, denn apt-get kann über seine Optionen beliebige Befehle starten.
+  Auf dem Host läuft apt losgelöst von der SSH-Verbindung; Vigilance fragt den Fortschritt ab.
+  Einen neuen Kernel aktiviert erst ein Neustart von pve, den Vigilance nicht ausführt. Startet
+  Vigilance während der Ausführung neu, erscheint die Aktion als „Abgebrochen“, obwohl apt auf dem
+  Host weiterlaufen kann; das Ergebnis zeigt dann der nächste Scan.
+
+  Die sudo-Regel legst du auf pve mit `visudo -f /etc/sudoers.d/vigilance-scan` an:
+
+  ```
+  Defaults:vigilance-scan env_keep += "DEBIAN_FRONTEND NEEDRESTART_MODE NEEDRESTART_SUSPEND APT_LISTCHANGES_FRONTEND LC_ALL"
+  vigilance-scan ALL=(root) NOPASSWD: /usr/bin/apt-get
+  ```
 - „Vorschläge umsetzen“ installiert nur Fixes, die in den Paketquellen liegen, und entfernt nur
   Altpakete mit Risikoprüfung „unbedenklich“.
 - Geänderte Konfigurationsdateien bleiben, wie sie sind (`--force-confold`). Neue Standardwerte des
@@ -92,6 +106,16 @@ und Ubuntu-Daten bereits; NVD kennt keine Paketversionen der Distributionen und 
   Programme noch geladen haben, bleiben bis zum Neustart des Programms aktiv.
 - Die Vorschau simuliert mit den vorhandenen Paketlisten; bei der Ausführung lädt `apt-get update` sie
   neu. Das tatsächliche Ergebnis kann deshalb leicht abweichen.
+
+## Kernel im Container
+
+- Ein LXC-Container lädt nie einen eigenen Kernel. Kernel-Pakete darin erkennt Vigilance und bietet
+  „Kernel aufräumen“ an (`apt-get purge --autoremove` mit allen Kernel-Paketen samt Resten).
+- `apt autoremove` allein entfernt sie nicht vollständig: apt schützt den neuesten und den vorherigen
+  Kernel vor dem automatischen Entfernen, und Reste mit Status „rc“ bleiben ohne `--purge` liegen.
+- „Vorschläge umsetzen“ räumt Kernel nur mit auf, wenn die Simulation ausschliesslich Kernel-Pakete und
+  deren Abhängigkeiten (initramfs-tools, klibc, busybox …) entfernt. Würde mehr wegfallen (zum Beispiel
+  das Meta-Paket `wireguard`), ist es ein eigener Schritt mit Vorschau.
 
 ## Zeitverzug
 

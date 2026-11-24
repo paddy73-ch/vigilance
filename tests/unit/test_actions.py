@@ -37,13 +37,17 @@ def test_simulation_script_never_updates_and_simulates():
     assert "Dir::Log::Planner=/dev/null" in s
 
 
-def test_blocked_reason():
+def test_blocked_reason(monkeypatch):
     inv = Inventory(type="node", status="running", last_scan_status="ok", os_id="debian")
-    assert "nie" in runner.blocked_reason(inv)
+    monkeypatch.setattr(runner, "node_config_for", lambda i: None)
+    assert "scan_host" in runner.blocked_reason(inv)
+    monkeypatch.setattr(runner, "node_config_for", lambda i: object())
+    assert runner.blocked_reason(inv, "suggested") is None
+    assert runner.blocked_reason(inv, "kernel_cleanup") == "Auf dem Proxmox-Host nicht verfügbar."
     inv.type = "qemu"
-    assert runner.blocked_reason(inv)
+    assert runner.blocked_reason(inv) == "VMs werden nicht verändert."
     inv.type, inv.status = "lxc", "stopped"
-    assert runner.blocked_reason(inv) == "Container läuft nicht."
+    assert runner.blocked_reason(inv) == "Host läuft nicht."
     inv.status = "running"
     assert runner.blocked_reason(inv) is None
 
@@ -72,7 +76,7 @@ async def test_plan_suggested_with_ok_check_and_missing_fix(client, any_engine):
         p = await runner.plan(db, inv, "suggested")
     assert p["commands"][-1] == "apt-get purge -y libglib2.0-0"
     assert p["commands"][1].endswith("--only-upgrade curl")
-    assert {"package": "libcurl4t64", "reason": "Fix nicht in den Paketquellen des Containers"} in p["skipped"]
+    assert {"package": "libcurl4t64", "reason": "Fix nicht in den Paketquellen"} in p["skipped"]
 
 
 @pytest.mark.asyncio
@@ -85,26 +89,13 @@ async def test_plan_full_upgrade_and_blocked(client, any_engine):
         assert box["blocked"] and box["commands"] == []
 
 
-@pytest.mark.asyncio
-async def test_execute_batch_never_touches_node(client, any_engine, monkeypatch):
-    maker = async_sessionmaker(any_engine, class_=AsyncSession, expire_on_commit=False)
-    async with maker() as db:
-        node_inv = await crud.upsert_inventory(db, proxmox_node_id=client.hosts["adguard"].proxmox_node_id, vmid=0,
-                                               name="pve", type="node", status="running", last_scan_status="ok",
-                                               os_id="debian")
-        await db.commit()
-        node_id = node_inv.id
-
-    calls = []
-
+def _patch_exec(monkeypatch, maker, calls, scans, detached=None):
     async def fake_run(target, body, timeout):
         calls.append((target["host"], body))
         return Res("Reading package lists...\nDone")
 
     async def fake_target(db, inv):
         return {"host": inv.name}
-
-    scans = []
 
     async def fake_scan(*a, **k):
         scans.append(1)
@@ -116,28 +107,151 @@ async def test_execute_batch_never_touches_node(client, any_engine, monkeypatch)
     monkeypatch.setattr(runner, "_ssh_target", fake_target)
     monkeypatch.setattr(sched, "trigger_scan_now", fake_scan)
     monkeypatch.setattr(base, "async_session_maker", maker)
+    if detached is not None:
+        async def fake_detached(target, body, timeout):
+            detached.append((target["host"], body))
+            return Res("Setting up pve-manager ...")
+        monkeypatch.setattr(runner, "_run_detached", fake_detached)
 
-    ids = [client.hosts["adguard"].id, client.hosts["box"].id, node_id]
+
+async def _wait_batch(client, batch):
+    for _ in range(100):
+        await asyncio.sleep(0.02)
+        if not runner.is_busy():
+            break
+    return {x["host"]: x for x in (await client.get(f"/api/actions?batch_id={batch}")).json()["runs"]}
+
+
+async def _node(client, any_engine):
+    maker = async_sessionmaker(any_engine, class_=AsyncSession, expire_on_commit=False)
+    async with maker() as db:
+        node_inv = await crud.upsert_inventory(db, proxmox_node_id=client.hosts["adguard"].proxmox_node_id, vmid=0,
+                                               name="pve", type="node", status="running", last_scan_status="ok",
+                                               os_id="debian")
+        await db.commit()
+        return node_inv.id
+
+
+@pytest.mark.asyncio
+async def test_execute_batch_containers(client, any_engine, monkeypatch):
+    maker = async_sessionmaker(any_engine, class_=AsyncSession, expire_on_commit=False)
+    calls, scans = [], []
+    _patch_exec(monkeypatch, maker, calls, scans)
+    ids = [client.hosts["adguard"].id, client.hosts["box"].id]
     r = await client.post("/api/actions", json={"kind": "full_upgrade", "host_ids": ids})
     assert r.status_code == 401  # token required
     r = await client.post("/api/actions", json={"kind": "full_upgrade", "host_ids": ids}, headers=AUTH)
     assert r.status_code == 200
-    batch = r.json()["batch_id"]
-    for _ in range(50):
-        await asyncio.sleep(0.02)
-        if not runner.is_busy():
-            break
-    runs = {x["host"]: x for x in (await client.get(f"/api/actions?batch_id={batch}")).json()["runs"]}
+    runs = await _wait_batch(client, r.json()["batch_id"])
     assert runs["adguard"]["status"] == "ok" and runs["adguard"]["exit_code"] == 0
     assert runs["box"]["status"] == "skipped"
-    assert runs["pve"]["status"] == "skipped" and "nie" in runs["pve"]["output"]
     assert [c[0] for c in calls] == ["adguard"]  # only the running container
     assert calls[0][1].startswith("set -e\nexport DEBIAN_FRONTEND=noninteractive")
+    assert "sudo" not in calls[0][1]
     assert scans == [1]  # rescan after the batch
-    # history without output, single run with output
     hist = (await client.get("/api/actions")).json()["runs"]
     assert "output" not in hist[0]
     assert (await client.get(f"/api/actions/{runs['adguard']['id']}")).json()["output"].endswith("Done")
+
+
+@pytest.mark.asyncio
+async def test_node_only_alone_and_confirmed(client, any_engine, monkeypatch):
+    node_id = await _node(client, any_engine)
+    both = {"kind": "suggested", "host_ids": [client.hosts["adguard"].id, node_id], "confirm_host": True}
+    r = await client.post("/api/actions", json=both, headers=AUTH)
+    assert r.status_code == 400 and "einzeln" in r.json()["detail"]
+    r = await client.post("/api/actions", json={"kind": "full_upgrade", "host_ids": [node_id]}, headers=AUTH)
+    assert r.status_code == 400 and "Bestätigung" in r.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_node_upgrade_runs_detached_with_sudo(client, any_engine, monkeypatch):
+    node_id = await _node(client, any_engine)
+    maker = async_sessionmaker(any_engine, class_=AsyncSession, expire_on_commit=False)
+    calls, scans, detached = [], [], []
+    _patch_exec(monkeypatch, maker, calls, scans, detached)
+    monkeypatch.setattr(runner, "node_config_for", lambda i: object() if i.type == "node" else None)
+    body = {"kind": "full_upgrade", "host_ids": [node_id], "confirm_host": True}
+    r = await client.post("/api/actions", json=body, headers=AUTH)
+    assert r.status_code == 200
+    runs = await _wait_batch(client, r.json()["batch_id"])
+    assert runs["pve"]["status"] == "ok"
+    assert calls == [] and len(detached) == 1  # never through the plain SSH run
+    script = detached[0][1]
+    assert "sudo -n apt-get update" in script and "sudo -n apt-get -y" in script and script.endswith("dist-upgrade")
+
+
+@pytest.mark.asyncio
+async def test_node_without_scan_host_is_skipped(client, any_engine, monkeypatch):
+    node_id = await _node(client, any_engine)
+    maker = async_sessionmaker(any_engine, class_=AsyncSession, expire_on_commit=False)
+    calls, scans, detached = [], [], []
+    _patch_exec(monkeypatch, maker, calls, scans, detached)
+    monkeypatch.setattr(runner, "node_config_for", lambda i: None)
+    r = await client.post("/api/actions", json={"kind": "full_upgrade", "host_ids": [node_id], "confirm_host": True},
+                          headers=AUTH)
+    runs = await _wait_batch(client, r.json()["batch_id"])
+    assert runs["pve"]["status"] == "skipped" and calls == [] and detached == []
+
+
+KERNEL = {"packages": [{"status": "ii", "name": "linux-image-rt-amd64"},
+                       {"status": "ii", "name": "linux-image-6.12.118+deb13-rt-amd64"},
+                       {"status": "rc", "name": "linux-image-6.12.95+deb13-rt-amd64"}],
+          "would_remove": ["linux-image-rt-amd64", "initramfs-tools", "wireguard"], "extra": ["wireguard"],
+          "running_kernel": "7.0.14-30-pve", "error": None}
+
+
+async def _set_kernel(any_engine, host_id, info):
+    maker = async_sessionmaker(any_engine, class_=AsyncSession, expire_on_commit=False)
+    async with maker() as db:
+        inv = await db.get(Inventory, host_id)
+        inv.removal_check = json.dumps({"checked_at": "x", "packages": {}, "kernel": info})
+        await db.commit()
+        return maker
+
+
+@pytest.mark.asyncio
+async def test_kernel_cleanup_plans(client, any_engine):
+    maker = await _set_kernel(any_engine, client.hosts["dev"].id, KERNEL)
+    async with maker() as db:
+        inv = await db.get(Inventory, client.hosts["dev"].id)
+        k = await runner.plan(db, inv, "kernel_cleanup")
+        assert k["commands"] == ["apt-get purge -y --autoremove linux-image-rt-amd64 "
+                                 "linux-image-6.12.118+deb13-rt-amd64 linux-image-6.12.95+deb13-rt-amd64"]
+        s = await runner.plan(db, inv, "suggested")  # wireguard would go too: not automatic
+        assert not any("--autoremove" in c for c in s["commands"])
+        assert any(x["package"] == "Kernel im Container" and "wireguard" in x["reason"] for x in s["skipped"])
+    await _set_kernel(any_engine, client.hosts["dev"].id, {**KERNEL, "extra": []})
+    async with maker() as db:
+        s = await runner.plan(db, await db.get(Inventory, client.hosts["dev"].id), "suggested")
+        assert s["commands"][-1].startswith("apt-get purge -y --autoremove linux-image-rt-amd64")
+        none = await runner.plan(db, await db.get(Inventory, client.hosts["adguard"].id), "kernel_cleanup")
+        assert none["blocked"] and none["commands"] == []
+
+
+def test_simulation_drops_sudo():
+    s = runner.simulation_script(["sudo -n apt-get update", "sudo -n apt-get -y -o X full-upgrade"])
+    assert "sudo" not in s and "apt-get -s " in s and "update" not in s.replace("full-upgrade", "")
+
+
+@pytest.mark.asyncio
+async def test_run_detached_polls_until_exit_code(monkeypatch):
+    seen = []
+    answers = iter(["", "", "0\n"])
+
+    async def fake_run(target, body, timeout):
+        seen.append(body)
+        if "VIGILANCE_SCRIPT" in body:
+            assert "nohup" in body
+            return Res("VIGILANCE_STARTED")
+        if body.startswith("cat"):
+            return Res(next(answers))
+        return Res("apt output")
+    monkeypatch.setattr(runner, "_run", fake_run)
+    monkeypatch.setattr(runner, "POLL_INTERVAL", 0)
+    res = await runner._run_detached({"host": "pve"}, "set -e\nsudo -n apt-get update", 60)
+    assert res.exit_code == 0 and res.stdout == "apt output"
+    assert sum(1 for b in seen if b.startswith("cat")) == 3
 
 
 @pytest.mark.asyncio

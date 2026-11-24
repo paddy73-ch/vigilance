@@ -186,3 +186,53 @@ async def check_upgrades(host: str, port: int, user: str, key_path: str, known_h
         logger.warning("Upgrade check on %s failed: %s", host, res.stderr)
         return None
     return {"checked_at": datetime.utcnow().isoformat() + "Z", **parse_upgrade_output(res.stdout)}
+
+
+# ---------------------------------------------------------------- kernel packages in containers
+#
+# An LXC container always runs the host's kernel; kernel images installed inside are never
+# loaded (they usually arrive as a dependency, e.g. the "wireguard" package pulls in a kernel
+# that provides wireguard-modules). The check lists them (installed and "rc" remnants) and
+# simulates removing them together with what then becomes unused (purge --autoremove).
+KERNEL_SCRIPT = r"""LC_ALL=C; export LC_ALL
+pk=$(dpkg-query -W -f='${db:Status-Abbrev} ${Package}\n' 'linux-image*' 'linux-headers*' 'linux-modules*' 2>/dev/null | awk '$1 ~ /^(ii|hi|rc|iU|iF|hU|hF)/ {print $1 " " $2}')
+[ -n "$pk" ] || exit 0
+echo "##KERNEL $(uname -r)"
+printf '%s\n' "$pk" | while read -r s n; do echo "##KPKG $s $n"; done
+names=$(printf '%s\n' "$pk" | awk '{print $2}' | tr '\n' ' ')
+apt-get -s -o Debug::NoLocking=1 -o Dir::Log::Planner=/dev/null --autoremove purge $names 2>&1 \
+  | awk '/^(Purg|Remv) / {print "##KSIM " $2} /^E:/ {print "##KERR " $0}'
+"""
+# What removing kernels may take along without that being a surprise
+KERNEL_RELATED = re.compile(
+    r"^(linux-(image|headers|modules|kbuild|compiler|support|base)|firmware-|initramfs-tools|klibc-utils|libklibc"
+    r"|dracut|amd64-microcode|intel-microcode|busybox$)"  # busybox: pulled in by initramfs-tools
+)
+
+
+def parse_kernel_output(output: str) -> Optional[dict]:
+    packages, would_remove, error, running = [], [], None, None
+    for line in output.splitlines():
+        if line.startswith("##KPKG "):
+            parts = line.split()
+            if len(parts) >= 3:
+                packages.append({"status": parts[1], "name": parts[2]})
+        elif line.startswith("##KSIM "):
+            name = line[7:].strip()
+            if name and name not in would_remove:
+                would_remove.append(name)
+        elif line.startswith("##KERR"):
+            error = line[6:].strip()
+        elif line.startswith("##KERNEL "):
+            running = line[9:].strip()
+    if not packages:
+        return None
+    return {"packages": packages, "would_remove": would_remove, "running_kernel": running, "error": error,
+            "extra": [p for p in would_remove if not KERNEL_RELATED.match(p)]}
+
+
+async def check_kernels(host: str, port: int, user: str, key_path: str, known_hosts: str) -> Optional[dict]:
+    pool = get_ssh_pool()
+    client = pool.get_client(host, port, user, key_path, known_hosts, CHECK_TIMEOUT)
+    res = client.run_command(f"sh -s <<'VIGILANCE_EOF'\n{KERNEL_SCRIPT}\nVIGILANCE_EOF", timeout=CHECK_TIMEOUT)
+    return parse_kernel_output(res.stdout or "")
