@@ -71,3 +71,28 @@ def sample_tool():
         "detected_version": "1.18.0",
         "package_manager": "dpkg",
     }
+
+import os as _os
+
+_PG_URL = _os.environ.get("VIGILANCE_TEST_PG_URL")  # e.g. postgresql+asyncpg://vigilance:vigilance@localhost/vigilance_test
+
+
+@pytest_asyncio.fixture(params=["sqlite", "postgres"])
+async def any_engine(request):
+    """Engine for SQLite and (if VIGILANCE_TEST_PG_URL is set) PostgreSQL, so SQL behaves the same on both."""
+    if request.param == "sqlite":
+        engine = create_async_engine("sqlite+aiosqlite:///:memory:", connect_args={"check_same_thread": False},
+                                     poolclass=StaticPool)
+    else:
+        if not _PG_URL:
+            pytest.skip("VIGILANCE_TEST_PG_URL not set")
+        engine = create_async_engine(_PG_URL)
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.drop_all)
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    yield engine
+    if request.param == "postgres":
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.drop_all)
+    await engine.dispose()

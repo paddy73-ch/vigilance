@@ -35,6 +35,7 @@ class CVEData:
     published_at: Optional[datetime] = None
     modified_at: Optional[datetime] = None
     raw_data: dict = field(default_factory=dict)
+    aliases: List[str] = field(default_factory=list)  # upstream CVE IDs etc.
 
 
 @dataclass

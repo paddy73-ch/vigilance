@@ -209,3 +209,20 @@ async def test_fix_and_urgency_filters(db_session):
     assert stats["open_with_fix"] == 2 and stats["open_unimportant"] == 1
     single = await crud.get_finding(db, found[0].id)
     assert single.tool.inventory.os_codename == "trixie"
+
+
+@pytest.mark.asyncio
+async def test_removed_packages_are_marked_and_not_matched(db_session):
+    db = db_session
+    tools, osv_cve, _ = await _setup(db)
+    inv_id = tools[0].inventory_id
+    keep = await crud.upsert_discovered_tool(db, inventory_id=inv_id, source_type="ssh_pkg", tool_name="curl",
+                                             detected_version="8.14.1-2", package_manager="dpkg")
+    assert await crud.mark_removed_tools(db, inv_id, "ssh_pkg", {keep.id}) == 1  # libssl3t64 is gone
+    await db.commit()
+    from vigilance.cve.sync import CVESyncOrchestrator
+    loaded = await CVESyncOrchestrator(db)._load_tools()
+    assert [t.tool_name for t in loaded] == ["curl"]
+    again = await crud.upsert_discovered_tool(db, inventory_id=inv_id, source_type="ssh_pkg", tool_name="libssl3t64",
+                                              detected_version="3.5.9-1~deb13u2", package_manager="dpkg")
+    assert again.removed_at is None  # seen again -> active

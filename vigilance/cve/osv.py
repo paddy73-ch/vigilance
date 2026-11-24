@@ -155,6 +155,8 @@ def parse_vuln(vuln: dict) -> Optional[CVEData]:
         published_at=_parse_date(vuln.get("published")),
         modified_at=_parse_date(vuln.get("modified")),
         raw_data={**vuln, "_vigilance_parser": OSV_PARSER_VERSION},
+        aliases=[a for a in dict.fromkeys(list(vuln.get("upstream") or []) + list(vuln.get("aliases") or []))
+                 if isinstance(a, str)],
     )
 
 

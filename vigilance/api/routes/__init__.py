@@ -10,6 +10,7 @@ from vigilance.api.routes import (
     scans,
     settings,
     auth,
+    views,
 )
 
 api_router = APIRouter()
@@ -23,3 +24,4 @@ api_router.include_router(overrides.router, prefix="/api", tags=["overrides"])
 api_router.include_router(scans.router, prefix="/api", tags=["scans"])
 api_router.include_router(settings.router, prefix="/api", tags=["settings"])
 api_router.include_router(auth.router, prefix="/api", tags=["auth"])
+api_router.include_router(views.router, prefix="/api", tags=["views"])

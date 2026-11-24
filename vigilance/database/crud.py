@@ -134,11 +134,30 @@ async def upsert_discovered_tool(db: AsyncSession, **kwargs) -> DiscoveredTool:
     if tool:
         for k, v in kwargs.items():
             setattr(tool, k, v)
+        tool.removed_at = None  # seen again
     else:
         tool = DiscoveredTool(**kwargs)
         db.add(tool)
     await db.flush()
     return tool
+
+
+async def mark_removed_tools(db: AsyncSession, inventory_id: int, source_type: str, seen_ids: set) -> int:
+    """Mark tools of a host that were not seen in the current scan as removed."""
+    result = await db.execute(
+        select(DiscoveredTool).where(
+            DiscoveredTool.inventory_id == inventory_id,
+            DiscoveredTool.source_type == source_type,
+            DiscoveredTool.removed_at.is_(None),
+        )
+    )
+    now = datetime.utcnow()
+    count = 0
+    for tool in result.scalars().all():
+        if tool.id not in seen_ids:
+            tool.removed_at = now
+            count += 1
+    return count
 
 
 # Scan Runs
