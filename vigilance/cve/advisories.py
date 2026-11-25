@@ -102,9 +102,13 @@ def _max(a, b):
     return max(a, b)
 
 
-def same_vulnerability(exception_id: str, advisory_id: str, upstream: Union[str, Sequence[str], None]) -> bool:
-    """Does an exception created for exception_id also cover this advisory?"""
+def same_vulnerability(exception_id: str, advisory_id: str, upstream: Union[str, Sequence[str], None],
+                       exception_upstream: Union[str, Sequence[str], None] = None) -> bool:
+    """Does an exception created for exception_id also cover this advisory?
+
+    exception_upstream: upstream IDs of the exception's own advisory. Needed when its ID has no CVE
+    in it (DSA-6000-1 for CVE-2026-1234), otherwise its siblings are not recognised."""
     if exception_id == advisory_id:
         return True
-    key = vuln_key(exception_id)
+    key = vuln_key(exception_id, exception_upstream)
     return key is not None and key == vuln_key(advisory_id, upstream)

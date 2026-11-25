@@ -142,15 +142,18 @@ async def upsert_discovered_tool(db: AsyncSession, **kwargs) -> DiscoveredTool:
     return tool
 
 
-async def mark_removed_tools(db: AsyncSession, inventory_id: int, source_type: str, seen_ids: set) -> int:
-    """Mark tools of a host that were not seen in the current scan as removed."""
-    result = await db.execute(
-        select(DiscoveredTool).where(
-            DiscoveredTool.inventory_id == inventory_id,
-            DiscoveredTool.source_type == source_type,
-            DiscoveredTool.removed_at.is_(None),
-        )
+async def mark_removed_tools(db: AsyncSession, inventory_id: int, source_type: str, seen_ids: set,
+                             managers: Optional[set] = None) -> int:
+    """Mark tools of a host that were not seen in the current scan as removed.
+    With ``managers``, only tools of these package managers (the ones whose query returned packages)."""
+    stmt = select(DiscoveredTool).where(
+        DiscoveredTool.inventory_id == inventory_id,
+        DiscoveredTool.source_type == source_type,
+        DiscoveredTool.removed_at.is_(None),
     )
+    if managers is not None:
+        stmt = stmt.where(DiscoveredTool.package_manager.in_(managers))
+    result = await db.execute(stmt)
     now = datetime.utcnow()
     count = 0
     for tool in result.scalars().all():

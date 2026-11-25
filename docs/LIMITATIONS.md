@@ -75,6 +75,10 @@ sichtbar, solange eine davon eingeschaltet ist.
 
 - **Updates:** Der Scan liest `apt list --upgradable` aus den vorhandenen Paketlisten, ohne `apt update`.
   Ist die Liste alt, kann ein Fix fehlen, der schon verfügbar wäre. Das Alter der Listen wird angezeigt.
+  Es ist die letzte Änderung der Listendateien; hat sich auf dem Server seither nichts geändert, kann das
+  letzte `apt update` jünger sein als angezeigt, aber nie älter.
+- Bietet die Paketquelle zwar eine neuere Version an, die aber noch unter der Fix-Version liegt, schlägt
+  Vigilance kein Update vor („Paketquelle bietet nur eine Version unter dem Fix“).
 - **„Fix nicht in den Paketquellen“** heisst: Die konfigurierten Quellen bieten die Fix-Version nicht an
   (z. B. `intel-microcode` auf pve, weil `non-free-firmware` fehlt). Das Ändern der Paketquellen schlägt
   Vigilance nicht selbst vor.

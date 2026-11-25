@@ -200,7 +200,8 @@ def _spawn(coro, name: str):
 
 
 async def trigger_scan_now(full: bool = False, wait: bool = False) -> int:
-    """Start the pipeline; returns the scan_run_id immediately unless ``wait`` is set."""
+    """Start the pipeline; returns the scan_run_id immediately unless ``wait`` is set.
+    With ``wait`` a failure is raised to the caller (the CLI reports it); it is also stored on the run."""
     async with async_session_maker() as db:
         run = await crud.create_scan_run(db, "full" if full else "incremental")
         await db.commit()
@@ -213,7 +214,7 @@ async def trigger_scan_now(full: bool = False, wait: bool = False) -> int:
             pass  # logged and stored on the scan run
 
     if wait:
-        await job()
+        await run_pipeline(with_scan=True, full=full, scan_run_id=run_id)
     else:
         _spawn(job(), name=f"pipeline-{run_id}")
     return run_id

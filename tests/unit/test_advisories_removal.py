@@ -94,7 +94,9 @@ def test_parse_upgrade_output():
     from vigilance.discovery.removal import UPGRADE_SCRIPT, parse_upgrade_output
     r = parse_upgrade_output("##LISTS 1764000000\n##UPG curl 8.14.1-2+deb13u8\n##UPG libfoo:amd64 2")
     assert r["candidates"] == {"curl": "8.14.1-2+deb13u8", "libfoo:amd64": "2"} and r["lists_at"].startswith("2025-")
-    assert "apt list --upgradable" in UPGRADE_SCRIPT and "pkgcache.bin" in UPGRADE_SCRIPT and "ls -t /var/lib/apt/lists" not in UPGRADE_SCRIPT 
+    # list age from the change time of the list files, not pkgcache.bin (rebuilt by every install)
+    assert "apt list --upgradable" in UPGRADE_SCRIPT and "-printf '%C@" in UPGRADE_SCRIPT
+    assert "ls -t /var/lib/apt/lists" not in UPGRADE_SCRIPT 
     import re
     assert not re.search(r"^\s*apt(-get)?\s+update", UPGRADE_SCRIPT, re.M)  # never refreshes the lists
 
@@ -109,3 +111,22 @@ def test_parse_kernel_output():
     assert k["extra"] == ["wireguard"] and k["running_kernel"] == "7.0.14-30-pve"
     assert parse_kernel_output("") is None
     assert "--autoremove purge" in KERNEL_SCRIPT and "apt-get -s" in KERNEL_SCRIPT
+
+
+def test_dsa_exception_covers_debian_cve_of_same_cve():
+    from vigilance.cve.advisories import same_vulnerability
+    up = "CVE-2026-2001,DEBIAN-CVE-2026-2001"
+    assert same_vulnerability("DSA-6001-1", "DEBIAN-CVE-2026-2001", "CVE-2026-2001", up)
+    assert not same_vulnerability("DSA-6001-1", "DEBIAN-CVE-2026-9999", "CVE-2026-9999", up)
+    assert not same_vulnerability("DSA-6002-1", "DEBIAN-CVE-2026-2001", None, "CVE-2026-1,CVE-2026-2")  # several CVEs
+
+
+def test_scan_keeps_dsa_exception_on_sibling():
+    """The matching step (scan) must apply a DSA exception to DEBIAN-CVE-… as well."""
+    from datetime import datetime
+    from types import SimpleNamespace
+    from vigilance.cve.findings import _suppressed
+    s = SimpleNamespace(cve_id="DSA-6001-1", expires_at=None, tool_name_pattern=None, inventory_id=None)
+    cve = SimpleNamespace(cve_id="DEBIAN-CVE-2026-2001", upstream_ids="CVE-2026-2001")
+    tool = SimpleNamespace(tool_name="curl", inventory_id=1)
+    assert _suppressed([s], cve, tool, datetime.utcnow(), {"DSA-6001-1": "CVE-2026-2001,DEBIAN-CVE-2026-2001"})

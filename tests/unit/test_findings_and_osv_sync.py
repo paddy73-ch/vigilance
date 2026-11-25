@@ -259,3 +259,52 @@ async def test_notify_new_findings_loads_relations(db_session, monkeypatch):
     title, message = sent[0]
     assert "DEBIAN-CVE-2026-1" in message and "**Proxmox Node:** pve" in message
     assert "https://vigilance.test/hosts/" in message and "8006" not in message
+
+
+@pytest.mark.asyncio
+async def test_failed_package_manager_does_not_mark_its_packages_removed(db_session):
+    """Regression: if one manager answers and another fails, only the answering one may mark removals."""
+    from vigilance.discovery.orchestrator import DiscoveryOrchestrator, ScanResult
+    from vigilance.discovery.packages import PackageInfo
+    db = db_session
+    tools, _, _ = await _setup(db)
+    inv = tools[0].inventory
+    apk_tool = await crud.upsert_discovered_tool(db, inventory_id=inv.id, source_type="ssh_pkg", tool_name="musl",
+                                                 detected_version="1.2.5-r0", package_manager="apk")
+    await db.commit()
+    orch = DiscoveryOrchestrator.__new__(DiscoveryOrchestrator)
+    orch.db = db
+    # this scan: dpkg answered with curl only (libssl3t64 is gone), the apk query failed (no packages)
+    await orch._save_package_discovery(inv, [PackageInfo(name="curl", version="8.14.1-2", manager="dpkg")], 1, ScanResult())
+    await db.commit()
+    state = {t.tool_name: t.removed_at for t in (await db.execute(select(DiscoveredTool))).scalars().all()}
+    assert state["libssl3t64"] is not None  # dpkg answered without it -> removed
+    assert state["musl"] is None and apk_tool.removed_at is None  # apk did not answer -> left alone
+
+
+def test_cli_scan_now_reports_failure(monkeypatch):
+    """Regression: `vigilance scan-now` printed "Scan completed" although the pipeline failed."""
+    from typer.testing import CliRunner
+    import vigilance.cli as cli
+    import vigilance.core.scheduler as sched
+
+    async def fake_create(db, scan_type):
+        from types import SimpleNamespace
+        return SimpleNamespace(id=7)
+
+    class FakeSession:
+        async def __aenter__(self):
+            return self
+        async def __aexit__(self, *a):
+            return False
+        async def commit(self):
+            pass
+
+    async def failing_pipeline(**kwargs):
+        raise RuntimeError("Proxmox nicht erreichbar")
+
+    monkeypatch.setattr(sched, "async_session_maker", lambda: FakeSession())
+    monkeypatch.setattr(sched.crud, "create_scan_run", fake_create)
+    monkeypatch.setattr(sched, "run_pipeline", failing_pipeline)
+    res = CliRunner().invoke(cli.app, ["scan-now"])
+    assert res.exit_code == 1 and "Scan failed" in res.output and "completed" not in res.output

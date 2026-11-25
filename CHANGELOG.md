@@ -5,6 +5,22 @@ ursprünglichen, privaten Repositorys; dessen Geschichte wurde vor der Veröffen
 
 ## Unveröffentlicht
 
+### Behoben
+Gefunden in automatischen Reviews der bisherigen Pull Requests, jeweils mit einem Test, der ohne die
+Korrektur fehlschlägt:
+- „Vorschläge umsetzen“ schlug ein Update auch vor, wenn die Paketquelle nur eine Version unter der
+  Fix-Version anbot; die Lücke wäre offen geblieben.
+- Antwortete auf einem Host ein Paketmanager und ein anderer nicht, galten die Pakete des stummen als
+  entfernt und ihre Befunde als behoben.
+- Ein Ablaufdatum mit Zeitzone wurde bei Ausnahmen ohne Umrechnung nach UTC gespeichert.
+- Eine Ausnahme auf einer DSA-Meldung galt nicht für die `DEBIAN-CVE`-Meldung derselben CVE, und die
+  Detailansicht zeigte nur die Hosts der angeklickten Meldung.
+- `vigilance scan-now` meldete einen fehlgeschlagenen Scan als abgeschlossen.
+- Alte Links `/cves?cve_id=…` verloren die gesuchte Meldung.
+- Das Alter der Paketlisten zeigte nach jeder Installation „gerade aktualisiert“ (`pkgcache.bin`); jetzt
+  zählt die letzte Änderung der Listendateien.
+- Der Status „alle“ in der Schwachstellen-API enthielt Befunde ausgeschalteter Quellen.
+
 ### Geändert
 - Interne Adressen in Tests, Beispielen und Doku durch die Dokumentations-Netze 192.0.2.0/24 und
   198.51.100.0/24 (RFC 5737) ersetzt.

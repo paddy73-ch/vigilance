@@ -18,6 +18,9 @@ document.addEventListener("alpine:init", () => {
       // compatibility with links from the old UI / overview
       if (p.has("severity")) this.f.sev = p.get("severity");
       if (p.has("status") && p.get("status") !== "open") this.f.fix = "";
+      if (p.has("cve_id")) { // old /cves?cve_id=… links: find the advisory whatever its state
+        this.f.view = "cve"; this.f.q = p.get("cve_id"); this.f.status = "open"; this.f.fix = ""; this.f.hide = "";
+      }
       window.addEventListener("popstate", () => location.reload());
       V.api("/api/hosts").then((h) => { this.hosts = h.filter((x) => x.tools > 0); }).catch(() => {});
       await this.load();

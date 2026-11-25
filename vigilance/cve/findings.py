@@ -113,10 +113,11 @@ def urgency_for(cve: CVEEntry, ecosystem: Optional[str], package: str) -> Option
     return None
 
 
-def _suppressed(suppressions: Sequence[Suppression], cve: CVEEntry, tool: DiscoveredTool, now: datetime) -> bool:
+def _suppressed(suppressions: Sequence[Suppression], cve: CVEEntry, tool: DiscoveredTool, now: datetime,
+                upstream_of: Optional[Dict[str, Optional[str]]] = None) -> bool:
     for s in suppressions:
-        # An exception for DEBIAN-CVE-2026-1 also covers DSA-… for the same CVE
-        if not same_vulnerability(s.cve_id, cve.cve_id, cve.upstream_ids):
+        # An exception for DEBIAN-CVE-2026-1 also covers DSA-… for the same CVE, and the other way round
+        if not same_vulnerability(s.cve_id, cve.cve_id, cve.upstream_ids, (upstream_of or {}).get(s.cve_id)):
             continue
         if s.expires_at and s.expires_at < now:
             continue
@@ -172,7 +173,7 @@ async def match_findings(
     tools = list(tools)
 
     off = disabled_sources or set()
-    cves = (await db.execute(select(CVEEntry))).scalars().all()
+    cves = all_cves = (await db.execute(select(CVEEntry))).scalars().all()
     off_ids = {c.id for c in cves if c.source in off}
     cves = [c for c in cves if c.source not in off]  # switched off in the UI: neither matched nor closed
     by_cve_id = {c.cve_id: c for c in cves}
@@ -188,6 +189,7 @@ async def match_findings(
     os_restrictions = restriction_map(cves, lambda c: vuln_key(c.cve_id, c.upstream_ids) or c.cve_id)
 
     suppressions = (await db.execute(select(Suppression))).scalars().all()
+    upstream_of = {c.cve_id: c.upstream_ids for c in all_cves}
     existing: Dict[Tuple[int, int], VulnerabilityFinding] = {
         (f.discovered_tool_id, f.cve_entry_id): f
         for f in (await db.execute(select(VulnerabilityFinding))).scalars().all()
@@ -199,7 +201,7 @@ async def match_findings(
         if key in seen:
             return
         seen.add(key)
-        status = "suppressed" if _suppressed(suppressions, cve, tool, now) else "open"
+        status = "suppressed" if _suppressed(suppressions, cve, tool, now, upstream_of) else "open"
         systems = os_restrictions.get((vuln_key(cve.cve_id, cve.upstream_ids) or cve.cve_id, details.get("package")))
         if not_for_host(systems):
             status = "not_affected"  # e.g. FreeBSD only; the hosts run Linux
