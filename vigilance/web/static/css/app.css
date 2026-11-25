@@ -443,3 +443,15 @@ tr.off td:not(:first-child) { opacity: .55; }
 .linklike { background: none; border: 0; padding: 0; color: var(--action); cursor: pointer; font: inherit; }
 .linklike:hover { text-decoration: underline; }
 .input-sm { width: auto; min-width: 180px; }
+
+/* Sortierbare Spaltentitel */
+.th-sort { background: none; border: 0; padding: 0; font: inherit; color: inherit; cursor: pointer; text-align: inherit;
+  display: inline-flex; align-items: center; gap: 2px; white-space: nowrap; }
+.th-sort:hover { color: var(--ink); }
+.th-sort:focus-visible { outline: 2px solid var(--action); outline-offset: 2px; border-radius: 2px; }
+th[aria-sort="ascending"] .th-sort, th[aria-sort="descending"] .th-sort { color: var(--ink); }
+.sort-mark { font-size: 10px; }
+.sort-mobile { display: none; }
+@media (max-width: 760px) {
+  .sort-mobile { display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-bottom: 1px solid var(--line); }
+}

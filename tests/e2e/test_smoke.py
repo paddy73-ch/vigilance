@@ -15,7 +15,7 @@ import pytest
 pytestmark = pytest.mark.skipif(os.environ.get("VIGILANCE_E2E") != "1", reason="set VIGILANCE_E2E=1")
 
 PAGES = ["/", "/hosts", "/vulnerabilities", "/vulnerabilities?view=cve&fix=", "/admin/sources",
-         "/admin/exceptions", "/admin/settings"]
+         "/admin/exceptions", "/admin/settings", "/vulnerabilities/fixed"]
 
 
 def _free_port():
@@ -115,4 +115,35 @@ def test_write_action_asks_for_token_and_drawer_works(server):
         # the drawer shows "Lädt …" first; wait for the loaded header instead of reading it at once
         page.locator(".drawer-head", has_text="CVE-2024-52533").wait_for(timeout=10000)
         assert page.locator(".drawer a[href^='javascript']").count() == 0
+        browser.close()
+
+
+def test_hosts_table_sorts_by_column(server):
+    playwright = pytest.importorskip("playwright.sync_api")
+    base, _ = server
+    with playwright.sync_playwright() as p:
+        kwargs = {"args": ["--no-sandbox"]}
+        if os.environ.get("VIGILANCE_E2E_CHROME"):
+            kwargs["executable_path"] = os.environ["VIGILANCE_E2E_CHROME"]
+        browser = p.chromium.launch(**kwargs)
+        page = browser.new_page(viewport={"width": 1400, "height": 900})
+        page.goto(base + "/hosts")
+        names = page.locator("#hosts-table tbody tr td:first-child")
+        names.first.wait_for()
+
+        def shown():
+            return [n.strip() for n in names.all_inner_texts()]
+
+        page.locator("th button", has_text="Name").click()
+        assert shown() == sorted(shown(), key=str.lower)
+        assert "sort=name&dir=asc" in page.url
+        page.locator("th button", has_text="Name").click()
+        assert shown() == sorted(shown(), key=str.lower, reverse=True)
+        assert page.locator("th[aria-sort='descending']").count() == 1
+        page.reload()  # the sort is kept in the address
+        names.first.wait_for()
+        assert shown() == sorted(shown(), key=str.lower, reverse=True)
+        page.locator("th button", has_text="Name").click()  # third click: back to "most urgent first"
+        assert page.locator("th[aria-sort='ascending'], th[aria-sort='descending']").count() == 0
+        assert page.url.endswith("/hosts")
         browser.close()

@@ -3,6 +3,13 @@
 Alle nennenswerten Änderungen an Vigilance. Die Einträge bis 0.12.0 stammen aus den Pull Requests des
 ursprünglichen, privaten Repositorys; dessen Geschichte wurde vor der Veröffentlichung bereinigt.
 
+## 0.13.1 – 2026-11-25
+
+### Neu
+- Hosts: Die Spalte „Host“ ist aufgeteilt in Name, Typ (CT, VM, Host) und Nr. Alle Spalten lassen sich
+  per Klick auf den Titel sortieren (auf, ab, zurück zu „dringendste zuerst“); die Sortierung steht in der
+  Adresse. Auf dem Handy gibt es dafür eine Auswahlliste.
+
 ## 0.13.0 – 2026-11-25
 
 ### Neu

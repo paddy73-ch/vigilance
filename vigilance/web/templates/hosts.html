@@ -4,7 +4,7 @@
 {% block content %}
 <div x-data="hostsPage" x-cloak>
   <div class="page-head">
-    <div><h1>Hosts</h1><p class="muted">Container, VMs aus config.yaml und Proxmox-Host, der dringendste zuerst.</p></div>
+    <div><h1>Hosts</h1><p class="muted" x-text="sortHint()"></p></div>
     <div class="action-bar">
       <button class="btn btn-primary" :disabled="!suggested || !suggested.length" :title="suggestTitle()"
               @click="$dispatch('open-actions', { kind: 'suggested', hostIds: null, title: allTitle() })" x-text="'Vorschläge auf allen ' + allWord()"></button>
@@ -17,13 +17,35 @@
     <button class="btn btn-sm" @click="showAll()">Alle Hosts anzeigen</button>
   </p>
   <section class="panel">
+    <div class="sort-mobile">
+      <label for="host-sort" class="faint">Sortieren</label>
+      <select id="host-sort" class="input input-sm" :value="sort.key ? sort.key + ':' + sort.dir : ''" @change="setSort($event.target.value)">
+        <option value="">Dringendste zuerst</option>
+        <template x-for="c in columns" :key="c.key">
+          <optgroup :label="c.label">
+            <option :value="c.key + ':1'" x-text="c.label + ' ▲'"></option>
+            <option :value="c.key + ':-1'" x-text="c.label + ' ▼'"></option>
+          </optgroup>
+        </template>
+      </select>
+    </div>
     <template x-if="!hosts"><div class="panel-pad"><div class="skeleton"></div></div></template>
-    <table class="rows" x-show="hosts">
-      <thead><tr><th>Host</th><th>System</th><th>Zustand</th><th class="num">Updates</th><th class="num">Altpakete</th><th class="num">Kritisch/hoch behebbar</th><th class="num">Ohne Fix</th><th>Letzter Scan</th></tr></thead>
+    <table class="rows" id="hosts-table" x-show="hosts">
+      <thead><tr>
+        <template x-for="c in columns" :key="c.key">
+          <th :class="c.num ? 'num' : ''" :aria-sort="ariaSort(c.key)">
+            <button type="button" class="th-sort" @click="sortBy(c.key)" :title="'Nach ' + c.label + ' sortieren'">
+              <span x-text="c.label"></span><span class="sort-mark" aria-hidden="true" x-text="sortMark(c.key)"></span>
+            </button>
+          </th>
+        </template>
+      </tr></thead>
       <tbody>
-        <template x-for="h in running()" :key="h.id">
+        <template x-for="h in sorted(running())" :key="h.id">
           <tr class="clickable" @click="location.href = '/hosts/' + h.id">
-            <td><a :href="'/hosts/' + h.id" class="pkg" x-text="h.name"></a> <span class="faint" x-text="V.hostLabel(h)"></span></td>
+            <td data-label="Name"><a :href="'/hosts/' + h.id" class="pkg" x-text="h.name"></a></td>
+            <td data-label="Typ" x-text="typeLabel(h)"></td>
+            <td data-label="Nr" class="num" x-text="h.type === 'node' ? '–' : h.vmid"></td>
             <td data-label="System" x-text="h.os || '–'"></td>
             <td data-label="Zustand"><span class="tag" :class="levelClass(h)" x-text="levelText(h)" :title="h.last_scan_error || ''"></span></td>
             <td class="num" data-label="Updates" x-text="h.upgrade_packages || '–'"></td>
@@ -40,10 +62,13 @@
     <details class="fold">
       <summary>Gestoppt <span class="muted" x-text="'(' + stopped().length + ') – werden nicht gescannt, Angaben vom letzten Scan'"></span></summary>
       <table class="rows">
+        <thead><tr><th>Name</th><th>Typ</th><th class="num">Nr</th><th>Behebbar (letzter Stand)</th></tr></thead>
         <tbody>
-          <template x-for="h in stopped()" :key="h.id">
+          <template x-for="h in sorted(stopped())" :key="h.id">
             <tr class="clickable" @click="location.href = '/hosts/' + h.id">
-              <td><a :href="'/hosts/' + h.id" class="pkg" x-text="h.name"></a> <span class="faint" x-text="V.hostLabel(h)"></span></td>
+              <td data-label="Name"><a :href="'/hosts/' + h.id" class="pkg" x-text="h.name"></a></td>
+              <td data-label="Typ" x-text="typeLabel(h)"></td>
+              <td data-label="Nr" class="num" x-text="h.vmid"></td>
               <td data-label="Behebbar (letzter Stand)" x-text="h.patchable ? V.plural(h.patchable, 'behebbarer Befund', 'behebbare Befunde') : 'keine Daten'"></td>
             </tr>
           </template>
