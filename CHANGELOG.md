@@ -25,7 +25,13 @@ Korrektur fehlschlägt:
 - Interne Adressen in Tests, Beispielen und Doku durch die Dokumentations-Netze 192.0.2.0/24 und
   198.51.100.0/24 (RFC 5737) ersetzt.
 - `deploy.sh` liest das Ziel aus `~/.config/vigilance/deploy.env` oder der Umgebung statt aus dem Skript.
-- `ansible/hosts.ini` ist jetzt `hosts.ini.example`; die echte Datei wird von Git ignoriert.
+- README überarbeitet: Er beschrieb noch einen fest eingebauten SSH-Schlüssel mit automatischer
+  Verteilung, Webhooks und eine MIT-Lizenz, die es alle nicht gibt; Aktionen, VMs, Proxmox-Host und
+  Quellen-Schalter fehlten.
+- `ansible/` durch `scripts/distribute-ssh-key.sh` ersetzt. Das alte Skript trug einen fest eingetragenen,
+  nicht mehr gültigen Schlüssel ein; die Playbooks nutzten einen gelöschten Token.
+- `docs/SECURITY-ROTATION.md` entfernt (internes Protokoll einer abgeschlossenen Rotation).
+- Ungültige Ruff-Regel `PER` aus `pyproject.toml` entfernt; `ruff check` lief deshalb gar nicht.
 
 ## 0.12.0 – 2026-11-24
 

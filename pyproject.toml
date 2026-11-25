@@ -58,7 +58,7 @@ dev-dependencies = [
 [tool.ruff]
 line-length = 100
 target-version = "py312"
-select = ["E", "F", "I", "N", "W", "UP", "B", "C4", "PTH", "SIM", "T20", "PER", "RUF", "RET"]
+select = ["E", "F", "I", "N", "W", "UP", "B", "C4", "PTH", "SIM", "T20", "RUF", "RET"]
 ignore = ["S101", "S106", "S311", "B018"]
 
 [tool.ruff.format]

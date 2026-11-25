@@ -1,332 +1,291 @@
 # Vigilance
 
-Self-hosted Proxmox security and patch monitoring dashboard with inventory, CVE tracking, and optional SSH-based discovery.
+Self-hosted security and patch monitoring for a Proxmox VE homelab.
 
-Vigilance automatically discovers webapps, services, Docker images, and tools on your Proxmox hosts, LXC containers, and VMs, matches them against CVE and security advisory databases, and sends notifications via Gotify or generic webhooks.
+Vigilance takes the inventory of a Proxmox node over its API, reads the installed packages of every
+running LXC container (and, if you list them, VMs and the Proxmox host) over SSH, matches them against
+security advisories and shows per host what to update or remove. It can run the fixes itself, with a
+simulated preview first, and notify you of new findings via Gotify.
+
+The web UI is in German; this README and the code are in English.
 
 ## Features
 
-- **Proxmox Discovery**: Automatic inventory of nodes, VMs, and LXC containers via Proxmox VE API
-- **SSH-based Discovery**: Deep scanning of Docker containers, system packages (dpkg/apk/rpm), systemd services, and custom checks
-- **CVE Matching**: Integration with OSV.dev, GitHub Security Advisories (GHSA), NVD, Debian & Ubuntu Security Trackers
-- **Smart Version Matching**: SemVer, Debian version, and Docker tag/digest comparison
-- **Patch view**: per host what an `apt` update fixes, and which old packages left over from a previous Debian release should be removed
-- **Exceptions**: Accept specific advisories (per host or everywhere) with a reason and optional expiry
-- **Gotify Notifications**: Rich Markdown notifications with severity-based priority and digest mode
-- **Web UI** (German): Jinja2 + Alpine.js, own CSS, no external resources (strict Content-Security-Policy), light/dark, phone-friendly
-- **Docker Deployment**: Docker Compose with PostgreSQL database
+- **Inventory** of nodes, LXC containers and selected VMs via the Proxmox VE API, including stopped
+  containers and containers without an IP (shown with the reason).
+- **Package scan over SSH**: dpkg, apk and rpm packages; optionally Docker images, systemd services and
+  custom checks (`config.yaml`, `discovery:`).
+- **Advisory sources**: OSV.dev (Debian, Ubuntu, Alpine, Go modules), GitHub Security Advisories, the
+  Tailscale security bulletins; optionally NVD, the Debian and the Ubuntu security trackers. Each source
+  can be switched on and off in the UI.
+- **Version comparison** by the rules of each ecosystem (dpkg, SemVer, Docker tags).
+- **Per host what to do**: update commands for fixes that are in the host's package sources, removal of
+  old packages left over from a release upgrade (with a read-only removal check), kernel packages in
+  containers, packages from vendor repositories.
+- **Actions**: run the suggested commands or a full upgrade from the UI, on one host or on all
+  containers and VMs, with an `apt-get -s` preview, parallel runs and a log.
+- **Exceptions** per host or everywhere, with a reason and an optional expiry. Advisories for the same
+  CVE (e.g. `DEBIAN-CVE-…` and `DSA-…`) count as one vulnerability.
+- **Gotify notifications** for new findings, single or as a digest.
+- **Web UI**: Jinja2 + Alpine.js, own CSS, no external resources (strict Content-Security-Policy),
+  light/dark, usable on a phone.
+- **Docker Compose** deployment with PostgreSQL 16.
 
 ## Architecture
 
 ```
-┌─────────────────┐     ┌──────────────────┐     ┌─────────────────┐
-│   Proxmox VE    │────▶│   Vigilance      │────▶│   CVE Sources   │
-│   (API + SSH)   │     │   (FastAPI)      │     │  (OSV, GHSA,    │
-└─────────────────┘     └────────┬─────────┘     │   NVD, Debian,  │
-                                 │               │   Ubuntu)       │
-                                 ▼               └─────────────────┘
-                        ┌──────────────────┐
-                        │   PostgreSQL     │
-                        │   + SQLAlchemy   │
-                        └────────┬─────────┘
-                                 │
-                                 ▼
-                        ┌──────────────────┐
-                        │   Gotify /       │
-                        │   Webhooks       │
-                        └──────────────────┘
+┌──────────────────┐  API   ┌──────────────────┐  HTTPS  ┌──────────────────┐
+│   Proxmox VE     │◀───────│    Vigilance     │────────▶│ Advisory sources │
+│   node           │        │    (FastAPI)     │         │ OSV, GHSA,       │
+└──────────────────┘        └───┬─────────┬────┘         │ Tailscale, (NVD, │
+┌──────────────────┐   SSH      │         │              │ Debian, Ubuntu)  │
+│ LXC containers,  │◀───────────┘         │              └──────────────────┘
+│ listed VMs, host │                      ▼
+└──────────────────┘            ┌──────────────────┐     ┌──────────────────┐
+                                │   PostgreSQL     │     │     Gotify       │
+                                └──────────────────┘     └──────────────────┘
 ```
 
-## Quick Start
+## Quick start
 
-### 1. Clone and Configure
+### 1. Clone and configure
 
 ```bash
-git clone <repository> vigilance
+git clone https://github.com/paddy73-ch/vigilance.git
 cd vigilance
 cp .env.example .env
-# Edit .env with your settings
+# edit .env: at least VIGILANCE_PROXMOX_URL, _TOKEN_ID, _TOKEN_SECRET
 ```
 
-### 2. SSH Key Setup
+### 2. Proxmox API token (read-only)
 
-Vigilance uses a hardcoded SSH key pair for consistency across container restarts. The key is automatically generated and distributed to all running VMs/LXCs on first scan.
-
-For manual setup (optional):
-```bash
-mkdir -p data/ssh
-ssh-keygen -t ed25519 -f data/ssh/id_rsa -N ""
-```
-
-### 3. Deploy SSH Key to Proxmox Nodes
+On the Proxmox host as root:
 
 ```bash
-# For each Proxmox node and target VM/LXC:
-ssh-copy-id -i data/ssh/id_rsa.pub root@proxmox-node1
-ssh-copy-id -i data/ssh/id_rsa.pub root@lxc-container-1
-ssh-copy-id -i data/ssh/id_rsa.pub root@vm-1
-
-# Initialize known_hosts
-ssh-keyscan proxmox-node1 lxc-container-1 vm-1 > data/ssh/known_hosts
-```
-
-### 4. Create Proxmox API Token
-
-On your Proxmox host (as root):
-
-```bash
-# Create role with minimal permissions
-pveum role add VigilanceRole -privs "Datastore.Audit Sys.Audit VM.Audit"
-
-# Create user
+pveum role add VigilanceRole -privs "VM.Audit"
 pveum user add vigilance@pam
-
-# Assign role
-pveum acl modify / -user vigilance@pam -role VigilanceRole
-
-# Create token
-pveum user token add vigilance@pam vigilance-token --privsep 0
-# Note the token ID (vigilance@pam!vigilance-token) and secret
+pveum acl modify / -role VigilanceRole -user vigilance@pam
+pveum user token add vigilance@pam vigilance --privsep 1
+pveum acl modify / -role VigilanceRole -token 'vigilance@pam!vigilance'
 ```
 
-Add the token to `.env`:
-```bash
-VIGILANCE_PROXMOX_TOKEN_ID=vigilance@pam!vigilance-token
-VIGILANCE_PROXMOX_TOKEN_SECRET=your-token-secret
-```
+Put the token ID (`vigilance@pam!vigilance`) and the secret into `.env`. To find the IPs of VMs through
+the QEMU guest agent, add `VM.GuestAgent.Audit` to the role (Proxmox VE 9); it allows read-only agent
+calls only.
 
-### 5. Configure Gotify (Optional)
-
-In Gotify Web UI: Apps → Create Application → Name: "Vigilance". Enter address and app token in
-Vigilance under Verwaltung > Einstellungen > Benachrichtigungen (stored in the database, takes precedence
-over `.env`; the token is never shown again), or put them into `.env`:
-```bash
-VIGILANCE_GOTIFY_URL=https://gotify.example.com
-VIGILANCE_GOTIFY_TOKEN=your-app-token
-```
-
-### 6. Start with Docker Compose
+### 3. Start
 
 ```bash
 cd docker
 docker compose up -d --build
-
-# Check logs
 docker compose logs -f vigilance
-
-# Verify health
 curl http://localhost:8000/api/health
 ```
 
-The docker-compose setup includes:
-- `vigilance`: The main application container
-- `vigilance-postgres`: PostgreSQL 16 database container
+On the first start the container creates `/app/data/config.yaml` from
+`config/config.yaml.example` and an ed25519 SSH key pair for this installation in `/app/data/ssh/`
+(a Docker volume). Nothing secret is stored in the image or the repository.
 
-### 7. Access Dashboard
+### 4. Let Vigilance into the containers
 
-Open http://localhost:8000/ in your browser.
+Vigilance connects to every container as root with its own key. Show the public key and put it into
+`/root/.ssh/authorized_keys` of each running container, for example with the script in this repository
+(run it on the Proxmox host):
 
-For production, put behind a reverse proxy (nginx, Traefik, Caddy) with authentication (Authelia, Authentik, etc.).
+```bash
+docker compose exec -u vigilance vigilance vigilance ssh-key-show
+sh scripts/distribute-ssh-key.sh 'ssh-ed25519 AAAA… vigilance@…'
+```
+
+Host keys are checked against `/app/data/ssh/known_hosts`, and unknown hosts are refused
+(`discovery.ssh.strict_host_key_checking: true` in `config.yaml`). Add the containers' host keys once:
+
+```bash
+docker compose exec -u vigilance vigilance \
+  sh -c 'ssh-keyscan -t ed25519 192.0.2.101 192.0.2.102 >> /app/data/ssh/known_hosts'
+```
+
+Setting the option to `false` accepts and stores unknown host keys on first contact instead, which is
+simpler but does not detect a changed host.
+
+### 5. Enable changes
+
+Reading needs no login. Every change (exceptions, settings, actions) needs an API token:
+
+```bash
+docker compose exec -u vigilance vigilance vigilance token-rotate
+```
+
+The token is shown once; enter it in the UI with "Bearbeiten" in the header.
+
+### 6. Put it behind HTTPS
+
+Open http://localhost:8000/ to try it. For regular use put Vigilance behind a reverse proxy with TLS
+and allow access to port 8000 only from that proxy: anyone who reaches the UI can read all hosts,
+packages and vulnerabilities, and the API token must not travel in clear text. If the proxy
+authenticates users and sets `Remote-User`, list its address in `VIGILANCE_TRUSTED_PROXIES`; that
+header is ignored from any other address.
+
+### 7. Gotify (optional)
+
+In Gotify create an application for Vigilance. Enter the server address and the app token in the UI
+under Verwaltung › Einstellungen › Benachrichtigungen (stored in the database, takes precedence over
+`.env`; the token is never shown again), or set `VIGILANCE_GOTIFY_URL` and `VIGILANCE_GOTIFY_TOKEN`
+in `.env`. Set `VIGILANCE_PUBLIC_URL` to get a link to the host in each message.
 
 ## Configuration
 
-### Environment Variables (`.env`)
+### Environment variables (`.env`)
 
 | Variable | Description | Default |
-|----------|-------------|---------|
-| `VIGILANCE_DATABASE_URL` | PostgreSQL connection URL | `postgresql+asyncpg://vigilance:vigilance@postgres:5432/vigilance` |
-| `VIGILANCE_CONFIG_PATH` | Config YAML path | `/app/data/config.yaml` |
-| `VIGILANCE_PROXMOX_URL` | Proxmox API URL | - |
-| `VIGILANCE_PROXMOX_TOKEN_ID` | Proxmox API token ID | - |
-| `VIGILANCE_PROXMOX_TOKEN_SECRET` | Proxmox API token secret | - |
-| `VIGILANCE_PROXMOX_VERIFY_TLS` | Verify TLS certificates | `true` |
-| `VIGILANCE_GOTIFY_URL` | Gotify server URL | - |
-| `VIGILANCE_GOTIFY_TOKEN` | Gotify application token | - |
-| `VIGILANCE_GOTIFY_MIN_SEVERITY` | Minimum severity for notifications | `HIGH` |
-| `VIGILANCE_PUBLIC_URL` | Address of the UI as a browser sees it; used for the link in notifications | - |
-| `VIGILANCE_GOTIFY_DIGEST_MODE` | Bundle notifications | `false` |
-| `VIGILANCE_AUTH_MODE` | `proxy`, `builtin`, or `both` | `proxy` |
-| `VIGILANCE_API_TOKEN` | API token for write access | - |
-| `VIGILANCE_REMOTE_USER_HEADER` | Header for reverse proxy auth | `Remote-User` |
-| `VIGILANCE_CVE_SYNC_INTERVAL_HOURS` | CVE sync interval | `6` |
-| `VIGILANCE_NVD_API_KEY` | NVD API key (optional) | - |
-| `VIGILANCE_SCAN_INTERVAL_HOURS` | Discovery scan interval | `24` |
-| `VIGILANCE_SSH_TIMEOUT` | SSH command timeout | `30` |
+|---|---|---|
+| `VIGILANCE_DATABASE_URL` | Database URL | set in `.env.example` for the compose setup |
+| `VIGILANCE_CONFIG_PATH` | Path of `config.yaml` | `/app/data/config.yaml` |
+| `VIGILANCE_PROXMOX_URL` | Proxmox API URL, e.g. `https://192.0.2.49:8006` | – |
+| `VIGILANCE_PROXMOX_TOKEN_ID` | Proxmox API token ID | – |
+| `VIGILANCE_PROXMOX_TOKEN_SECRET` | Proxmox API token secret | – |
+| `VIGILANCE_PROXMOX_VERIFY_TLS` | Verify the Proxmox TLS certificate | `true` |
+| `VIGILANCE_API_TOKEN` | Write token until one is created with `token-rotate` | – |
+| `VIGILANCE_TRUSTED_PROXIES` | IPs/CIDRs whose `Remote-User` header is trusted | – |
+| `VIGILANCE_REMOTE_USER_HEADER` | Name of that header | `Remote-User` |
+| `VIGILANCE_AUTH_MODE` | `proxy` (header + token); `builtin` is not implemented | `proxy` |
+| `VIGILANCE_PUBLIC_URL` | Address of the UI as a browser sees it, for links in notifications | – |
+| `VIGILANCE_GOTIFY_URL` | Gotify server URL | – |
+| `VIGILANCE_GOTIFY_TOKEN` | Gotify application token | – |
+| `VIGILANCE_GOTIFY_MIN_SEVERITY` | Lowest severity that is notified | `HIGH` |
+| `VIGILANCE_GOTIFY_DIGEST_MODE` | One digest instead of single messages | `false` |
+| `VIGILANCE_CVE_SYNC_INTERVAL_HOURS` | Advisory sync interval | `6` |
+| `VIGILANCE_SCAN_INTERVAL_HOURS` | Scan interval | `24` |
+| `VIGILANCE_NVD_API_KEY` | NVD API key (only if NVD is switched on) | – |
+| `VIGILANCE_GITHUB_TOKEN` | GitHub token for GHSA (higher rate limit) | – |
+| `VIGILANCE_SSH_TIMEOUT` | SSH timeout in seconds | `30` |
 | `VIGILANCE_SSH_PARALLEL_JOBS` | Parallel SSH connections | `10` |
 | `VIGILANCE_LOG_LEVEL` | Log level | `INFO` |
-| `VIGILANCE_SECRET_KEY` | Secret key for sessions | `change-me` |
 
-### Config YAML (`config.yaml`)
+Gotify settings and source switches saved in the UI take precedence over these values.
 
-See `config/config.yaml.example` for full configuration including:
-- Proxmox nodes with SSH settings
-- Discovery settings (Docker, packages, services, custom checks)
-- CVE sync sources and intervals
-- Notification settings (Gotify, webhooks)
-- Scan settings
-- Default suppressions
+### `config.yaml`
 
-## CLI Commands
+`config/config.yaml.example` documents all options: Proxmox nodes with their SSH settings, VMs to scan,
+scanning the Proxmox host, discovery (packages, Docker, services, custom checks), advisory sources,
+notifications and scan schedule. The file lives in the data volume; edit it there, e.g.
 
 ```bash
-# Test Gotify connection
-docker compose exec vigilance python -m vigilance test-gotify
-
-# Trigger manual scan
-docker compose exec vigilance python -m vigilance scan-now [--full]
-
-# Sync CVE database
-docker compose exec vigilance python -m vigilance sync-cves [--source osv]
-
-# Run database migrations
-docker compose exec vigilance python -m vigilance db-upgrade
-
-# Validate configuration
-docker compose exec vigilance python -m vigilance config-check
-
-# List configured nodes
-docker compose exec vigilance python -m vigilance list-nodes
-
-# API token for write access (shown once)
-docker compose exec vigilance vigilance token-rotate
-
-# Show / replace Vigilance's SSH key
-docker compose exec vigilance vigilance ssh-key-show
-docker compose exec -u vigilance vigilance vigilance ssh-key-rotate
+docker compose cp vigilance:/app/data/config.yaml .
+# edit, then
+docker compose cp config.yaml vigilance:/app/data/config.yaml && docker compose restart vigilance
 ```
+
+## CLI
+
+Run inside the container as the `vigilance` user:
+
+```bash
+docker compose exec -u vigilance vigilance vigilance <command>
+```
+
+| Command | Purpose |
+|---|---|
+| `scan-now [--full]` | Scan now and match the result; exits with 1 if the scan fails |
+| `sync-cves [--source osv]` | Sync advisories now |
+| `test-gotify` | Send a test notification |
+| `config-check` | Validate the configuration |
+| `list-nodes` | Show the configured Proxmox nodes |
+| `db-upgrade` | Run database migrations (also done on start) |
+| `token-rotate` | Create a new API token for write access (shown once) |
+| `ssh-key-show` | Show Vigilance's public SSH key |
+| `ssh-key-rotate` | Create a new SSH key; the old one is kept as `id_rsa.old-<time>` |
+| `version` | Show the version |
 
 ## Web UI
 
-- **Übersicht** (`/`): status of scan and CVE sync, what can be fixed now (update vs. remove old packages), host board, top packages, 30-day trend
-- **Hosts** (`/hosts`, `/hosts/{id}`): per container the packages to fix with copyable `apt-get` commands, open findings without fix, exceptions, fixed in the last 30 days, scan problems (stopped, no IP, unreachable)
-- **Schwachstellen** (`/vulnerabilities`): grouped by package or by CVE, filters (status, fix, severity, host, Debian "unimportant"), search incl. CVE IDs, detail panel with the solution, links and "Ausnahme anlegen"
-- **Verwaltung** (`/admin/...`): CVE sources, exceptions, schedule, API token, Gotify, Proxmox/SSH info
+- **Übersicht** (`/`): status of scan and sync, what can be fixed now, hosts, containers with
+  superfluous kernel packages, packages to look at first, 30-day trend.
+- **Hosts** (`/hosts`, `/hosts/{id}`): per container, VM or Proxmox host the packages to fix with the
+  commands, findings without a fix, packages from other sources, exceptions, scan problems; buttons
+  for the actions.
+- **Schwachstellen** (`/vulnerabilities`): by package or by vulnerability, filters (status, fix,
+  severity, host), search incl. CVE IDs, detail panel with the solution and "Ausnahme anlegen".
+- **Verwaltung** (`/admin/…`): Quellen (sources on/off), Ausnahmen, Aktionen (log), Einstellungen
+  (schedule, API token, Gotify, Proxmox/SSH) and Grenzen (limitations).
 
-Reading needs no login; every change needs the API token ("Bearbeiten" in the header).
-
-### Limitations
-
-What Vigilance does not see, or only judges roughly, is described in
-[docs/LIMITATIONS.md](docs/LIMITATIONS.md) (German). The same text is shown in the UI under
-Verwaltung, Grenzen; findings from less precise sources carry an (i) with the specific limitation.
+## How it works
 
 ### Solutions and removal check
 
-Every finding with a fix shows a solution: an update command, or - for an older version that stayed
-installed next to a newer one (e.g. `libapt-pkg6.0` next to `libapt-pkg7.0` after a release upgrade) -
-the command to remove it. Such packages are shown by their installed name, with the source package below.
+Every finding with a fix shows a solution: an update command, or – for an older version that stayed
+installed next to a newer one (e.g. `libapt-pkg6.0` next to `libapt-pkg7.0` after a release upgrade) –
+the command to remove it. An update is only suggested if the host's package sources offer a version at
+or above the fix (`apt list --upgradable`, without `apt update`); the age of the package lists is shown.
 
 Before suggesting a removal, each scan runs a read-only check on the host
 (`vigilance/discovery/removal_check.sh`, nothing is changed):
 
-- `apt-get -s purge <package>`: what apt would remove in addition (dependent packages)
-- running processes (same mount namespace, so not Docker containers) that still map a library of the package
-- ELF files under `/usr/local` and `/opt` that reference one of its sonames (not managed by dpkg, apt cannot see them)
-- `apt-cache policy`: whether the version is still in a package source, i.e. whether the removal can be undone
+- `apt-get -s purge <package>`: what apt would remove in addition
+- running processes that still map a library of the package (same mount namespace, so not Docker
+  containers)
+- ELF files under `/usr/local` and `/opt` that reference one of its sonames
+- `apt-cache policy`: whether the version is still in a package source, i.e. whether the removal can be
+  undone
 
-### Running the fixes (Aktionen)
+### Actions
 
-Vigilance can run the apt commands itself, per container (host detail) or for all containers
-(Hosts page). Every run needs the API token and shows a preview first: the commands, what is
-skipped and why, and what `apt-get -s` says would change.
+Every run needs the API token and shows a preview first: the commands, what is skipped and why, and
+what `apt-get -s` says would change.
 
-- **Vorschläge umsetzen**: targeted `apt-get install --only-upgrade` for packages whose fix is in the
-  container's package sources, and `apt-get purge` for obsolete packages whose removal check is "ok".
-  Everything else is skipped and listed with the reason.
-- **Vollständiges Upgrade**: `apt-get update && apt-get full-upgrade`, non-interactive, existing
-  configuration files are kept (`--force-confdef --force-confold`).
+- **Vorschläge umsetzen**: `apt-get install --only-upgrade` for packages whose fix is in the host's
+  package sources, `apt-get purge` for old packages whose removal check is "ok", and the kernel cleanup
+  if nothing else would be removed.
+- **Vollständiges Upgrade**: `apt-get update && apt-get full-upgrade` (`dist-upgrade` on the Proxmox
+  host), non-interactive, existing configuration files are kept.
+- **Kernel aufräumen** (containers only): a container always runs the host's kernel, so kernel
+  packages in it are never loaded. They come in e.g. with the `wireguard` meta package.
 
-Containers are changed as root. The Proxmox host only alone, with an explicit confirmation and a
-sudo rule for apt-get (see "Scanning the Proxmox host"); VMs never. "Kernel aufräumen" removes kernel
-packages from a container (never loaded there). One batch runs at a time. Within a batch up to 4 containers run in parallel; a container with
-apt-cacher-ng runs first and alone, because the others may download through it; output and exit code of every run are kept
-(Verwaltung, Aktionen), and a scan starts afterwards. Each scan also records which newer versions the
-package sources offer (`apt list --upgradable`, without `apt update`), so a fix that apt cannot
-install is shown as such instead of a command that does nothing.
+Containers and listed VMs are changed as root. "All" on the Hosts page means all running containers and
+listed VMs, never the Proxmox host. Up to 4 hosts run in parallel; a host with `apt-cacher-ng` runs
+first and alone, because the others may download through it. Output and exit code of every run are
+kept, and a scan starts afterwards. Vigilance never reboots anything.
 
-### Packages from vendor repositories
+### VMs
 
-Debian has no advisories for software installed from a vendor's own apt repository (the Debian
-tracker marks it NOT-FOR-US). Each scan records where every installed package comes from
-(`apt-cache policy`), and the host detail lists packages from non-Debian sources. Some of them are
-checked against the Go vulnerability data on OSV instead, by their Go module:
-
-| deb package | Go module |
-|---|---|
-| `tailscale` | `tailscale.com` |
-| `crowdsec` | `github.com/crowdsecurity/crowdsec` |
-| `containerd.io` | `github.com/containerd/containerd` (`/v2` for 2.x) |
-
-**Tailscale security bulletins.** Recent Tailscale issues are not in the Go data. If a `tailscale`
-package is installed, Vigilance reads https://tailscale.com/security-bulletins/index.xml as its own
-source. Versions and platforms are only in the text, so each bulletin is classified: client issue
-with a recognised fixed version (becomes an advisory for the `tailscale` package), other product or
-no action needed (Kubernetes operator, libtailscale, coordination server, DERP, ...), other platform
-only (structured "Affected platforms" line without Linux), or no fixed version recognised. Only the
-first kind produces findings; the sources page shows the counts and lists the unrecognised ones.
-Platform hints from the text ("on macOS and iOS") appear as "laut Meldung nur macOS".
-
-`docker-ce` is deliberately not mapped: the advisories on `github.com/docker/docker` carry no fixed
-version (every release would match), and Docker 29 releases do not map onto the
-`github.com/moby/moby/v2` module versions. Operating-system restrictions: reviewed
-entries of the Go vulnerability database list the affected systems (`goos`). If that list does
-not include linux, the finding gets the status "Anderes OS" (filter on the Schwachstellen page,
-fold in the host detail) instead of "open"; a GHSA record inherits this from the GO record of the
-same CVE. Many entries lack the field (e.g. unreviewed ones such as GO-2023-1671 for
-CVE-2023-28436, FreeBSD only). If only the title or description names another system, Vigilance
-shows "laut Meldung nur FreeBSD" with a button to record an exception; it does not hide those
-findings by itself.
-
-### Scanning the Proxmox host
-
-The containers are scanned as root. The Proxmox host itself is optional and uses its own
-unprivileged user, so Vigilance gets no root access to the host:
-
-```bash
-# on the Proxmox host
-useradd --system --create-home --home-dir /var/lib/vigilance-scan --shell /bin/sh vigilance-scan
-passwd -l vigilance-scan
-install -d -m 700 -o vigilance-scan -g vigilance-scan /var/lib/vigilance-scan/.ssh
-PUB=$(pct exec <Vigilance-CT> -- docker exec vigilance cat /app/data/ssh/id_rsa.pub)
-echo "from=\"<Vigilance-IP>\",restrict $PUB" > /var/lib/vigilance-scan/.ssh/authorized_keys
-chown vigilance-scan: /var/lib/vigilance-scan/.ssh/authorized_keys; chmod 600 /var/lib/vigilance-scan/.ssh/authorized_keys
-```
-
-and in `config.yaml` under the node's `ssh:` set `scan_host: true` (`host_user` defaults to `vigilance-scan`).
-
-### Deploy with deploy.sh
-
-`deploy.sh` copies the current commit to the Proxmox host and rebuilds the container there. The target
-comes from `~/.config/vigilance/deploy.env` (or the environment), not from the repository:
-
-```bash
-PROXMOX_HOST=192.0.2.49   # Proxmox host, reachable as root via SSH
-CONTAINER_ID=123          # LXC running Vigilance
-```
-
-### Scanning VMs
-
-VMs are scanned only when listed under the node in `config.yaml`. They are handled like the containers
-(SSH as root with Vigilance's key, apt only; Windows and Home Assistant OS are not supported):
+VMs are scanned only when listed under the node in `config.yaml`, and handled like containers (SSH as
+root with Vigilance's key, apt only; Windows and Home Assistant OS are not supported):
 
 ```yaml
 proxmox:
   nodes:
     - name: pve
       vms:
-        - 201                              # IP from the QEMU guest agent
-        - {vmid: 202, ip: 192.0.2.202} # fixed IP
+        - 201                           # IP from the QEMU guest agent
+        - {vmid: 202, ip: 192.0.2.202}  # fixed IP
 ```
 
-Put Vigilance's public key into `/root/.ssh/authorized_keys` of the VM. For the guest agent the Proxmox
-token needs `VM.GuestAgent.Audit` (Proxmox VE 9), e.g. added to the role used for the token.
-The host appears as "Proxmox-Host". Without root, the removal check cannot see processes of other
-users; the UI says so. Packages built by Proxmox (pve-*, proxmox-*) are not in the Debian advisory
-data, so findings cover the Debian packages on the host.
+Put Vigilance's public key into `/root/.ssh/authorized_keys` of the VM. For the guest agent the token
+needs `VM.GuestAgent.Audit` (see Quick start).
 
-Optional, to let Vigilance run apt on the host too (Hosts > pve > "Vorschläge umsetzen" /
-"dist-upgrade", always alone and with an explicit confirmation), add a sudo rule. Note that sudo for
-apt-get is effectively root: apt-get options can run arbitrary commands.
+### The Proxmox host
+
+Scanning the host is optional and uses an unprivileged user, so the scan gets no root access:
+
+```bash
+# on the Proxmox host
+useradd --system --create-home --home-dir /var/lib/vigilance-scan --shell /bin/sh vigilance-scan
+passwd -l vigilance-scan
+install -d -m 700 -o vigilance-scan -g vigilance-scan /var/lib/vigilance-scan/.ssh
+PUB='ssh-ed25519 AAAA… vigilance@…'        # from: vigilance ssh-key-show
+echo "from=\"<Vigilance-IP>\",restrict $PUB" > /var/lib/vigilance-scan/.ssh/authorized_keys
+chown vigilance-scan: /var/lib/vigilance-scan/.ssh/authorized_keys
+chmod 600 /var/lib/vigilance-scan/.ssh/authorized_keys
+```
+
+Then set `scan_host: true` under the node's `ssh:` in `config.yaml` (`host_user` defaults to
+`vigilance-scan`). The host appears as "Proxmox-Host". Without root, the removal check cannot see
+processes of other users; the UI says so. Packages built by Proxmox (`pve-*`, `proxmox-*`) are not in
+the Debian advisory data, so findings cover the Debian packages on the host.
+
+To let Vigilance run apt on the host too (host detail › "Vorschläge umsetzen" / "dist-upgrade", always
+alone and with an explicit confirmation), add a sudo rule. sudo for apt-get is effectively root:
+apt-get options can run arbitrary commands.
 
 ```bash
 visudo -f /etc/sudoers.d/vigilance-scan
@@ -338,95 +297,105 @@ vigilance-scan ALL=(root) NOPASSWD: /usr/bin/apt-get
 Without it the preview says that the rule is missing and nothing runs. On the host, apt runs detached
 (nohup) and Vigilance polls for the result, so a dropped SSH connection does not interrupt it.
 
-Advisories for the same CVE (e.g. `DEBIAN-CVE-2026-1234` and `DSA-6000-1`) are shown and counted as one
-vulnerability. An exception for one of them covers all advisories of that CVE.
+### Packages from vendor repositories
 
-## Authentication
+Debian has no advisories for software installed from a vendor's own apt repository. Each scan records
+where every installed package comes from (`apt-cache policy`), and the host detail lists packages from
+other sources as "Geprüft" (checked another way), "Nur Debian-Daten" or "Keine Sicherheitsdaten". Some
+are checked against the Go vulnerability data on OSV by their Go module:
 
-### Reverse Proxy Auth (Default)
+| deb package | Go module |
+|---|---|
+| `tailscale` | `tailscale.com` |
+| `crowdsec` | `github.com/crowdsecurity/crowdsec` |
+| `containerd.io` | `github.com/containerd/containerd` (`/v2` for 2.x) |
 
-Vigilance reads the `Remote-User` header (configurable) set by your reverse proxy/SSO.
-- Read access: Any authenticated user
-- Write access: Authenticated users (in proxy mode) or `Authorization: Bearer <API_TOKEN>` header (API token mode)
+`docker-ce` is deliberately not mapped: the advisories on `github.com/docker/docker` carry no fixed
+version, and Docker 29 releases do not map onto the `github.com/moby/moby/v2` module versions.
 
-### Built-in Auth (Optional)
+**Tailscale security bulletins.** Recent Tailscale issues are not in the Go data. If `tailscale` is
+installed, Vigilance reads https://tailscale.com/security-bulletins/index.xml. Versions and platforms
+are only in the text, so each bulletin is classified; only client issues with a recognised fixed
+version become findings. The sources page shows the counts and lists the unrecognised ones.
 
-Set `VIGILANCE_AUTH_MODE=builtin` or `both` to enable built-in authentication (planned for future release).
+**Operating systems.** Reviewed entries of the Go vulnerability database list the affected systems
+(`goos`). If that list does not include Linux, the finding gets the status "Anderes OS" instead of
+"open". If only the text names another system, Vigilance shows a hint ("laut Meldung nur FreeBSD") but
+does not hide the finding by itself.
+
+### Limitations
+
+What Vigilance does not see, or only judges roughly, is described in
+[docs/LIMITATIONS.md](docs/LIMITATIONS.md) (German). The same text is shown in the UI under
+Verwaltung › Grenzen; findings from less precise sources carry an (i) with the specific limitation.
 
 ## Development
 
-### Install Dependencies
-
 ```bash
 pip install -e ".[dev]"
-```
 
-### Run Locally
-
-```bash
-# Set environment variables
 export VIGILANCE_DATABASE_URL=postgresql+asyncpg://vigilance:vigilance@localhost:5432/vigilance
 export VIGILANCE_CONFIG_PATH=./config/config.yaml.example
-# ... other vars
-
-# Run migrations
 alembic upgrade head
-
-# Start server
-uvicorn vigilance.main:app --reload --host 0.0.0.0 --port 8000
+uvicorn vigilance.main:app --reload --port 8000
 ```
 
-Note: Requires PostgreSQL to be running locally or via Docker.
-
-### Run Tests
+### Tests
 
 ```bash
-pytest tests/
+python -m pytest tests/unit                       # SQLite
+VIGILANCE_TEST_PG_URL=postgresql+asyncpg://vigilance:vigilance@localhost/vigilance_test \
+  python -m pytest tests/unit                     # SQLite and PostgreSQL
+VIGILANCE_E2E=1 VIGILANCE_E2E_CHROME=/usr/bin/google-chrome \
+  python -m pytest tests/e2e                      # browser tests (needs playwright and Chrome)
 ```
 
-### Code Quality
+Use `python -m pytest` (not `pytest`), so the project directory is on the import path. GitHub Actions
+runs all three on every pull request and on pushes to `main`.
+
+`ruff` and `mypy` are configured in `pyproject.toml`, but the code base is not lint-clean yet and CI
+does not run them.
+
+### Deploy with deploy.sh
+
+`deploy.sh` copies the current commit to a Proxmox host and rebuilds the container there. The target
+comes from `~/.config/vigilance/deploy.env` (or the environment), not from the repository:
 
 ```bash
-ruff check .
-ruff format .
-mypy vigilance/
+PROXMOX_HOST=192.0.2.49   # Proxmox host, reachable as root via SSH
+CONTAINER_ID=123          # LXC running Vigilance
 ```
 
-## Project Structure
+## Project structure
 
 ```
 vigilance/
-├── ansible/                # Ansible playbooks for SSH key distribution
-├── config/                 # Configuration files
-├── docker/                 # Docker files (Dockerfile, docker-compose.yml)
+├── .github/workflows/      # CI: tests
+├── config/                 # config.yaml.example, logging
+├── docker/                 # Dockerfile, docker-compose.yml, entrypoint
+├── docs/                   # LIMITATIONS.md (shown in the UI)
+├── scripts/                # distribute-ssh-key.sh
+├── tests/                  # unit and browser tests
 ├── vigilance/              # Python package
+│   ├── actions/            # running fixes (preview, batches, log)
 │   ├── api/                # FastAPI routes
-│   ├── cli/                # CLI commands
-│   ├── core/               # Core services (auth, scheduler, notifications)
+│   ├── cli/                # command line
+│   ├── core/               # auth, scheduler, notifications, settings from the UI
+│   ├── cve/                # advisory sources, matching, version comparison
 │   ├── database/           # SQLAlchemy models, migrations, CRUD
-│   ├── discovery/          # Proxmox, SSH, Docker, package, service discovery
-│   ├── cve/                # CVE sync, matching, sources (OSV, GHSA, NVD, Debian, Ubuntu)
-│   └── web/                # Jinja2 templates, static assets
-├── tests/                  # Unit and integration tests
-├── .env.example            # Example environment variables
-├── config.yaml.example     # Example config YAML
-├── docker-compose.yml      # Docker Compose (symlink to docker/docker-compose.yml)
-├── pyproject.toml          # Python project config
-└── README.md               # This file
+│   ├── discovery/          # Proxmox API, SSH, packages, removal check
+│   └── web/                # templates, CSS, JavaScript
+├── CHANGELOG.md
+├── deploy.sh
+└── pyproject.toml
 ```
 
 ## License
 
-MIT License - see LICENSE file for details.
+No license has been chosen yet. Until there is one, the usual copyright applies: you may read the code
+and fork it on GitHub, but not use, modify or redistribute it.
 
-## Contributing
+## Contributing and support
 
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Run tests and linting
-5. Submit a pull request
-
-## Support
-
-For issues and feature requests, please use the GitHub issue tracker.
+Questions, bugs and ideas: please open an issue. Pull requests are welcome once a license is in place;
+please run the tests before opening one.
