@@ -4,8 +4,24 @@ document.addEventListener("alpine:init", () => {
     only: null, // host ids from the overview (?ids=…&for=…), null = all
     onlyFor: "",
     suggested: null, // host ids with something to apply; null while checking
+    sort: { key: "", dir: 1 }, // "" = as delivered: most urgent first
+    columns: [
+      { key: "name", label: "Name" },
+      { key: "type", label: "Typ" },
+      { key: "vmid", label: "Nr", num: true },
+      { key: "os", label: "System" },
+      { key: "level", label: "Zustand" },
+      { key: "upgrade_packages", label: "Updates", num: true },
+      { key: "remove_packages", label: "Altpakete", num: true },
+      { key: "crit_high", label: "Kritisch/hoch behebbar", num: true },
+      { key: "without_fix", label: "Ohne Fix", num: true },
+      { key: "last_scan_at", label: "Letzter Scan" },
+    ],
     async init() {
       const q = new URLSearchParams(location.search);
+      if (this.columns.some((c) => c.key === q.get("sort"))) {
+        this.sort = { key: q.get("sort"), dir: q.get("dir") === "desc" ? -1 : 1 };
+      }
       if (q.get("ids")) {
         this.only = q.get("ids").split(",").map(Number).filter(Boolean);
         this.onlyFor = q.get("for") || "";
@@ -29,7 +45,57 @@ document.addEventListener("alpine:init", () => {
     shown() { return (this.hosts || []).filter((h) => !this.only || this.only.includes(h.id)); },
     running() { return this.shown().filter((h) => h.level !== "stopped"); },
     stopped() { return this.shown().filter((h) => h.level === "stopped"); },
-    showAll() { this.only = null; this.onlyFor = ""; history.replaceState(null, "", "/hosts"); },
+    showAll() { this.only = null; this.onlyFor = ""; this.saveUrl(); },
+    typeLabel(h) { return h.type === "node" ? "Host" : h.type === "qemu" ? "VM" : "CT"; },
+    // value used for sorting a column; null/undefined sorts last in both directions
+    sortValue(h, key) {
+      switch (key) {
+        case "name": return (h.name || "").toLowerCase();
+        case "type": return { node: 0, lxc: 1, qemu: 2 }[h.type] ?? 3;
+        case "vmid": return h.type === "node" ? -1 : h.vmid;
+        case "os": return h.os ? h.os.toLowerCase() : null;
+        case "level": return { critical: 3, warning: 2, unknown: 1, ok: 0 }[h.level] ?? -1;
+        case "crit_high": return (h.patchable_critical || 0) + (h.patchable_high || 0);
+        case "last_scan_at": return h.last_scan_at ? Date.parse(h.last_scan_at) : null;
+        default: return h[key] ?? null;
+      }
+    },
+    sorted(list) {
+      const { key, dir } = this.sort;
+      if (!key) return list;
+      return [...list].sort((a, b) => {
+        const x = this.sortValue(a, key), y = this.sortValue(b, key);
+        if (x === null || x === undefined) return (y === null || y === undefined) ? a.name.localeCompare(b.name) : 1;
+        if (y === null || y === undefined) return -1;
+        const c = typeof x === "string" ? x.localeCompare(y, "de") : x - y;
+        return c ? c * dir : a.name.localeCompare(b.name, "de");
+      });
+    },
+    sortBy(key) {
+      // ascending, descending, back to "most urgent first"
+      if (this.sort.key !== key) this.sort = { key, dir: 1 };
+      else if (this.sort.dir === 1) this.sort = { key, dir: -1 };
+      else this.sort = { key: "", dir: 1 };
+      this.saveUrl();
+    },
+    setSort(v) {
+      const [key, dir] = v.split(":");
+      this.sort = key ? { key, dir: Number(dir) || 1 } : { key: "", dir: 1 };
+      this.saveUrl();
+    },
+    ariaSort(key) { return this.sort.key !== key ? "none" : this.sort.dir === 1 ? "ascending" : "descending"; },
+    sortMark(key) { return this.sort.key !== key ? "" : this.sort.dir === 1 ? " ▲" : " ▼"; },
+    sortHint() {
+      const c = this.columns.find((x) => x.key === this.sort.key);
+      const by = c ? "sortiert nach " + c.label + (this.sort.dir === 1 ? ", aufsteigend" : ", absteigend") : "der dringendste zuerst";
+      return "Container, VMs aus config.yaml und Proxmox-Host, " + by + ". Spaltentitel anklicken zum Sortieren.";
+    },
+    saveUrl() {
+      const q = new URLSearchParams();
+      if (this.only) { q.set("ids", this.only.join(",")); if (this.onlyFor) q.set("for", this.onlyFor); }
+      if (this.sort.key) { q.set("sort", this.sort.key); q.set("dir", this.sort.dir === 1 ? "asc" : "desc"); }
+      history.replaceState(null, "", "/hosts" + (q.toString() ? "?" + q : ""));
+    },
     levelText(h) {
       return { critical: "Kritisch behebbar", warning: "Behebbar", ok: "Aktuell", unknown: V.scanReason(h) || "Unbekannt" }[h.level] || h.level;
     },
