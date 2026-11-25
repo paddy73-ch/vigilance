@@ -248,8 +248,12 @@ kept, and a scan starts afterwards. Vigilance never reboots anything.
 
 ### VMs
 
-VMs are scanned only when listed under the node in `config.yaml`, and handled like containers (SSH as
-root with Vigilance's key, apt only; Windows and Home Assistant OS are not supported):
+Every VM appears in the host list. Running VMs that are not scanned are grouped as "Läuft, nicht
+gescannt". Switch scanning on with a right click on the row (or its ⋯ button) › "Für den Scan
+aktivieren …", optionally with an IP; a scan starts right away. That choice is stored in the database
+and takes precedence over `config.yaml`, where VMs can also be listed under the node. Scanned VMs are
+handled like containers (SSH as root with Vigilance's key, apt only; Windows and Home Assistant OS are
+not supported):
 
 ```yaml
 proxmox:

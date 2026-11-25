@@ -42,8 +42,9 @@
       </tr></thead>
       <tbody>
         <template x-for="h in sorted(running())" :key="h.id">
-          <tr class="clickable" @click="location.href = '/hosts/' + h.id">
-            <td data-label="Name"><a :href="'/hosts/' + h.id" class="pkg" x-text="h.name"></a></td>
+          <tr class="clickable" @click="location.href = '/hosts/' + h.id" @contextmenu="contextMenu($event, h)">
+            <td data-label="Name"><a :href="'/hosts/' + h.id" class="pkg" x-text="h.name"></a> <button type="button" class="row-menu" x-show="h.type === 'qemu'" @click.stop="openMenu($event, h)"
+                      :aria-label="'Aktionen für ' + h.name" title="Aktionen (auch per Rechtsklick)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16,12A2,2 0 0,1 18,10A2,2 0 0,1 20,12A2,2 0 0,1 18,14A2,2 0 0,1 16,12M10,12A2,2 0 0,1 12,10A2,2 0 0,1 14,12A2,2 0 0,1 12,14A2,2 0 0,1 10,12M4,12A2,2 0 0,1 6,10A2,2 0 0,1 8,12A2,2 0 0,1 6,14A2,2 0 0,1 4,12Z"/></svg></button></td>
             <td data-label="Typ" x-text="typeLabel(h)"></td>
             <td data-label="Nr" class="num" x-text="h.type === 'node' ? '–' : h.vmid"></td>
             <td data-label="System" x-text="h.os || '–'"></td>
@@ -58,24 +59,78 @@
       </tbody>
     </table>
   </section>
-  <section class="panel mt-16" x-show="stopped().length">
-    <details class="fold">
-      <summary>Gestoppt <span class="muted" x-text="'(' + stopped().length + ') – werden nicht gescannt, Angaben vom letzten Scan'"></span></summary>
+  <section class="panel mt-16" x-show="notScanned().length">
+    <details class="fold" open>
+      <summary>Läuft, nicht gescannt <span class="muted" x-text="'(' + notScanned().length + ') – VMs; Rechtsklick oder ⋯ zum Aktivieren'"></span></summary>
       <table class="rows">
-        <thead><tr><th>Name</th><th>Typ</th><th class="num">Nr</th><th>Behebbar (letzter Stand)</th></tr></thead>
+        <thead><tr><th>Name</th><th>Typ</th><th class="num">Nr</th><th>System</th><th>Hinweis</th></tr></thead>
         <tbody>
-          <template x-for="h in sorted(stopped())" :key="h.id">
-            <tr class="clickable" @click="location.href = '/hosts/' + h.id">
-              <td data-label="Name"><a :href="'/hosts/' + h.id" class="pkg" x-text="h.name"></a></td>
+          <template x-for="h in sorted(notScanned())" :key="h.id">
+            <tr class="clickable" @click="location.href = '/hosts/' + h.id" @contextmenu="contextMenu($event, h)">
+              <td data-label="Name"><a :href="'/hosts/' + h.id" class="pkg" x-text="h.name"></a> <button type="button" class="row-menu" x-show="h.type === 'qemu'" @click.stop="openMenu($event, h)"
+                      :aria-label="'Aktionen für ' + h.name" title="Aktionen (auch per Rechtsklick)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16,12A2,2 0 0,1 18,10A2,2 0 0,1 20,12A2,2 0 0,1 18,14A2,2 0 0,1 16,12M10,12A2,2 0 0,1 12,10A2,2 0 0,1 14,12A2,2 0 0,1 12,14A2,2 0 0,1 10,12M4,12A2,2 0 0,1 6,10A2,2 0 0,1 8,12A2,2 0 0,1 6,14A2,2 0 0,1 4,12Z"/></svg></button></td>
               <td data-label="Typ" x-text="typeLabel(h)"></td>
               <td data-label="Nr" class="num" x-text="h.vmid"></td>
-              <td data-label="Behebbar (letzter Stand)" x-text="h.patchable ? V.plural(h.patchable, 'behebbarer Befund', 'behebbare Befunde') : 'keine Daten'"></td>
+              <td data-label="System" x-text="h.os_id === 'windows' ? 'Windows' : (h.os || '–')"></td>
+              <td data-label="Hinweis" class="faint" x-text="h.os_id === 'windows' ? 'Windows wird nicht gescannt' : 'Nicht für den Scan aktiviert'"></td>
             </tr>
           </template>
         </tbody>
       </table>
     </details>
   </section>
+  <section class="panel mt-16" x-show="stopped().length">
+    <details class="fold">
+      <summary>Gestoppt <span class="muted" x-text="'(' + stopped().length + ') – werden nicht gescannt, Angaben vom letzten Scan'"></span></summary>
+      <table class="rows">
+        <thead><tr><th>Name</th><th>Typ</th><th class="num">Nr</th><th>Letzter Stand</th></tr></thead>
+        <tbody>
+          <template x-for="h in sorted(stopped())" :key="h.id">
+            <tr class="clickable" @click="location.href = '/hosts/' + h.id" @contextmenu="contextMenu($event, h)">
+              <td data-label="Name"><a :href="'/hosts/' + h.id" class="pkg" x-text="h.name"></a> <button type="button" class="row-menu" x-show="h.type === 'qemu'" @click.stop="openMenu($event, h)"
+                      :aria-label="'Aktionen für ' + h.name" title="Aktionen (auch per Rechtsklick)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16,12A2,2 0 0,1 18,10A2,2 0 0,1 20,12A2,2 0 0,1 18,14A2,2 0 0,1 16,12M10,12A2,2 0 0,1 12,10A2,2 0 0,1 14,12A2,2 0 0,1 12,14A2,2 0 0,1 10,12M4,12A2,2 0 0,1 6,10A2,2 0 0,1 8,12A2,2 0 0,1 6,14A2,2 0 0,1 4,12Z"/></svg></button></td>
+              <td data-label="Typ" x-text="typeLabel(h)"></td>
+              <td data-label="Nr" class="num" x-text="h.vmid"></td>
+              <td data-label="Letzter Stand" x-text="stoppedNote(h)"></td>
+            </tr>
+          </template>
+        </tbody>
+      </table>
+    </details>
+  </section>
+  <!-- context menu for VMs (right click or the ⋯ button) -->
+  <div class="ctx-menu" role="menu" x-show="menu.host" x-cloak :style="{ left: menu.x + 'px', top: menu.y + 'px' }"
+       @click.outside="closeMenu()" @keydown.escape.window="closeMenu()" @scroll.window="scrolled()" @resize.window="closeMenu()">
+    <template x-if="menu.host">
+      <div>
+        <div class="ctx-title" x-text="menu.host.name + ' (VM ' + menu.host.vmid + ')'"></div>
+        <button type="button" role="menuitem" x-show="!menu.host.scan_configured" :disabled="menu.host.os_id === 'windows'"
+                @click="askEnable(menu.host)" x-text="menu.host.os_id === 'windows' ? 'Windows wird nicht gescannt' : 'Für den Scan aktivieren …'"></button>
+        <button type="button" role="menuitem" x-show="menu.host.scan_configured" @click="disableScan(menu.host)">Scan deaktivieren</button>
+        <a role="menuitem" :href="'/hosts/' + menu.host.id">Ansicht öffnen</a>
+      </div>
+    </template>
+  </div>
+
+  <!-- activate a VM for scanning -->
+  <template x-if="enable.host">
+    <div class="dialog-scrim" @click.self="enable.host = null" @keydown.escape.window="enable.host = null">
+      <form class="dialog" role="dialog" aria-modal="true" aria-labelledby="enable-title" @submit.prevent="enableScan()">
+        <h2 id="enable-title" x-text="enable.host.name + ' für den Scan aktivieren'"></h2>
+        <p class="muted">Vigilance scannt die VM wie einen Container: per SSH als root, nur mit apt (Debian, Ubuntu). Danach startet ein Scan.</p>
+        <div class="field"><label for="vm-ip">IP-Adresse</label>
+          <input id="vm-ip" class="input" x-model.trim="enable.ip" placeholder="leer: vom QEMU Guest Agent" autocomplete="off">
+          <span class="hint">Ohne IP fragt Vigilance den Guest Agent; der muss in der VM laufen, und der Proxmox-Token braucht VM.GuestAgent.Audit.</span></div>
+        <div class="field" x-show="enable.key"><label>Schlüssel in der VM eintragen (als root)</label>
+          <div class="cmd"><code x-text="keyCommand()"></code></div>
+          <div><button type="button" class="btn btn-sm" @click="V.copy(keyCommand())">Kopieren</button></div></div>
+        <div class="actions">
+          <button type="button" class="btn" @click="enable.host = null">Abbrechen</button>
+          <button type="submit" class="btn btn-primary" :disabled="enable.saving">Aktivieren und scannen</button>
+        </div>
+      </form>
+    </div>
+  </template>
   {% include "_actions.html" %}
 </div>
 {% endblock %}

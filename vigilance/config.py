@@ -35,9 +35,27 @@ class ProxmoxNodeConfig:
                 continue
 
 
+def vm_scan_entries(node_config) -> list:
+    """VMs of a node to scan: `vms:` from config.yaml, changed by the switch in the UI (which wins).
+    The UI switch is keyed by VM id, which is unique in a Proxmox cluster."""
+    from vigilance.core.runtime_settings import VM_SCAN_OVERRIDES
+    entries = {v["vmid"]: dict(v) for v in (getattr(node_config, "vms", []) if node_config else [])}
+    for vmid, o in VM_SCAN_OVERRIDES.items():
+        if not o.get("enabled"):
+            entries.pop(vmid, None)
+        elif node_config is not None:
+            ip = o.get("ip") or (entries.get(vmid) or {}).get("ip")
+            entries[vmid] = {"vmid": vmid, "ip": ip}
+    return list(entries.values())
+
+
 def configured_vm_ids() -> set:
-    """VM ids listed under `vms:` of any node in config.yaml (only these are scanned and shown)."""
-    return {v["vmid"] for n in settings.proxmox_nodes for v in getattr(n, "vms", [])}
+    """VM ids to scan: `vms:` of any node in config.yaml plus/minus the switch in the UI."""
+    from vigilance.core.runtime_settings import VM_SCAN_OVERRIDES
+    ids = {v["vmid"] for n in settings.proxmox_nodes for v in getattr(n, "vms", [])}
+    for vmid, o in VM_SCAN_OVERRIDES.items():
+        (ids.add if o.get("enabled") else ids.discard)(vmid)
+    return ids
 
 
 class DiscoveryConfig:

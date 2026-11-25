@@ -21,6 +21,9 @@ SOURCE_PREFIX = "source_enabled."
 
 # source -> enabled, as switched in the UI (read by cve.sync._source_enabled)
 SOURCE_OVERRIDES: Dict[str, bool] = {}
+VM_PREFIX = "vm_scan."
+# vmid -> {"enabled": bool, "ip": str|None}, as switched in the UI (read by config.vm_scan_entries)
+VM_SCAN_OVERRIDES: Dict[int, dict] = {}
 # where the Gotify settings come from: "ui" once saved there, else "config"
 gotify_origin = "config"
 
@@ -35,6 +38,7 @@ async def load(db: AsyncSession) -> None:
     """Apply everything stored in the database (at startup and before a CVE sync in the CLI)."""
     await load_gotify(db)
     await load_source_overrides(db)
+    await load_vm_overrides(db)
 
 
 async def load_gotify(db: AsyncSession) -> None:
@@ -95,3 +99,23 @@ async def load_source_overrides(db: AsyncSession) -> None:
 async def set_source_enabled(db: AsyncSession, source: str, enabled: bool) -> None:
     await crud.set_setting(db, SOURCE_PREFIX + source, "true" if enabled else "false", "CVE source on/off (UI)")
     SOURCE_OVERRIDES[source] = enabled
+
+
+async def load_vm_overrides(db: AsyncSession) -> None:
+    import json
+    from sqlalchemy import select
+    from vigilance.database.models import AppSetting
+    rows = (await db.execute(select(AppSetting).where(AppSetting.key.like(VM_PREFIX + "%")))).scalars().all()
+    VM_SCAN_OVERRIDES.clear()
+    for row in rows:
+        try:
+            VM_SCAN_OVERRIDES[int(row.key[len(VM_PREFIX):])] = json.loads(row.value)
+        except (ValueError, TypeError):
+            continue
+
+
+async def set_vm_scan(db: AsyncSession, vmid: int, enabled: bool, ip: Optional[str]) -> None:
+    import json
+    value = {"enabled": enabled, "ip": ip or None}
+    await crud.set_setting(db, VM_PREFIX + str(vmid), json.dumps(value), "VM scan on/off (UI)")
+    VM_SCAN_OVERRIDES[vmid] = value
