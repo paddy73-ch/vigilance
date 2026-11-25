@@ -394,3 +394,44 @@ async def test_dsa_exception_and_detail_cover_sibling_advisories(client, any_eng
     assert rows and all(status == "suppressed" for status, _ in rows), rows
     ex = (await client.get("/api/exceptions")).json()
     assert ex[0]["suppressed_findings"] == len(rows)
+
+
+@pytest.mark.asyncio
+async def test_fixes_log(client, any_engine):
+    """Log behind "behoben in 7 Tagen": one entry per package and day, with how it was fixed."""
+    from datetime import datetime, timedelta
+    from sqlalchemy import select
+    from vigilance.database.models import DiscoveredTool
+    maker = async_sessionmaker(any_engine, class_=AsyncSession, expire_on_commit=False)
+    now = datetime.utcnow()
+    before = (await client.get("/api/fixes?days=7")).json()
+    async with maker() as db:
+        rows = (await db.execute(select(VulnerabilityFinding, DiscoveredTool)
+                                 .join(DiscoveredTool, DiscoveredTool.id == VulnerabilityFinding.discovered_tool_id))).all()
+        by_host = {}
+        for f, t in rows:
+            by_host.setdefault((t.inventory_id, t.tool_name), []).append((f, t))
+        ag = client.hosts["adguard"].id
+        dev = client.hosts["dev"].id
+        for f, t in by_host[(ag, "curl")]:  # updated
+            f.status, f.resolved_at, f.matched_version = "fixed", now - timedelta(hours=1), "8.14.1-2"
+            t.detected_version = "8.14.1-2+deb13u2"
+        for f, t in by_host[(dev, "curl")]:  # removed, 10 days ago
+            f.status, f.resolved_at = "fixed", now - timedelta(days=10)
+            t.removed_at = now - timedelta(days=10)
+        await db.commit()
+        n_ag = len(by_host[(ag, "curl")])
+
+    r = (await client.get("/api/fixes?days=7")).json()
+    assert r["findings"] == before["findings"] + n_ag and len(r["entries"]) == len(before["entries"]) + 1
+    e = next(x for x in r["entries"] if x["host"]["name"] == "adguard" and x["package"] == "curl")
+    assert (e["how"], e["from_version"], e["to_version"]) == ("updated", "8.14.1-2", "8.14.1-2+deb13u2")
+    assert e["vulnerabilities"] >= 1 and e["advisories"]
+    assert r["entries"][0] is e  # newest first
+    assert (await client.get("/api/overview")).json()["kpis"]["fixed_7d"] == r["findings"]  # same number as the KPI
+
+    r = (await client.get("/api/fixes?days=30")).json()
+    gone = next(x for x in r["entries"] if x["host"]["name"] == "dev" and x["package"] == "curl")
+    assert gone["how"] == "removed" and gone["to_version"] is None
+    r = (await client.get(f"/api/fixes?days=0&host_id={dev}")).json()
+    assert {x["host"]["name"] for x in r["entries"]} == {"dev"}  # host filter

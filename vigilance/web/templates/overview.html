@@ -27,7 +27,7 @@
         <div class="facts">
           <div class="fact"><a href="/vulnerabilities?fix=true&severity=CRITICAL,HIGH"><b x-text="V.n(k.patchable_crit_high)"></b></a><span>davon kritisch oder hoch</span></div>
           <div class="fact"><a href="/vulnerabilities?fix=false"><b x-text="V.n(k.without_fix)"></b></a><span x-text="'ohne Fix, ' + V.n(k.without_fix_unimportant) + ' laut Debian unwichtig'"></span></div>
-          <div class="fact"><b x-text="V.n(k.fixed_7d)"></b><span>behoben in 7 Tagen</span></div>
+          <div class="fact"><a href="/vulnerabilities/fixed?days=7" title="Protokoll der Behebungen"><b x-text="V.n(k.fixed_7d)"></b></a><span>behoben in 7 Tagen</span></div>
           <div class="fact"><a href="/admin/exceptions"><b x-text="V.n(k.suppressed)"></b></a><span>als Ausnahme markiert</span></div>
         </div>
       </section>

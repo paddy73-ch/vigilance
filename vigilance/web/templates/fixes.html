@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block title %}Behobene Lücken{% endblock %}
+{% block page_script %}<script defer src="/static/js/drawer.js?v={{ asset_version }}"></script><script defer src="/static/js/pages/fixes.js?v={{ asset_version }}"></script>{% endblock %}
+{% block content %}
+<div x-data="fixesPage" x-cloak @vigilance-changed.window="load()">
+  <p class="back-row mb-10">
+    <a href="/" class="back-link" data-back aria-label="Zurück" title="Zurück">
+      <!-- Material Design Icons (Apache-2.0): chevron-left -->
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15.41,16.58L10.83,12L15.41,7.41L14,6L8,12L14,18L15.41,16.58Z"/></svg>
+    </a>
+    <a href="/vulnerabilities">Schwachstellen</a>
+  </p>
+  <div class="page-head">
+    <div><h1>Behobene Lücken</h1><p class="muted" x-text="summary()"></p></div>
+  </div>
+
+  <section class="panel">
+    <div class="filters">
+      <div class="seg" role="group" aria-label="Zeitraum">
+        <template x-for="d in [7, 30, 90, 0]" :key="d">
+          <button :aria-pressed="days === d" @click="setDays(d)" x-text="d ? d + ' Tage' : 'Alle'"></button>
+        </template>
+      </div>
+      <select class="input input-sm" aria-label="Host" x-model.number="hostId" @change="load()">
+        <option value="0">Alle Hosts</option>
+        <template x-for="h in hosts" :key="h.id"><option :value="h.id" x-text="h.name + ' (' + V.hostLabel(h) + ')'"></option></template>
+      </select>
+    </div>
+
+    <template x-if="data && !data.entries.length">
+      <div class="empty"><h3>Nichts behoben in diesem Zeitraum</h3>
+        <p>Eine Lücke gilt als behoben, sobald ein Scan sie nicht mehr findet: nach einem Update, nach dem Entfernen des Pakets oder weil die Meldung nicht mehr zutrifft.</p></div>
+    </template>
+
+    <template x-for="day in days_()" :key="day.date">
+      <div class="fix-day">
+        <h2 class="fix-date"><span x-text="day.label"></span> <span class="faint" x-text="V.plural(day.count, 'Lücke', 'Lücken')"></span></h2>
+        <table class="rows">
+          <thead><tr><th>Zeit</th><th>Host</th><th>Paket</th><th>Wie</th><th>Schwere</th><th class="num">Lücken</th><th></th></tr></thead>
+          <template x-for="e in day.entries" :key="e.key">
+            <tbody>
+              <tr>
+                <td data-label="Zeit" class="faint" x-text="time(e.resolved_at)"></td>
+                <td data-label="Host"><a :href="'/hosts/' + e.host.id" x-text="e.host.name"></a> <span class="faint" x-text="V.hostLabel(e.host)"></span></td>
+                <td data-label="Paket" class="pkg" x-text="e.package"></td>
+                <td data-label="Wie" x-text="how(e)" :title="howTitle(e)"></td>
+                <td data-label="Schwere"><span class="sev" :class="'sev-' + (e.severity || 'NONE')" x-text="V.sevLabel(e.severity)"></span></td>
+                <td data-label="Lücken" class="num" x-text="e.vulnerabilities"></td>
+                <td class="right"><button class="btn btn-sm" @click="open[e.key] = !open[e.key]" x-text="open[e.key] ? 'Schliessen' : 'Meldungen'"></button></td>
+              </tr>
+              <template x-if="open[e.key]">
+                <tr class="sub"><td colspan="7">
+                  <ul class="fix-advisories">
+                    <template x-for="a in e.advisories" :key="a.entry_id">
+                      <li><button class="linklike" @click="$dispatch('open-vuln', { id: a.entry_id })" x-text="a.id"></button>
+                        <span class="sev" :class="'sev-' + (a.severity || 'NONE')" x-text="V.sevLabel(a.severity)"></span></li>
+                    </template>
+                  </ul>
+                </td></tr>
+              </template>
+            </tbody>
+          </template>
+        </table>
+      </div>
+    </template>
+    <p class="panel-pad faint" x-show="data && data.truncated">Die Liste ist auf die neuesten 2000 Einträge gekürzt; wähle einen kürzeren Zeitraum oder einen Host.</p>
+    <p class="panel-pad faint">Behoben heisst: Der Scan findet die Lücke nicht mehr. Der Zeitpunkt ist der des Abgleichs danach, nicht der Installation. „Wie“ liest Vigilance aus dem heutigen Stand des Pakets.</p>
+  </section>
+  {% include "_drawer.html" %}
+</div>
+{% endblock %}

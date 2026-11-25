@@ -1031,3 +1031,59 @@ async def delete_exception(exception_id: int, db: AsyncSession = Depends(get_db)
     changed = await _reapply(db, cve_id)
     await db.commit()
     return {"deleted": exception_id, "changed_findings": changed}
+
+
+# ---------------------------------------------------------------- log of fixes (/vulnerabilities/fixed)
+
+SEV_ORDER = {"CRITICAL": 4, "HIGH": 3, "MEDIUM": 2, "LOW": 1}
+FIXES_LIMIT = 2000
+
+
+@router.get("/fixes")
+async def fixes_log(days: int = Query(7, ge=0, le=3650), host_id: Optional[int] = Query(None),
+                    db: AsyncSession = Depends(get_db), _: Optional[User] = Depends(get_current_user_optional)):
+    """Fixed findings, newest first, one entry per package on a host and day.
+
+    How it was fixed is read from the package as it is now: removed, updated (the version differs from
+    the one the finding was made for) or the advisory no longer matches (same version, e.g. changed data).
+    days=0 means everything."""
+    stmt = (select(F, T, I, C).join(T, T.id == F.discovered_tool_id).join(I, I.id == T.inventory_id)
+            .join(C, C.id == F.cve_entry_id).where(F.status == "fixed", F.resolved_at.isnot(None)))
+    if days:
+        stmt = stmt.where(F.resolved_at >= datetime.utcnow() - timedelta(days=days))
+    if host_id:
+        stmt = stmt.where(I.id == host_id)
+    rows = (await db.execute(stmt.order_by(F.resolved_at.desc()))).all()
+
+    groups: Dict[tuple, dict] = {}
+    truncated = False
+    for f, t, i, c in rows:
+        key = (t.id, f.resolved_at.date(), f.matched_version)
+        g = groups.get(key)
+        if g is None:
+            if len(groups) >= FIXES_LIMIT:
+                truncated = True
+                continue
+            if t.removed_at is not None:
+                how = "removed"
+            elif f.matched_version and t.detected_version and t.detected_version != f.matched_version:
+                how = "updated"
+            else:
+                how = "data"
+            g = groups[key] = {
+                "resolved_at": f.resolved_at.isoformat() + "Z",
+                "host": {"id": i.id, "name": i.name, "vmid": i.vmid, "type": i.type},
+                "package": t.tool_name, "from_version": f.matched_version,
+                "to_version": None if t.removed_at is not None else t.detected_version,
+                "how": how, "severity": None, "advisories": [], "_vulns": set(),
+            }
+        g["advisories"].append({"id": c.cve_id, "entry_id": c.id, "severity": c.severity})
+        g["_vulns"].add(vuln_key(c.cve_id, c.upstream_ids) or c.cve_id)
+        if SEV_ORDER.get(c.severity or "", 0) > SEV_ORDER.get(g["severity"] or "", 0):
+            g["severity"] = c.severity
+    entries = []
+    for g in groups.values():
+        g["vulnerabilities"] = len(g.pop("_vulns"))
+        g["advisories"].sort(key=lambda a: (-SEV_ORDER.get(a["severity"] or "", 0), a["id"]))
+        entries.append(g)
+    return {"days": days, "findings": len(rows), "entries": entries, "truncated": truncated}

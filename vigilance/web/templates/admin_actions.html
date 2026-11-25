@@ -8,15 +8,15 @@
     <div class="panel-head"><h2>Ausgeführte Aktionen</h2><span class="muted" x-show="busy">Läuft gerade</span></div>
     <template x-if="runs && !runs.length">
       <div class="empty"><h3>Noch nichts ausgeführt</h3>
-        <p>Updates und das Entfernen von Altpaketen startest du in der <a href="/hosts">Hostliste</a> für alle Container oder im Detail eines Containers. Der Proxmox-Host wird nie verändert.</p></div>
+        <p>Updates und das Entfernen von Altpaketen startest du in der <a href="/hosts">Hostliste</a> für alle Container und VMs oder in der Ansicht eines Hosts. Der Proxmox-Host wird nur einzeln und nach ausdrücklicher Bestätigung verändert.</p></div>
     </template>
     <table class="rows" x-show="runs && runs.length">
-      <thead><tr><th>Zeit</th><th>Container</th><th>Aktion</th><th>Status</th><th>Von</th><th></th></tr></thead>
+      <thead><tr><th>Zeit</th><th>Host</th><th>Aktion</th><th>Status</th><th>Von</th><th></th></tr></thead>
       <template x-for="r in (runs || [])" :key="r.id">
         <tbody>
           <tr>
             <td data-label="Zeit" x-text="V.date(r.started_at || r.created_at)"></td>
-            <td data-label="Container"><a :href="r.host_id ? '/hosts/' + r.host_id : '#'" x-text="r.host"></a></td>
+            <td data-label="Host"><a :href="r.host_id ? '/hosts/' + r.host_id : '#'" x-text="r.host"></a></td>
             <td data-label="Aktion" x-text="kindLabel(r.kind)"></td>
             <td data-label="Status"><span class="tag" :class="statusClass(r.status)" x-text="statusLabel(r.status)"></span>
               <span class="faint" x-show="r.exit_code !== null && r.exit_code !== 0" x-text="'Exit ' + r.exit_code"></span></td>
