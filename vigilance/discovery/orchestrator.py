@@ -115,12 +115,20 @@ class DiscoveryOrchestrator:
         await self._scan_node_host(node, scan_run_id, result)
 
     async def _discover_vms(self, client: ProxmoxClient, node: ProxmoxNode, scan_run_id: int, result: ScanResult):
-        """VMs listed under the node's `vms:` in config.yaml, scanned like the containers."""
+        """VMs listed under the node's `vms:` in config.yaml are scanned like the containers. All other
+        VMs are only recorded with name and state, so stopped ones show up in the host list."""
         node_config = next((c for c in settings.proxmox_nodes if c.name == node.name), None)
         wanted = node_config.vms if node_config else []
-        if not wanted:
+        try:
+            vms = await client.get_vms(node.name)
+        except Exception as exc:
+            logger.warning("Could not list VMs on %s: %s", node.name, exc)
             return
-        by_id = {vm.vmid: vm for vm in await client.get_vms(node.name)}
+        by_id = {vm.vmid: vm for vm in vms}
+        listed = {e["vmid"] for e in wanted}
+        for vm in vms:
+            if vm.vmid not in listed:
+                await self._record_vm_not_scanned(node, vm)
         for entry in wanted:
             vm = by_id.get(entry["vmid"])
             if not vm:
@@ -189,6 +197,13 @@ class DiscoveryOrchestrator:
         ssh_config["user"] = node_config.host_user
         result.nodes_scanned += 1
         await self._run_ssh_discovery(inventory, ssh_config, scan_run_id, result)
+
+    async def _record_vm_not_scanned(self, node: ProxmoxNode, vm):
+        """A VM that is not listed for scanning: keep name and state current, never claim a scan."""
+        inventory = await crud.upsert_inventory(
+            self.db, proxmox_node_id=node.id, vmid=vm.vmid, name=vm.name, type="qemu", status=vm.status)
+        inventory.last_scan_status = "not_configured"
+        inventory.last_scan_error = "Nicht für den Scan eingetragen (config.yaml, vms)."
 
     async def _record_skipped(self, node: ProxmoxNode, lxc, status: str, error: Optional[str], vtype: str = "lxc"):
         inventory = await crud.upsert_inventory(

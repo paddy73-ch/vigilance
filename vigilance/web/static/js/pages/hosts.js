@@ -46,6 +46,11 @@ document.addEventListener("alpine:init", () => {
     running() { return this.shown().filter((h) => h.level !== "stopped"); },
     stopped() { return this.shown().filter((h) => h.level === "stopped"); },
     showAll() { this.only = null; this.onlyFor = ""; this.saveUrl(); },
+    stoppedNote(h) {
+      if (!h.scan_configured) return "Nicht für den Scan eingetragen (config.yaml, vms)";
+      if (h.last_scan_status === "unsupported") return h.last_scan_error || "Wird nicht gescannt";
+      return h.patchable ? V.plural(h.patchable, "behebbarer Befund", "behebbare Befunde") : "keine Daten";
+    },
     typeLabel(h) { return h.type === "node" ? "Host" : h.type === "qemu" ? "VM" : "CT"; },
     // value used for sorting a column; null/undefined sorts last in both directions
     sortValue(h, key) {

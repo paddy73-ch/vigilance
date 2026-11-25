@@ -62,14 +62,14 @@
     <details class="fold">
       <summary>Gestoppt <span class="muted" x-text="'(' + stopped().length + ') – werden nicht gescannt, Angaben vom letzten Scan'"></span></summary>
       <table class="rows">
-        <thead><tr><th>Name</th><th>Typ</th><th class="num">Nr</th><th>Behebbar (letzter Stand)</th></tr></thead>
+        <thead><tr><th>Name</th><th>Typ</th><th class="num">Nr</th><th>Letzter Stand</th></tr></thead>
         <tbody>
           <template x-for="h in sorted(stopped())" :key="h.id">
             <tr class="clickable" @click="location.href = '/hosts/' + h.id">
               <td data-label="Name"><a :href="'/hosts/' + h.id" class="pkg" x-text="h.name"></a></td>
               <td data-label="Typ" x-text="typeLabel(h)"></td>
               <td data-label="Nr" class="num" x-text="h.vmid"></td>
-              <td data-label="Behebbar (letzter Stand)" x-text="h.patchable ? V.plural(h.patchable, 'behebbarer Befund', 'behebbare Befunde') : 'keine Daten'"></td>
+              <td data-label="Letzter Stand" x-text="stoppedNote(h)"></td>
             </tr>
           </template>
         </tbody>

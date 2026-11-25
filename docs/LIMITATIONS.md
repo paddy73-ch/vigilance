@@ -14,7 +14,8 @@ geprüften Daten“.
 - **VMs** (QEMU) nur, wenn sie in `config.yaml` unter `vms:` beim Node eingetragen sind und laufen. Sie
   werden wie Container gescannt und behandelt: per SSH als root mit dem Schlüssel von Vigilance, nur mit
   apt (Debian, Ubuntu). Die IP kommt aus `config.yaml` oder vom QEMU Guest Agent; dafür braucht der
-  Proxmox-Token das Recht `VM.GuestAgent.Audit`. Nicht eingetragene VMs erscheinen nirgends.
+  Proxmox-Token das Recht `VM.GuestAgent.Audit`. Nicht eingetragene VMs erscheinen nur, solange sie
+  gestoppt sind, in der Liste der gestoppten Hosts; laufend tauchen sie nirgends auf.
 - **Nicht gescannt werden** Windows-VMs (auch wenn eingetragen) und Home Assistant OS: Beide haben kein
   apt, und Home Assistant OS lässt sich nicht wie ein Debian-System aktualisieren.
 - Erfasst werden die Pakete des Paketmanagers (dpkg, apk, rpm). **Nicht erfasst** werden:

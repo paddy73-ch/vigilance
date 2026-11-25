@@ -69,7 +69,9 @@ async def test_discover_vms(db_session, monkeypatch, agent_error, expect_ip):
     await orch._discover_vms(FakeClient(err), node, 1, ScanResult())
     invs = {i.vmid: i for i in (await db_session.execute(select(Inventory))).scalars().all()}
 
-    assert 300 not in invs  # not listed in config.yaml
+    # not listed in config.yaml: recorded with name and state only, never scanned
+    assert invs[300].last_scan_status == "not_configured" and invs[300].last_scan_at is None
+    assert ("qemu", 300) not in [(v, i) for v, i, _ in scanned]
     assert invs[150].last_scan_status == "unsupported" and "Windows" in invs[150].last_scan_error
     assert invs[112].last_scan_status == "stopped"
     if expect_ip:
@@ -94,10 +96,14 @@ async def test_only_configured_vms_are_listed_and_targeted(any_engine, monkeypat
         for vmid, name, typ in [(100, "ct", "lxc"), (201, "pve-vm", "qemu"), (150, "w11", "qemu")]:
             await crud.upsert_inventory(db, proxmox_node_id=node.id, vmid=vmid, name=name, type=typ, status="running",
                                         last_scan_status="ok", os_id="debian")
+        await crud.upsert_inventory(db, proxmox_node_id=node.id, vmid=112, name="haos", type="qemu", status="stopped",
+                                    last_scan_status="not_configured")
         await db.commit()
         monkeypatch.setattr(settings, "proxmox_nodes", [])
-        assert {h["name"] for h in await host_summaries(db)} == {"ct"}
+        hs = {h["name"]: h for h in await host_summaries(db)}
+        assert set(hs) == {"ct", "haos"}  # stopped VMs are always listed, running ones only when listed for scanning
+        assert hs["haos"]["level"] == "stopped" and hs["haos"]["scan_configured"] is False
         assert [i.name for i in await _targets(db, None)] == ["ct"]
         monkeypatch.setattr(settings, "proxmox_nodes", [ProxmoxNodeConfig({"name": "pve", "vms": [201]})])
-        assert {h["name"] for h in await host_summaries(db)} == {"ct", "pve-vm"}
+        assert {h["name"] for h in await host_summaries(db)} == {"ct", "pve-vm", "haos"}
         assert [i.name for i in await _targets(db, None)] == ["ct", "pve-vm"]  # "alle": containers and listed VMs

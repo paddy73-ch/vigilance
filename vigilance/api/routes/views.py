@@ -397,7 +397,9 @@ async def host_summaries(db: AsyncSession, inventory_id: Optional[int] = None) -
         .outerjoin(T, T.inventory_id == I.id)
         .outerjoin(F, F.discovered_tool_id == T.id)
         .outerjoin(C, C.id == F.cve_entry_id)
-        .where(or_(I.type.in_(["lxc", "node"]), and_(I.type == "qemu", I.vmid.in_(configured_vm_ids() or {-1}))))
+        # VMs: the ones listed for scanning, and every stopped one (so all stopped hosts are listed)
+        .where(or_(I.type.in_(["lxc", "node"]),
+                   and_(I.type == "qemu", or_(I.vmid.in_(configured_vm_ids() or {-1}), I.status != "running"))))
         .group_by(I.id)
     )
     if inventory_id is not None:
@@ -409,6 +411,7 @@ async def host_summaries(db: AsyncSession, inventory_id: Optional[int] = None) -
         r.update(split.get(r["id"], {"upgrade_findings": 0, "remove_findings": 0,
                                      "upgrade_packages": 0, "remove_packages": 0}))
         r["level"] = _host_level(r)
+        r["scan_configured"] = r["type"] != "qemu" or r["vmid"] in configured_vm_ids()
         os_name = {"debian": "Debian", "ubuntu": "Ubuntu", "alpine": "Alpine"}.get(r["os_id"] or "", r["os_id"] or "")
         r["os"] = " ".join(x for x in [os_name, r["os_version_id"] or ""] if x) or None
         if r["os"] and r["os_codename"]:
