@@ -3,7 +3,7 @@
 Alle nennenswerten Änderungen an Vigilance. Die Einträge bis 0.12.0 stammen aus den Pull Requests des
 ursprünglichen, privaten Repositorys; dessen Geschichte wurde vor der Veröffentlichung bereinigt.
 
-## Unveröffentlicht
+## 0.12.1 – 2026-11-25
 
 ### Behoben
 Gefunden in automatischen Reviews der bisherigen Pull Requests, jeweils mit einem Test, der ohne die
