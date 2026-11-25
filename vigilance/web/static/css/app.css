@@ -433,3 +433,13 @@ select.input { appearance: auto; }
 tr.off td:not(:first-child) { opacity: .55; }
 @media (prefers-reduced-motion: reduce) { .switch .track, .switch .track::after { transition: none; } }
 .small { font-size: 12px; }
+
+/* Protokoll der Behebungen */
+.fix-day + .fix-day { border-top: 1px solid var(--line); }
+.fix-date { font-size: 15px; margin: 0; padding: 16px 20px 6px; }
+.fix-date .faint { font-weight: 400; margin-left: 6px; }
+.fix-advisories { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px 16px; }
+.fix-advisories li { display: inline-flex; gap: 6px; align-items: center; }
+.linklike { background: none; border: 0; padding: 0; color: var(--action); cursor: pointer; font: inherit; }
+.linklike:hover { text-decoration: underline; }
+.input-sm { width: auto; min-width: 180px; }

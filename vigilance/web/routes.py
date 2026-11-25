@@ -25,6 +25,7 @@ def _page(name: str):
 router.add_api_route("/", _page("overview.html"), response_class=HTMLResponse, include_in_schema=False)
 router.add_api_route("/hosts", _page("hosts.html"), response_class=HTMLResponse, include_in_schema=False)
 router.add_api_route("/vulnerabilities", _page("vulnerabilities.html"), response_class=HTMLResponse, include_in_schema=False)
+router.add_api_route("/vulnerabilities/fixed", _page("fixes.html"), response_class=HTMLResponse, include_in_schema=False)
 router.add_api_route("/admin/sources", _page("admin_sources.html"), response_class=HTMLResponse, include_in_schema=False)
 router.add_api_route("/admin/exceptions", _page("admin_exceptions.html"), response_class=HTMLResponse, include_in_schema=False)
 router.add_api_route("/admin/settings", _page("admin_settings.html"), response_class=HTMLResponse, include_in_schema=False)

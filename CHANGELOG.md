@@ -3,6 +3,17 @@
 Alle nennenswerten Änderungen an Vigilance. Die Einträge bis 0.12.0 stammen aus den Pull Requests des
 ursprünglichen, privaten Repositorys; dessen Geschichte wurde vor der Veröffentlichung bereinigt.
 
+## 0.13.0 – 2026-11-25
+
+### Neu
+- **Protokoll der Behebungen** (`/vulnerabilities/fixed`): „behoben in 7 Tagen“ in der Übersicht führt
+  dorthin. Ein Eintrag je Paket, Host und Tag, gegliedert nach Tag, mit Zeitraum- und Hostfilter. „Wie“
+  liest Vigilance aus dem heutigen Stand des Pakets: Update (vorher und heute installierte Version),
+  Paket entfernt oder Meldung trifft nicht mehr zu. Die Meldungen öffnen die Detailansicht.
+
+### Behoben
+- Die Seite Aktionen sagte noch, der Proxmox-Host werde nie verändert, und nannte Hosts „Container“.
+
 ## 0.12.1 – 2026-11-25
 
 ### Behoben
