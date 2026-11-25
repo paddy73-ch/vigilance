@@ -455,3 +455,16 @@ th[aria-sort="ascending"] .th-sort, th[aria-sort="descending"] .th-sort { color:
 @media (max-width: 760px) {
   .sort-mobile { display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-bottom: 1px solid var(--line); }
 }
+
+/* Kontextmenü für VMs in der Hostliste */
+.row-menu { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 22px; margin-left: 4px;
+  padding: 0; border: 1px solid transparent; border-radius: 6px; background: none; color: var(--muted); cursor: pointer; vertical-align: middle; }
+.row-menu svg { width: 18px; height: 18px; fill: currentColor; }
+.row-menu:hover, .row-menu:focus-visible { border-color: var(--line); color: var(--ink); }
+.ctx-menu { position: fixed; z-index: 70; min-width: 220px; padding: 6px; background: var(--surface); border: 1px solid var(--line);
+  border-radius: var(--radius); box-shadow: 0 12px 30px rgba(0, 0, 0, 0.18); }
+.ctx-menu .ctx-title { padding: 6px 10px 8px; font-size: 13px; color: var(--muted); border-bottom: 1px solid var(--line); margin-bottom: 4px; }
+.ctx-menu button, .ctx-menu a { display: block; width: 100%; text-align: left; padding: 8px 10px; border: 0; border-radius: 6px;
+  background: none; color: var(--ink); font: inherit; font-size: 14px; cursor: pointer; text-decoration: none; }
+.ctx-menu button:hover, .ctx-menu a:hover, .ctx-menu button:focus-visible, .ctx-menu a:focus-visible { background: var(--action-soft); outline: none; }
+.ctx-menu button:disabled { color: var(--faint); cursor: not-allowed; background: none; }

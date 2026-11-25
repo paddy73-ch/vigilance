@@ -366,6 +366,8 @@ def removal_risk(check_json: Optional[str], binaries: List[str]) -> dict:
 def _host_level(row) -> str:
     if row["status"] != "running":
         return "stopped"
+    if row["type"] == "qemu" and row["vmid"] not in configured_vm_ids():
+        return "not_scanned"  # running VM that is not switched on for scanning
     if row["last_scan_status"] in ("unreachable", "no_ip") or (row["tools"] == 0 and row["last_scan_status"] != "ok"):
         return "unknown"
     if row["patchable_critical"] or row["patchable_high"]:
@@ -375,7 +377,7 @@ def _host_level(row) -> str:
     return "ok"
 
 
-LEVEL_ORDER = {"critical": 0, "warning": 1, "unknown": 2, "ok": 3, "stopped": 4}
+LEVEL_ORDER = {"critical": 0, "warning": 1, "unknown": 2, "ok": 3, "not_scanned": 4, "stopped": 5}
 
 
 async def host_summaries(db: AsyncSession, inventory_id: Optional[int] = None) -> List[dict]:
@@ -397,9 +399,7 @@ async def host_summaries(db: AsyncSession, inventory_id: Optional[int] = None) -
         .outerjoin(T, T.inventory_id == I.id)
         .outerjoin(F, F.discovered_tool_id == T.id)
         .outerjoin(C, C.id == F.cve_entry_id)
-        # VMs: the ones listed for scanning, and every stopped one (so all stopped hosts are listed)
-        .where(or_(I.type.in_(["lxc", "node"]),
-                   and_(I.type == "qemu", or_(I.vmid.in_(configured_vm_ids() or {-1}), I.status != "running"))))
+        .where(I.type.in_(["lxc", "qemu", "node"]))
         .group_by(I.id)
     )
     if inventory_id is not None:
@@ -412,6 +412,10 @@ async def host_summaries(db: AsyncSession, inventory_id: Optional[int] = None) -
                                      "upgrade_packages": 0, "remove_packages": 0}))
         r["level"] = _host_level(r)
         r["scan_configured"] = r["type"] != "qemu" or r["vmid"] in configured_vm_ids()
+        if r["type"] == "qemu":
+            from vigilance.core.runtime_settings import VM_SCAN_OVERRIDES
+            r["scan_origin"] = "ui" if r["vmid"] in VM_SCAN_OVERRIDES else "config"
+            r["scan_ip"] = (VM_SCAN_OVERRIDES.get(r["vmid"]) or {}).get("ip")
         os_name = {"debian": "Debian", "ubuntu": "Ubuntu", "alpine": "Alpine"}.get(r["os_id"] or "", r["os_id"] or "")
         r["os"] = " ".join(x for x in [os_name, r["os_version_id"] or ""] if x) or None
         if r["os"] and r["os_codename"]:
@@ -615,7 +619,7 @@ async def overview(db: AsyncSession = Depends(get_db), _: Optional[User] = Depen
     snaps = (await db.execute(
         select(FindingSnapshot).where(FindingSnapshot.day >= (now - timedelta(days=30)).date()).order_by(FindingSnapshot.day)
     )).scalars().all()
-    hosts = await host_summaries(db)
+    hosts = [h for h in await host_summaries(db) if h["level"] != "not_scanned"]  # shown on the Hosts page only
 
     kpis = dict(kpi)
     kpis["patchable_upgrade"] = sum(h["upgrade_findings"] for h in hosts)
@@ -1090,3 +1094,41 @@ async def fixes_log(days: int = Query(7, ge=0, le=3650), host_id: Optional[int] 
         g["advisories"].sort(key=lambda a: (-SEV_ORDER.get(a["severity"] or "", 0), a["id"]))
         entries.append(g)
     return {"days": days, "findings": len(rows), "entries": entries, "truncated": truncated}
+
+
+# ---------------------------------------------------------------- switch a VM on/off for scanning
+
+
+class VMScanSwitch(BaseModel):
+    enabled: bool
+    ip: Optional[str] = Field(None, max_length=64)
+
+
+@router.put("/hosts/{inventory_id}/scan")
+async def switch_vm_scan(inventory_id: int, body: VMScanSwitch, db: AsyncSession = Depends(get_db),
+                         _: User = Depends(require_write_access)):
+    """Switch scanning of a VM on or off (wins over `vms:` in config.yaml). On: a scan starts."""
+    import ipaddress
+    from vigilance.core import runtime_settings as rs
+    from vigilance.core import scheduler as sched
+    inv = await db.get(I, inventory_id)
+    if not inv or inv.type != "qemu":
+        raise HTTPException(status_code=404, detail="Keine VM")
+    ip = (body.ip or "").strip() or None
+    if ip:
+        try:
+            ipaddress.ip_address(ip)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Keine gültige IP-Adresse.")
+    if body.enabled and inv.os_id == "windows":
+        raise HTTPException(status_code=400, detail="Windows-VMs werden nicht gescannt.")
+    await rs.set_vm_scan(db, inv.vmid, body.enabled, ip)
+    if not body.enabled:
+        inv.last_scan_status = "not_configured"
+        inv.last_scan_error = "Nicht für den Scan aktiviert."
+    await db.commit()
+    started = False
+    if body.enabled:
+        sched._spawn(sched.trigger_scan_now(), name=f"scan-after-vm-{inv.vmid}")
+        started = True
+    return {"vmid": inv.vmid, "enabled": body.enabled, "ip": ip, "scan_started": started}

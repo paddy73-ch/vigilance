@@ -43,6 +43,8 @@ class DiscoveryOrchestrator:
     async def discover_all(self, scan_run_id: int) -> ScanResult:
         result = ScanResult()
         scan_run = await self.db.get(ScanRun, scan_run_id)
+        from vigilance.core.runtime_settings import load_vm_overrides
+        await load_vm_overrides(self.db)  # VMs switched on/off in the UI (the CLI runs in its own process)
 
         # Make sure this instance has an SSH key (distribution to the LXCs happens via Ansible)
         ssh_pub_key = ensure_ssh_key()
@@ -117,8 +119,9 @@ class DiscoveryOrchestrator:
     async def _discover_vms(self, client: ProxmoxClient, node: ProxmoxNode, scan_run_id: int, result: ScanResult):
         """VMs listed under the node's `vms:` in config.yaml are scanned like the containers. All other
         VMs are only recorded with name and state, so stopped ones show up in the host list."""
+        from vigilance.config import vm_scan_entries
         node_config = next((c for c in settings.proxmox_nodes if c.name == node.name), None)
-        wanted = node_config.vms if node_config else []
+        wanted = vm_scan_entries(node_config)
         try:
             vms = await client.get_vms(node.name)
         except Exception as exc:
@@ -128,11 +131,11 @@ class DiscoveryOrchestrator:
         listed = {e["vmid"] for e in wanted}
         for vm in vms:
             if vm.vmid not in listed:
-                await self._record_vm_not_scanned(node, vm)
+                await self._record_vm_not_scanned(client, node, vm)
         for entry in wanted:
             vm = by_id.get(entry["vmid"])
             if not vm:
-                logger.warning("VM %s from config.yaml does not exist on %s", entry["vmid"], node.name)
+                logger.info("VM %s to scan is not on node %s", entry["vmid"], node.name)
                 continue
             vm.ip = entry["ip"]
             ostype = ""
@@ -141,7 +144,8 @@ class DiscoveryOrchestrator:
             except Exception as exc:
                 logger.info("Could not read config of VM %s: %s", vm.vmid, exc)
             if ostype.startswith("w"):  # win7 … win11, wxp, w2k*
-                await self._record_skipped(node, vm, "unsupported", "Windows-VMs werden nicht gescannt.", vtype="qemu")
+                inv = await self._record_skipped(node, vm, "unsupported", "Windows-VMs werden nicht gescannt.", vtype="qemu")
+                inv.os_id = "windows"
                 continue
             if vm.status != "running":
                 await self._record_skipped(node, vm, "stopped", None, vtype="qemu")
@@ -198,12 +202,19 @@ class DiscoveryOrchestrator:
         result.nodes_scanned += 1
         await self._run_ssh_discovery(inventory, ssh_config, scan_run_id, result)
 
-    async def _record_vm_not_scanned(self, node: ProxmoxNode, vm):
-        """A VM that is not listed for scanning: keep name and state current, never claim a scan."""
+    async def _record_vm_not_scanned(self, client: ProxmoxClient, node: ProxmoxNode, vm):
+        """A VM that is not listed for scanning: keep name, state and whether it is Windows current,
+        never claim a scan."""
         inventory = await crud.upsert_inventory(
             self.db, proxmox_node_id=node.id, vmid=vm.vmid, name=vm.name, type="qemu", status=vm.status)
         inventory.last_scan_status = "not_configured"
-        inventory.last_scan_error = "Nicht für den Scan eingetragen (config.yaml, vms)."
+        inventory.last_scan_error = "Nicht für den Scan aktiviert."
+        try:
+            ostype = (await client.get_vm_config(node.name, vm.vmid)).get("ostype") or ""
+        except Exception:
+            ostype = ""
+        if ostype.startswith("w"):
+            inventory.os_id = "windows"
 
     async def _record_skipped(self, node: ProxmoxNode, lxc, status: str, error: Optional[str], vtype: str = "lxc"):
         inventory = await crud.upsert_inventory(
@@ -218,6 +229,7 @@ class DiscoveryOrchestrator:
         inventory.last_scan_at = datetime.utcnow()
         inventory.last_scan_status = status
         inventory.last_scan_error = error
+        return inventory
 
     @staticmethod
     def _ip_from_lxc_config(config: dict) -> Optional[str]:

@@ -1,6 +1,6 @@
 [project]
 name = "vigilance"
-version = "0.13.1"
+version = "0.14.0"
 description = "Self-hosted Proxmox security and patch monitoring dashboard with inventory, CVE tracking, and optional SSH-based discovery."
 readme = "README.md"
 requires-python = ">=3.12"

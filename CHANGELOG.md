@@ -3,6 +3,17 @@
 Alle nennenswerten Änderungen an Vigilance. Die Einträge bis 0.12.0 stammen aus den Pull Requests des
 ursprünglichen, privaten Repositorys; dessen Geschichte wurde vor der Veröffentlichung bereinigt.
 
+## 0.14.0 – 2026-11-25
+
+### Neu
+- **VMs per Rechtsklick für den Scan aktivieren:** In der Hostliste öffnet ein Rechtsklick auf eine VM
+  (oder ihr ⋯-Button) ein Menü mit „Für den Scan aktivieren …“ bzw. „Scan deaktivieren“. Beim Aktivieren
+  lässt sich eine IP angeben (sonst der Guest Agent); der Dialog zeigt den Befehl, um den Schlüssel von
+  Vigilance in der VM einzutragen, und danach startet ein Scan. Die Wahl liegt in der Datenbank und gilt
+  vor `vms:` in `config.yaml`. Windows-VMs lassen sich nicht aktivieren.
+- Laufende VMs, die nicht gescannt werden, stehen in einer eigenen Gruppe „Läuft, nicht gescannt“; die
+  Übersicht zählt sie nicht als Problem.
+
 ## 0.13.1 – 2026-11-25
 
 ### Neu

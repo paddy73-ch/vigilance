@@ -5,6 +5,8 @@ document.addEventListener("alpine:init", () => {
     onlyFor: "",
     suggested: null, // host ids with something to apply; null while checking
     sort: { key: "", dir: 1 }, // "" = as delivered: most urgent first
+    menu: { host: null, x: 0, y: 0 },
+    enable: { host: null, ip: "", key: "", saving: false },
     columns: [
       { key: "name", label: "Name" },
       { key: "type", label: "Typ" },
@@ -43,11 +45,59 @@ document.addEventListener("alpine:init", () => {
       return "Vorschläge auf " + V.plural(this.suggested.length, "Host", "Hosts");
     },
     shown() { return (this.hosts || []).filter((h) => !this.only || this.only.includes(h.id)); },
-    running() { return this.shown().filter((h) => h.level !== "stopped"); },
+    running() { return this.shown().filter((h) => h.level !== "stopped" && h.level !== "not_scanned"); },
+    notScanned() { return this.shown().filter((h) => h.level === "not_scanned"); },
     stopped() { return this.shown().filter((h) => h.level === "stopped"); },
     showAll() { this.only = null; this.onlyFor = ""; this.saveUrl(); },
+    // --- VMs: switch scanning on/off (right click or the ⋯ button)
+    contextMenu(ev, h) {
+      if (h.type !== "qemu") return; // other rows keep the browser menu
+      ev.preventDefault();
+      this.openMenu(ev, h);
+    },
+    openMenu(ev, h) {
+      const w = 240, hgt = 140;
+      const x = ev.clientX || (ev.target.getBoundingClientRect().left);
+      const y = ev.clientY || (ev.target.getBoundingClientRect().bottom);
+      this.menu = { host: h, x: Math.max(8, Math.min(x, window.innerWidth - w - 8)), y: Math.max(8, Math.min(y, window.innerHeight - hgt - 8)) };
+      this.menuOpenedAt = Date.now();
+      this.$nextTick(() => { const b = this.$root.querySelector(".ctx-menu button:not([disabled]), .ctx-menu a"); if (b) b.focus(); });
+    },
+    closeMenu() { this.menu = { host: null, x: 0, y: 0 }; },
+    // scrolling closes the menu, but not the scroll the browser does right before opening it
+    scrolled() { if (this.menu.host && Date.now() - (this.menuOpenedAt || 0) > 300) this.closeMenu(); },
+    async askEnable(h) {
+      this.closeMenu();
+      this.enable = { host: h, ip: h.scan_ip || "", key: "", saving: false };
+      try { this.enable.key = (await V.api("/api/settings/ssh-key")).public_key || ""; } catch (e) { this.enable.key = ""; }
+    },
+    keyCommand() {
+      return "install -d -m 700 /root/.ssh && grep -qxF '" + this.enable.key + "' /root/.ssh/authorized_keys 2>/dev/null || echo '" +
+        this.enable.key + "' >> /root/.ssh/authorized_keys";
+    },
+    async enableScan() {
+      const h = this.enable.host;
+      this.enable.saving = true;
+      try {
+        await V.api("/api/hosts/" + h.id + "/scan", { method: "PUT", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ enabled: true, ip: this.enable.ip || null }) });
+        this.enable.host = null;
+        V.toast(h.name + " ist für den Scan aktiviert. Der Scan läuft, das Ergebnis erscheint in ein bis zwei Minuten.");
+        await this.load();
+      } catch (e) { if (!e.cancelled) V.toast("Nicht aktiviert: " + e.message, true); }
+      finally { this.enable.saving = false; }
+    },
+    async disableScan(h) {
+      this.closeMenu();
+      try {
+        await V.api("/api/hosts/" + h.id + "/scan", { method: "PUT", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ enabled: false }) });
+        V.toast(h.name + " wird nicht mehr gescannt.");
+        await this.load();
+      } catch (e) { if (!e.cancelled) V.toast("Nicht geändert: " + e.message, true); }
+    },
     stoppedNote(h) {
-      if (!h.scan_configured) return "Nicht für den Scan eingetragen (config.yaml, vms)";
+      if (!h.scan_configured) return h.os_id === "windows" ? "Windows, wird nicht gescannt" : "Nicht für den Scan aktiviert";
       if (h.last_scan_status === "unsupported") return h.last_scan_error || "Wird nicht gescannt";
       return h.patchable ? V.plural(h.patchable, "behebbarer Befund", "behebbare Befunde") : "keine Daten";
     },
