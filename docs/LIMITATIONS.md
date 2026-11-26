@@ -7,8 +7,12 @@ geprüften Daten“.
 
 ## Was gescannt wird
 
-- **LXC-Container** auf dem Proxmox-Host, per SSH als root. Gestoppte Container werden nicht gescannt,
-  ihre Angaben stammen vom letzten erfolgreichen Scan.
+- **LXC-Container** auf dem Proxmox-Host, als root: über den Proxmox-Host mit `sudo pct exec`
+  (Standard) oder direkt per SSH, einstellbar pro Node. Mit `pct` braucht es in den Containern weder
+  Schlüssel noch sshd noch IP; dafür darf `vigilance-scan` auf dem Host `pct exec` als root ausführen, also
+  in jedem Container des Nodes alles. Das ist so viel, wie der Schlüssel in jedem Container bei SSH ohnehin
+  erlaubt. In einem privilegierten Container ist root dort aber nah an root auf dem Host. Gestoppte
+  Container werden nicht gescannt, ihre Angaben stammen vom letzten erfolgreichen Scan.
 - **Der Proxmox-Host selbst**, wenn `scan_host: true` gesetzt ist, als Benutzer `vigilance-scan` ohne
   Root-Rechte.
 - **VMs** (QEMU) nur, wenn sie für den Scan aktiviert sind: per Rechtsklick (oder ⋯) in der Hostliste

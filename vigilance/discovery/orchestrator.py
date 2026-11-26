@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 import re
@@ -25,8 +26,8 @@ from vigilance.discovery.docker import discover_docker_on_host, DockerContainer,
 from vigilance.discovery.packages import discover_packages_on_host, PackageInfo
 from vigilance.discovery.services import discover_services_on_host, ServiceInfo
 from vigilance.discovery.custom import run_all_custom_checks, CustomCheckResult
-from vigilance.discovery.ssh import AUTH_REJECTED, get_ssh_pool
-from vigilance.discovery import keyinstall
+from vigilance.discovery.ssh import AUTH_REJECTED, DEFAULT_KEY_PATH, DEFAULT_KNOWN_HOSTS, PCT_PREFIX, get_ssh_pool, pct_host
+from vigilance.discovery import access, keyinstall
 from vigilance.discovery.osinfo import probe_os
 from vigilance.discovery.sshkey import ensure_ssh_key
 from vigilance.discovery.removal import check_kernels, check_removal, check_upgrades, dumps as dump_removal, obsolete_binaries
@@ -51,6 +52,7 @@ class DiscoveryOrchestrator:
         scan_run = await self.db.get(ScanRun, scan_run_id)
         from vigilance.core.runtime_settings import load_vm_overrides
         await load_vm_overrides(self.db)  # VMs switched on/off in the UI (the CLI runs in its own process)
+        await access.load(self.db)  # pct or ssh per node, as switched in the UI
 
         # Make sure this instance has an SSH key (distribution to the LXCs happens via Ansible)
         ssh_pub_key = ensure_ssh_key()
@@ -107,7 +109,7 @@ class DiscoveryOrchestrator:
                 ip = getattr(lxc, "ip", None) or getattr(lxc, "ip_address", None)
                 if lxc.status != "running":
                     await self._record_skipped(node, lxc, "stopped", None)
-                elif not ip:
+                elif not ip and access.mode_for(node.name) != "pct":
                     await self._record_skipped(
                         node, lxc, "no_ip", "Keine IP-Adresse gefunden (weder fest konfiguriert noch per DHCP gemeldet)")
                 else:
@@ -119,6 +121,7 @@ class DiscoveryOrchestrator:
                 await self._process_inventory_target(node, vtype, lxc, scan_run_id, result)
 
             vm_ids = await self._discover_vms(client, node, scan_run_id, result)
+            await self._run_pending(scan_run_id, result)
             await self._remove_deleted_guests(node, "lxc", {lxc.vmid for lxc in lxcs})
             if vm_ids is not None:
                 await self._remove_deleted_guests(node, "qemu", vm_ids)
@@ -321,22 +324,27 @@ class DiscoveryOrchestrator:
             logger.warning(f"No SSH config for {inventory.name} ({inventory.ip_address})")
             return
 
-        # Run all discovery modules via SSH
-        await self._run_ssh_discovery(inventory, ssh_config, scan_run_id, result)
+        # Queued: all containers and VMs of the node are fetched together, in parallel (_run_pending)
+        if not hasattr(self, "_pending"):
+            self._pending = []
+        self._pending.append((inventory, ssh_config, node.name))
 
     def _get_ssh_config_for_target(self, node: ProxmoxNode, inventory: Inventory) -> Optional[dict]:
         """Get SSH connection config for a target. For now, use node's SSH config."""
         # In a real implementation, you might have per-VM/LXC SSH configs
         # For MVP, we use the Proxmox node's SSH config and target the VM/LXC IP
-        if not inventory.ip_address:
-            return None
-
         node_config = next(
             (config for config in settings.proxmox_nodes if config.name == node.name),
             None,
         )
-        ssh_key_path = node_config.ssh_key_path if node_config and node_config.ssh_key_path else "/app/data/ssh/id_rsa"
-        ssh_known_hosts = node_config.ssh_known_hosts if node_config and node_config.ssh_known_hosts else "/app/data/ssh/known_hosts"
+        ssh_key_path = node_config.ssh_key_path if node_config and node_config.ssh_key_path else DEFAULT_KEY_PATH
+        ssh_known_hosts = node_config.ssh_known_hosts if node_config and node_config.ssh_known_hosts else DEFAULT_KNOWN_HOSTS
+        if inventory.type == "lxc" and node_config and node_config.ssh_host and access.mode_for(node.name) == "pct":
+            # through the Proxmox host: no IP, key or sshd needed in the container
+            return {"host": pct_host(node.name, inventory.vmid), "port": node_config.ssh_port or 22,
+                    "user": "root", "key_path": ssh_key_path, "known_hosts": ssh_known_hosts}
+        if not inventory.ip_address:
+            return None
         return {
             "host": inventory.ip_address,
             "port": node_config.ssh_port if node_config else 22,
@@ -345,11 +353,10 @@ class DiscoveryOrchestrator:
             "known_hosts": ssh_known_hosts,
         }
 
-    async def _try_key_install(self, inventory: Inventory, ssh_config: dict, error: str):
+    async def _try_key_install(self, node_name: Optional[str], vmid: int, ssh_config: dict, error: str):
         """The container rejects our key: let the Proxmox host put it in, then try once more."""
-        node = await self.db.get(ProxmoxNode, inventory.proxmox_node_id)
-        node_config = next((c for c in settings.proxmox_nodes if node and c.name == node.name), None)
-        ok, why = await keyinstall.install_key(node_config, inventory.vmid,
+        node_config = next((c for c in settings.proxmox_nodes if c.name == node_name), None)
+        ok, why = await keyinstall.install_key(node_config, vmid,
                                                ssh_config["key_path"], ssh_config["known_hosts"])
         if not ok:
             return None, f"{error}. Selbst eintragen fehlgeschlagen: {why}"
@@ -363,60 +370,97 @@ class DiscoveryOrchestrator:
         scan_run_id: int,
         result: ScanResult,
     ):
-        """Run all SSH-based discovery on a target."""
-        host = ssh_config["host"]
-        port = ssh_config["port"]
-        user = ssh_config["user"]
-        key_path = ssh_config["key_path"]
-        known_hosts = ssh_config["known_hosts"]
-
-        # 0. OS release (needed for release-specific CVE lookups, e.g. OSV "Debian:13");
-        #    also tells whether the host is reachable at all
+        """Run all discovery on one target: fetch over SSH / pct, then save."""
+        autoinstall = inventory.type == "lxc" and await keyinstall.autoinstall_enabled(self.db)
+        node = await self.db.get(ProxmoxNode, inventory.proxmox_node_id)
         inventory.last_scan_at = datetime.utcnow()
+        data = await self._fetch(ssh_config, inventory.type, inventory.vmid, node.name if node else None, autoinstall)
+        await self._save_fetched(inventory, data, scan_run_id, result)
+
+    async def _fetch(self, ssh_config: dict, inv_type: str, vmid: int, node_name: Optional[str],
+                     autoinstall: bool) -> dict:
+        """Everything Vigilance reads from a host. Touches no database, so several hosts can be fetched
+        at the same time (each in its own thread, see _run_pending)."""
+        host, port, user = ssh_config["host"], ssh_config["port"], ssh_config["user"]
+        key_path, known_hosts = ssh_config["key_path"], ssh_config["known_hosts"]
+        data: dict = {}
+        # OS release (needed for release-specific CVE lookups, e.g. OSV "Debian:13"); also tells
+        # whether the host is reachable at all
         os_info, error = await probe_os(host, port, user, key_path, known_hosts)
-        if not os_info and inventory.type == "lxc" and (error or "").startswith(AUTH_REJECTED) \
-                and await keyinstall.autoinstall_enabled(self.db):
-            os_info, error = await self._try_key_install(inventory, ssh_config, error)
+        if not os_info and inv_type == "lxc" and autoinstall and not host.startswith(PCT_PREFIX) \
+                and (error or "").startswith(AUTH_REJECTED):
+            os_info, error = await self._try_key_install(node_name, vmid, ssh_config, error)
+        data["os_info"], data["error"] = os_info, error
+        if not os_info:
+            return data
+        if settings.discovery and settings.discovery.docker_enabled:
+            data["docker"] = await discover_docker_on_host(host, port, user, key_path, known_hosts)
+        if settings.discovery and settings.discovery.packages_enabled:
+            managers = settings.discovery.packages_managers
+            packages = await discover_packages_on_host(host, port, user, key_path, known_hosts, managers)
+            data["packages"] = packages
+            if packages:
+                # What would removing the leftovers of an older release affect? (read-only)
+                check = await check_removal(host, port, user, key_path, known_hosts, obsolete_binaries(packages))
+                if inv_type == "lxc" and any(p.manager == "dpkg" for p in packages):
+                    check["kernel"] = await check_kernels(host, port, user, key_path, known_hosts)
+                data["removal"] = check
+                if any(p.manager == "dpkg" for p in packages):
+                    data["upgrades"] = await check_upgrades(host, port, user, key_path, known_hosts)
+        if settings.discovery and settings.discovery.services_enabled:
+            patterns = settings.discovery.services_include_patterns
+            data["services"] = await discover_services_on_host(host, port, user, key_path, known_hosts, patterns)
+        data["custom"] = await run_all_custom_checks(host, port, user, key_path, known_hosts)
+        return data
+
+    async def _save_fetched(self, inventory: Inventory, data: dict, scan_run_id: int, result: ScanResult):
+        os_info = data.get("os_info")
         if not os_info:
             inventory.last_scan_status = "unreachable"
-            inventory.last_scan_error = error
+            inventory.last_scan_error = data.get("error")
             return
         inventory.os_id = os_info.id or None
         inventory.os_version_id = os_info.version_id or None
         inventory.os_codename = os_info.codename or None
         inventory.last_scan_status = "ok"
         inventory.last_scan_error = None
+        if "docker" in data:
+            await self._save_docker_discovery(inventory, data["docker"], scan_run_id, result)
+        if "packages" in data:
+            await self._save_package_discovery(inventory, data["packages"], scan_run_id, result)
+            if "removal" in data:
+                inventory.removal_check = dump_removal(data["removal"])
+            if data.get("upgrades") is not None:
+                inventory.upgrade_check = dump_removal(data["upgrades"])
+        if "services" in data:
+            await self._save_service_discovery(inventory, data["services"], scan_run_id, result)
+        await self._save_custom_discovery(inventory, data.get("custom") or [], scan_run_id, result)
 
-        # 1. Docker Discovery
-        if settings.discovery and settings.discovery.docker_enabled:
-            docker_result = await discover_docker_on_host(host, port, user, key_path, known_hosts)
-            await self._save_docker_discovery(inventory, docker_result, scan_run_id, result)
+    async def _run_pending(self, scan_run_id: int, result: ScanResult):
+        """Fetch the queued containers / VMs in parallel (at most ssh_parallel_jobs at a time), then save
+        them one after the other: the database session must not be used concurrently."""
+        pending, self._pending = list(getattr(self, "_pending", [])), []
+        if not pending:
+            return
+        autoinstall = await keyinstall.autoinstall_enabled(self.db)
+        limit = asyncio.Semaphore(max(1, int(settings.ssh_parallel_jobs or 1)))
+        started = datetime.utcnow()
 
-        # 2. Package Discovery
-        if settings.discovery and settings.discovery.packages_enabled:
-            managers = settings.discovery.packages_managers
-            packages = await discover_packages_on_host(host, port, user, key_path, known_hosts, managers)
-            await self._save_package_discovery(inventory, packages, scan_run_id, result)
-            if packages:
-                # What would removing the leftovers of an older release affect? (read-only)
-                check = await check_removal(host, port, user, key_path, known_hosts, obsolete_binaries(packages))
-                if inventory.type == "lxc" and any(p.manager == "dpkg" for p in packages):
-                    check["kernel"] = await check_kernels(host, port, user, key_path, known_hosts)
-                inventory.removal_check = dump_removal(check)
-                if any(p.manager == "dpkg" for p in packages):
-                    upgrades = await check_upgrades(host, port, user, key_path, known_hosts)
-                    if upgrades is not None:
-                        inventory.upgrade_check = dump_removal(upgrades)
+        async def fetch(inventory, ssh_config, node_name):
+            async with limit:
+                try:
+                    return await asyncio.to_thread(asyncio.run, self._fetch(
+                        ssh_config, inventory.type, inventory.vmid, node_name, autoinstall and inventory.type == "lxc"))
+                except Exception as exc:  # one broken host must not stop the others
+                    logger.exception("Scan of %s failed", inventory.name)
+                    return {"os_info": None, "error": f"Scan fehlgeschlagen: {exc}"}
 
-        # 3. Service Discovery
-        if settings.discovery and settings.discovery.services_enabled:
-            patterns = settings.discovery.services_include_patterns
-            services = await discover_services_on_host(host, port, user, key_path, known_hosts, patterns)
-            await self._save_service_discovery(inventory, services, scan_run_id, result)
-
-        # 4. Custom Checks
-        custom_results = await run_all_custom_checks(host, port, user, key_path, known_hosts)
-        await self._save_custom_discovery(inventory, custom_results, scan_run_id, result)
+        fetched = await asyncio.gather(*(fetch(inv, cfg, name) for inv, cfg, name in pending))
+        for (inventory, _cfg, _name), data in zip(pending, fetched):
+            inventory.last_scan_at = started
+            await self._save_fetched(inventory, data, scan_run_id, result)
+        logger.info("Fetched %d hosts in %.1f s (%s parallel)", len(pending),
+                    (datetime.utcnow() - started).total_seconds(), settings.ssh_parallel_jobs)
 
     async def _save_docker_discovery(
         self,

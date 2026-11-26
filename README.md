@@ -95,7 +95,34 @@ On the first start the container creates `/app/data/config.yaml` from
 
 ### 4. Let Vigilance into the containers
 
-Vigilance connects to every container as root with its own key. Show the public key and put it into
+There are two ways, set per node in Verwaltung › Einstellungen › Proxmox und SSH ("Zugang zu den
+Containern") or with `container_access: pct | ssh` on the node in `config.yaml`; the UI wins.
+
+**Through the Proxmox host (`pct`, default).** Vigilance logs in to the host as the unprivileged user
+`vigilance-scan` and runs `sudo pct exec <id> -- …`. The containers need no key, no sshd and no known
+IP. Up to `ssh.parallel_jobs` containers are read at the same time, at most 8 per node over one SSH
+connection (sshd allows 10 sessions per connection by default). Each `pct exec` takes about half a
+second to start. On the Proxmox host:
+
+```bash
+useradd --system --create-home --home-dir /var/lib/vigilance-scan --shell /bin/sh vigilance-scan
+passwd -l vigilance-scan
+install -d -m 700 -o vigilance-scan -g vigilance-scan /var/lib/vigilance-scan/.ssh
+PUB='ssh-ed25519 AAAA… vigilance@…'        # from: vigilance ssh-key-show
+echo "from=\"<Vigilance-IP>\",restrict $PUB" > /var/lib/vigilance-scan/.ssh/authorized_keys
+chown vigilance-scan: /var/lib/vigilance-scan/.ssh/authorized_keys
+chmod 600 /var/lib/vigilance-scan/.ssh/authorized_keys
+echo 'vigilance-scan ALL=(root) NOPASSWD: /usr/sbin/pct exec [0-9]* -- *' > /tmp/vp
+visudo -cf /tmp/vp && install -o root -g root -m 0440 /tmp/vp /etc/sudoers.d/vigilance-pct && rm /tmp/vp
+```
+
+The rule allows `pct exec` and nothing else of `pct` (no `stop`, `destroy`, `set`, …). It makes Vigilance
+root in every container of the node, which is what the key in each container gives it with SSH too. In an
+unprivileged container, root is an unprivileged user on the host; in a privileged one it is much closer
+to root on the host. Without the rule each container shows "sudo-Regel für pct exec fehlt".
+
+**Directly by SSH (`ssh`).** Vigilance connects to every container's IP as root with its own key.
+Installations from before 0.18.0 keep this way until it is switched. Show the public key and put it into
 `/root/.ssh/authorized_keys` of each running container, for example with the script in this repository
 (run it on the Proxmox host):
 
@@ -292,18 +319,8 @@ needs `VM.GuestAgent.Audit` (see Quick start).
 
 ### The Proxmox host
 
-Scanning the host is optional and uses an unprivileged user, so the scan gets no root access:
-
-```bash
-# on the Proxmox host
-useradd --system --create-home --home-dir /var/lib/vigilance-scan --shell /bin/sh vigilance-scan
-passwd -l vigilance-scan
-install -d -m 700 -o vigilance-scan -g vigilance-scan /var/lib/vigilance-scan/.ssh
-PUB='ssh-ed25519 AAAA… vigilance@…'        # from: vigilance ssh-key-show
-echo "from=\"<Vigilance-IP>\",restrict $PUB" > /var/lib/vigilance-scan/.ssh/authorized_keys
-chown vigilance-scan: /var/lib/vigilance-scan/.ssh/authorized_keys
-chmod 600 /var/lib/vigilance-scan/.ssh/authorized_keys
-```
+Scanning the host is optional and uses the unprivileged user `vigilance-scan` (created as in step 4, the
+`useradd` … `chmod 600` lines), so the scan itself gets no root access.
 
 Then set `scan_host: true` under the node's `ssh:` in `config.yaml` (`host_user` defaults to
 `vigilance-scan`). The host appears as "Proxmox-Host". Without root, the removal check cannot see
@@ -326,7 +343,7 @@ Without it the preview says that the rule is missing and nothing runs. On the ho
 
 ### Let Vigilance put its key into new containers
 
-With the switch "Schlüssel in neue Container selbst eintragen" (Verwaltung › Einstellungen › Proxmox und
+Only for nodes whose containers are reached directly by SSH. With the switch "Schlüssel in neue Container selbst eintragen" (Verwaltung › Einstellungen › Proxmox und
 SSH; off by default), a running container that rejects Vigilance's key gets it from the Proxmox host
 during the scan, and the scan goes on. The host runs only `scripts/vigilance-install-key`, which has the
 public key built in, through its own sudo rule for `vigilance-scan`. VMs are left out. On pve:
