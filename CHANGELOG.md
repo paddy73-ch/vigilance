@@ -3,6 +3,12 @@
 Alle nennenswerten Änderungen an Vigilance. Die Einträge bis 0.12.0 stammen aus den Pull Requests des
 ursprünglichen, privaten Repositorys; dessen Geschichte wurde vor der Veröffentlichung bereinigt.
 
+## 0.20.2 – 2026-11-26
+
+### Geändert
+- Hostkarten in der Übersicht: Etwas zum Aufräumen färbt nicht mehr den ganzen Balken violett. Der Balken
+  bleibt grün (bzw. in den Schwere-Farben der behebbaren Befunde) und bekommt am Ende ein violettes Fünftel.
+
 ## 0.20.1 – 2026-11-26
 
 ### Neu
