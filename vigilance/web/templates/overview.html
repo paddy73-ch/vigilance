@@ -51,7 +51,7 @@
         <div class="board">
           <template x-for="h in active()" :key="h.id">
             <a class="slot" :href="'/hosts/' + h.id" :data-level="h.level">
-              <div class="slot-top"><span class="slot-name" x-text="h.name"></span><span class="slot-id" x-text="V.hostLabel(h)"></span></div>
+              <div class="slot-top"><span class="slot-name" x-text="h.name" :title="h.name"></span><span class="slot-id" x-text="V.hostLabel(h)"></span></div>
               <div class="meter" :class="{ clear: h.level === 'ok' && !h.cleanup }">
                 <template x-for="seg in barSegments(h)"><span :class="'m-' + seg.sev" :style="{ width: seg.pct + '%' }"></span></template>
               </div>
@@ -64,7 +64,7 @@
           <div class="board nested">
             <template x-for="h in stopped()" :key="h.id">
               <a class="slot" :href="'/hosts/' + h.id" data-level="stopped">
-                <div class="slot-top"><span class="slot-name" x-text="h.name"></span><span class="slot-id" x-text="V.hostLabel(h)"></span></div>
+                <div class="slot-top"><span class="slot-name" x-text="h.name" :title="h.name"></span><span class="slot-id" x-text="V.hostLabel(h)"></span></div>
                 <div class="slot-line" x-text="h.patchable ? V.plural(h.patchable, 'behebbarer Befund (letzter Stand)', 'behebbare Befunde (letzter Stand)') : 'Gestoppt'"></div>
               </a>
             </template>

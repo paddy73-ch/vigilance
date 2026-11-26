@@ -153,7 +153,7 @@ code, .mono { font-family: var(--mono); font-size: 13px; }
 
 /* ---------- patch board (hosts) ---------- */
 .board { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 10px; padding: 16px 20px 20px; }
-.slot { position: relative; display: grid; gap: 8px; padding: 12px 14px 12px 16px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); color: var(--ink); }
+.slot { position: relative; display: grid; grid-template-columns: minmax(0, 1fr); min-width: 0; gap: 8px; padding: 12px 14px 12px 16px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); color: var(--ink); }
 .slot::before { content: ""; position: absolute; left: -1px; top: -1px; bottom: -1px; width: 4px; border-radius: var(--radius) 0 0 var(--radius); background: var(--faint); }
 .slot:hover { border-color: var(--line-strong); text-decoration: none; }
 .slot[data-level="critical"]::before { background: var(--crit); }
@@ -161,9 +161,9 @@ code, .mono { font-family: var(--mono); font-size: 13px; }
 .slot[data-level="ok"]::before { background: var(--ok); }
 .slot[data-level="unknown"]::before { background: repeating-linear-gradient(180deg, var(--faint) 0 4px, transparent 4px 8px); }
 .slot[data-level="stopped"] { background: var(--surface-2); color: var(--muted); }
-.slot-top { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
-.slot-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.slot-id { font-size: 12px; color: var(--faint); }
+.slot-top { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; min-width: 0; }
+.slot-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.slot-id { flex: none; font-size: 12px; color: var(--faint); white-space: nowrap; }
 .slot-line { font-size: 13px; color: var(--muted); }
 .slot-line b { color: var(--ink); font-weight: 600; }
 .meter { display: flex; height: 6px; border-radius: 3px; overflow: hidden; background: var(--line); }
