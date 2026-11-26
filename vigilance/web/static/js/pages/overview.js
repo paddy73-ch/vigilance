@@ -86,6 +86,15 @@ document.addEventListener("alpine:init", () => {
       if (h.remove_packages) parts.push(V.plural(h.remove_packages, "Altpaket", "Altpakete"));
       return parts.join(", ") + (tidy ? " · " + tidy : "");
     },
+    // Fixable findings by severity (or green: nothing to fix); something to tidy up adds a violet
+    // fifth at the end, so a host that is fine stays mostly green.
+    barSegments(h) {
+      const tidy = h.cleanup ? 20 : 0;
+      if (!tidy) return V.meter(h);
+      const segs = V.meter(h).map((s) => ({ sev: s.sev, pct: (s.pct * (100 - tidy)) / 100 }));
+      if (!segs.length) segs.push({ sev: "OK", pct: 100 - tidy });
+      return [...segs, { sev: "TIDY", pct: tidy }];
+    },
     // compilers, old kernel headers, kernels in containers (see the host page)
     cleanupText(h) {
       const c = h.cleanup;
