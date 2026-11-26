@@ -3,12 +3,20 @@
 Alle nennenswerten Änderungen an Vigilance. Die Einträge bis 0.12.0 stammen aus den Pull Requests des
 ursprünglichen, privaten Repositorys; dessen Geschichte wurde vor der Veröffentlichung bereinigt.
 
-## 0.16.1 – 2026-11-26
+## 0.17.1 – 2026-11-26
 
 ### Geändert
 - Einstellungen: „Meldungen bei neuen Befunden senden“, „Sammelmeldung statt einzelner Meldungen“ und
   „Schlüssel in neue Container selbst eintragen“ sind Schiebeschalter wie bei den CVE-Quellen statt
   Häkchen.
+
+## 0.17.0 – 2026-11-26
+
+### Neu
+- **CVE-Abgleich „Nach Scan“:** Im Zeitplan des CVE-Abgleichs gibt es neben „Alle … Stunden“ und „Feste
+  Uhrzeiten“ die Wahl „Nach Scan“. Der Abgleich hat dann keine eigenen Läufe mehr und startet, sobald ein
+  Scan beendet ist, ob geplant oder von Hand gestartet. Im Feld steht „Nach jedem Scan“, darunter der
+  nächste Scan. Schlägt ein Scan fehl, entfällt der Abgleich bis zum nächsten Scan.
 
 ## 0.16.0 – 2026-11-26
 

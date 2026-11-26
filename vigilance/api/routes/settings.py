@@ -170,7 +170,7 @@ async def update_settings(
 
 
 class ScheduleUpdate(BaseModel):
-    mode: Literal["interval", "times"] = "interval"
+    mode: Literal["interval", "times", "after_scan"] = "interval"
     hours: Optional[int] = Field(None, ge=1, le=168)
     times: List[str] = Field(default_factory=list, max_length=schedule.MAX_TIMES)
     days: List[int] = Field(default_factory=list, max_length=7)
@@ -184,7 +184,8 @@ async def update_schedule(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_write_access),
 ):
-    """Scan or CVE sync: every N hours, or at fixed times of day (set with the clock)."""
+    """Scan or CVE sync: every N hours, at fixed times of day (set with the clock),
+    or - CVE sync only - after each scan."""
     if kind not in schedule.KINDS:
         raise HTTPException(status_code=404, detail="Unbekannter Auftrag")
     try:

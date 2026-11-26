@@ -7,6 +7,8 @@ One pipeline does the whole work in the right order:
 * ``pipeline_job`` runs it every ``scan_interval_hours``.
 * ``cve_sync_job`` runs sync + match (no scan) every ``cve_sync_interval_hours``
   so new advisories for already known packages show up between scans.
+  With the CVE sync set to "Nach Scan" (``after_scan``) this job stays paused:
+  the sync then only runs inside the pipeline, right after each scan.
 
 Both share a lock, so they never overlap. Intervals follow the values saved on
 the settings page (``reschedule_jobs()``).
@@ -136,6 +138,8 @@ def init_scheduler() -> AsyncIOScheduler:
         schedule.build_trigger("cve_sync"),
         id="cve_sync_job",
         name="CVE sync -> match",
+        # "Nach Scan": no runs of its own; next_run_time=None adds the job paused (APScheduler 3)
+        **({"next_run_time": None} if schedule.after_scan("cve_sync") else {}),
         misfire_grace_time=3600,
         coalesce=True,
         max_instances=1,
@@ -173,7 +177,10 @@ def reschedule_jobs():
     if not scheduler:
         return
     scheduler.reschedule_job("scan_job", trigger=schedule.build_trigger("scan"))
+    # reschedule_job also resumes a paused job, so pause it again for "Nach Scan"
     scheduler.reschedule_job("cve_sync_job", trigger=schedule.build_trigger("cve_sync"))
+    if schedule.after_scan("cve_sync"):
+        scheduler.pause_job("cve_sync_job")
     logger.info("Rescheduled jobs: scan %s, CVE sync %s", schedule.describe("scan"), schedule.describe("cve_sync"))
 
 
