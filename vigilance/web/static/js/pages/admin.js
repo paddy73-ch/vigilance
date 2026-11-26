@@ -77,7 +77,9 @@ document.addEventListener("alpine:init", () => {
     clock: { open: false, step: "h", h: 3, m: 0, index: -1, drag: false },
     pad,
     kindName(kind) { return kind === "scan" ? "den Scan" : "den CVE-Abgleich"; },
-    fixed(kind) { const x = this.s.schedules && this.s.schedules[kind]; return !!(x && x.mode === "times"); },
+    // true when the field shows a text (fixed times, "Nach Scan") instead of the hours input
+    fixed(kind) { const x = this.s.schedules && this.s.schedules[kind]; return !!(x && (x.mode === "times" || x.mode === "after_scan")); },
+    afterScan(kind) { const x = this.s.schedules && this.s.schedules[kind]; return !!(x && x.mode === "after_scan"); },
     daysText(days) {
       const d = (days || []).slice().sort();
       if (!d.length || d.length === 7) return "täglich";
@@ -87,19 +89,23 @@ document.addEventListener("alpine:init", () => {
     },
     scheduleText(kind) {
       const x = this.s.schedules && this.s.schedules[kind];
+      if (x && x.mode === "after_scan") return "Nach jedem Scan";
       return x && x.mode === "times" ? this.daysText(x.days) + " " + x.times.join(", ") : "";
     },
     nextRunText(kind) {
-      const iso = this.s.next_runs && this.s.next_runs[kind];
-      if (!iso) return "";
+      const after = this.afterScan(kind);
+      const iso = this.s.next_runs && this.s.next_runs[after ? "scan" : kind];
+      if (!iso) return after ? "Startet, sobald ein Scan beendet ist" : "";
       const d = new Date(iso);
-      return "Nächster Lauf: " + d.toLocaleString("de-CH", { weekday: "short", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+      const when = d.toLocaleString("de-CH", { weekday: "short", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+      return (after ? "Nächster Lauf: nach dem Scan " : "Nächster Lauf: ") + when;
     },
     openSchedule(kind) {
       const x = (this.s.schedules && this.s.schedules[kind]) || {};
       const hours = kind === "scan" ? this.s.scan_interval_hours : this.s.cve_sync_interval_hours;
       const tz = x.timezone || (Intl.DateTimeFormat().resolvedOptions().timeZone || "Europe/Zurich");
-      this.sched = { kind, mode: x.mode === "times" ? "times" : "interval", hours: hours || 24,
+      const mode = x.mode === "times" ? "times" : (x.mode === "after_scan" && kind === "cve_sync" ? "after_scan" : "interval");
+      this.sched = { kind, mode, hours: hours || 24,
                      times: x.mode === "times" ? x.times.slice() : [], days: x.days && x.days.length ? x.days.slice() : [0, 1, 2, 3, 4, 5, 6],
                      timezone: tz, error: "", saving: false };
       this.clock.open = false;

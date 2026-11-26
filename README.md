@@ -165,7 +165,8 @@ in `.env`. Set `VIGILANCE_PUBLIC_URL` to get a link to the host in each message.
 Gotify settings and source switches saved in the UI take precedence over these values. The clock next
 to "Scan alle … Stunden" and "CVE-Abgleich alle … Stunden" (Verwaltung › Einstellungen) sets fixed times
 of day instead, optionally only on some weekdays, in the browser's time zone; those take precedence over
-the intervals.
+the intervals. For the CVE sync the clock also offers "Nach Scan": the sync then has no runs of its own
+and only runs right after each scan (scheduled or started by hand), as part of the scan pipeline.
 
 ### `config.yaml`
 
