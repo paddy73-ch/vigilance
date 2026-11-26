@@ -3,6 +3,15 @@
 Alle nennenswerten Änderungen an Vigilance. Die Einträge bis 0.12.0 stammen aus den Pull Requests des
 ursprünglichen, privaten Repositorys; dessen Geschichte wurde vor der Veröffentlichung bereinigt.
 
+## 0.20.1 – 2026-11-26
+
+### Neu
+- **Aufräumen in der Übersicht:** Die Hostkarten zeigen, was es neben Lücken aufzuräumen gibt: alte
+  Kernel-Header, Kernel-Pakete im Container und Compiler mit offener Frage („Compiler: noch nötig?“) oder
+  mit „Nein“ („Compiler entfernen“). Hat ein Host sonst nichts zu beheben, ist sein Balken violett statt
+  grün; sonst bleiben die Schwere-Farben und das Aufräumen steht in der Zeile darunter. Oben steht, wie
+  viele Hosts etwas zum Aufräumen haben. `GET /api/hosts` liefert dafür `cleanup` pro Host.
+
 ## 0.20.0 – 2026-11-26
 
 ### Neu

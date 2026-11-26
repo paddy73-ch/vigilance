@@ -69,15 +69,32 @@ document.addEventListener("alpine:init", () => {
       if (!this.data) return "";
       const a = this.active();
       const need = a.filter((h) => h.level === "critical" || h.level === "warning").length;
-      return need ? V.plural(need, "Host braucht", "Hosts brauchen") + " Aufmerksamkeit" : "Alle gescannten Hosts sind aktuell";
+      const tidy = a.filter((h) => h.cleanup).length;
+      const base = need ? V.plural(need, "Host braucht", "Hosts brauchen") + " Aufmerksamkeit" : "Alle gescannten Hosts sind aktuell";
+      return tidy ? base + ", " + V.plural(tidy, "Host", "Hosts") + " zum Aufräumen" : base;
     },
     slotText(h) {
       const reason = V.scanReason(h);
       if (reason) return reason;
-      if (h.level === "ok") return h.without_fix ? "Aktuell, " + V.n(h.without_fix) + " ohne Fix" : "Aktuell";
+      const tidy = this.cleanupText(h);
+      if (h.level === "ok") {
+        const base = h.without_fix ? "Aktuell, " + V.n(h.without_fix) + " ohne Fix" : "Aktuell";
+        return tidy ? base + " · " + tidy : base;
+      }
       const parts = [];
       if (h.upgrade_packages) parts.push(V.plural(h.upgrade_packages, "Update", "Updates"));
       if (h.remove_packages) parts.push(V.plural(h.remove_packages, "Altpaket", "Altpakete"));
+      return parts.join(", ") + (tidy ? " · " + tidy : "");
+    },
+    // compilers, old kernel headers, kernels in containers (see the host page)
+    cleanupText(h) {
+      const c = h.cleanup;
+      if (!c) return "";
+      const parts = [];
+      if (c.old_headers) parts.push(V.plural(c.old_headers, "alter Kernel-Header", "alte Kernel-Header"));
+      if (c.kernel) parts.push(V.plural(c.kernel, "Kernel-Paket", "Kernel-Pakete"));
+      if (c.build === "ask") parts.push("Compiler: noch nötig?");
+      if (c.build === "remove") parts.push("Compiler entfernen");
       return parts.join(", ");
     },
 

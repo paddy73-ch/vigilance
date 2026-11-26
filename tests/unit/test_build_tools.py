@@ -101,3 +101,28 @@ async def test_answer_in_api(client, any_engine):  # noqa: F811
     r = await client.put(f"/api/hosts/{hid}/build-tools", headers=AUTH, json={"needed": None})
     assert r.json()["build_tools"]["decision"] is None
     assert (await client.put(f"/api/hosts/{hid}/build-tools", json={"needed": True})).status_code in (401, 403)
+
+
+@pytest.mark.asyncio
+async def test_cleanup_on_the_board(client, any_engine):  # noqa: F811
+    maker = async_sessionmaker(any_engine, class_=AsyncSession, expire_on_commit=False)
+    async with maker() as db:
+        node = await crud.get_proxmox_node_by_name(db, "pve") or \
+            await crud.create_proxmox_node(db, name="pve", url="x", token_id="t", token_secret="s")
+        a = await crud.upsert_inventory(db, proxmox_node_id=node.id, vmid=134, name="tools", type="lxc", status="running")
+        a.removal_check = json.dumps({"build": parse_build_output(PVE_OUTPUT),
+                                      "kernel": {"packages": [{"status": "ii", "name": "linux-image-amd64"},
+                                                              {"status": "rc", "name": "linux-image-6.1"}]}})
+        b = await crud.upsert_inventory(db, proxmox_node_id=node.id, vmid=135, name="clean", type="lxc", status="running")
+        b.removal_check = json.dumps({"build": None})
+        await db.commit()
+        ida, idb = a.id, b.id
+    hosts = {h["id"]: h for h in (await client.get("/api/hosts")).json()}
+    assert hosts[ida]["cleanup"] == {"old_headers": 2, "kernel": 1, "build_tools": ["build-essential", "gcc", "g++", "dkms"],
+                                     "build": "ask"}
+    assert hosts[idb]["cleanup"] is None
+    await client.put(f"/api/hosts/{ida}/build-tools", headers=AUTH, json={"needed": True})
+    assert (await client.get("/api/hosts")).json() and \
+        {h["id"]: h for h in (await client.get("/api/hosts")).json()}[ida]["cleanup"]["build"] is None
+    await client.put(f"/api/hosts/{ida}/build-tools", headers=AUTH, json={"needed": False})
+    assert {h["id"]: h for h in (await client.get("/api/hosts")).json()}[ida]["cleanup"]["build"] == "remove"

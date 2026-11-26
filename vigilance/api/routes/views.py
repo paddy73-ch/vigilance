@@ -380,6 +380,40 @@ def removal_risk(check_json: Optional[str], binaries: List[str]) -> dict:
 # ---------------------------------------------------------------- hosts
 
 
+async def cleanup_by_host(db: AsyncSession, ids: List[int]) -> Dict[int, dict]:
+    """What can be tidied up per host besides fixing findings: headers of kernels that are no longer
+    installed, kernel packages in a container, and compilers / build tools whose question is open or
+    answered with "no" (from the scan's checks and the stored answers). Hosts with nothing are left out."""
+    if not ids:
+        return {}
+    from vigilance.actions.runner import BUILD_PREFIX
+    from vigilance.database.models import AppSetting
+    answers = {int(k[len(BUILD_PREFIX):]): v for k, v in (await db.execute(
+        select(AppSetting.key, AppSetting.value).where(AppSetting.key.like(BUILD_PREFIX + "%")))).all()
+        if k[len(BUILD_PREFIX):].isdigit()}
+    out = {}
+    for inv_id, inv_type, raw in (await db.execute(
+            select(I.id, I.type, I.removal_check).where(I.id.in_(ids), I.removal_check.isnot(None)))).all():
+        try:
+            check = json.loads(raw or "{}") or {}
+        except ValueError:
+            continue
+        build = check.get("build") or {}
+        kernel = check.get("kernel") or {} if inv_type == "lxc" else {}
+        item = {
+            "old_headers": len(build.get("old_headers") or []),
+            "kernel": len([p for p in kernel.get("packages") or [] if p.get("status") != "rc"]),
+            "build_tools": build.get("roots") or [],
+            "build": None,
+        }
+        if item["build_tools"]:
+            answer = answers.get(inv_id)
+            item["build"] = "remove" if answer == "remove" else (None if answer == "keep" else "ask")
+        if item["old_headers"] or item["kernel"] or item["build"]:
+            out[inv_id] = item
+    return out
+
+
 def _host_level(row) -> str:
     if row["status"] != "running":
         return "stopped"
@@ -423,8 +457,10 @@ async def host_summaries(db: AsyncSession, inventory_id: Optional[int] = None) -
         stmt = stmt.where(I.id == inventory_id)
     rows = [dict(r._mapping) for r in (await db.execute(stmt)).all()]
     split = await patchable_split(db, inventory_id)
+    cleanup = await cleanup_by_host(db, [r["id"] for r in rows])
     hosts = []
     for r in rows:
+        r["cleanup"] = cleanup.get(r["id"])
         r.update(split.get(r["id"], {"upgrade_findings": 0, "remove_findings": 0,
                                      "upgrade_packages": 0, "remove_packages": 0}))
         r["level"] = _host_level(r)
@@ -441,7 +477,8 @@ async def host_summaries(db: AsyncSession, inventory_id: Optional[int] = None) -
         for k in ("last_scan_at", "last_seen"):
             r[k] = _iso(r[k])
         hosts.append(r)
-    hosts.sort(key=lambda h: (LEVEL_ORDER[h["level"]], -h["patchable_critical"], -h["patchable_high"], -h["patchable"], h["vmid"]))
+    hosts.sort(key=lambda h: (LEVEL_ORDER[h["level"]], -h["patchable_critical"], -h["patchable_high"], -h["patchable"],
+                              not h["cleanup"], h["vmid"]))
     return hosts
 
 
