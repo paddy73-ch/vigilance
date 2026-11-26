@@ -173,6 +173,22 @@ def kernel_section(inv) -> Optional[dict]:
             "remnants": [p["name"] for p in info["packages"] if p["status"] == "rc"]}
 
 
+async def build_section(db: AsyncSession, inv) -> Optional[dict]:
+    """Compilers / build tools and headers of removed kernels on a host (from the scan's build check),
+    the user's answer whether they are still needed, and what "Vorschläge umsetzen" would do."""
+    if not inv:
+        return None
+    from vigilance.actions.runner import build_decision, build_info, build_plan
+
+    info = build_info(inv)
+    if not info:
+        return None
+    decision = await build_decision(db, inv)
+    plan = build_plan(info, decision, "sudo -n " if inv.type == "node" else "")
+    return {**info, "decision": decision, "suggested_command": plan["command"], "skipped": plan["skipped"],
+            "note": plan["note"], "manual_command": "apt-get purge " + " ".join((info.get("roots") or []) + (info.get("old_headers") or []))}
+
+
 async def kernel_hosts(db: AsyncSession) -> List[dict]:
     """Running containers with kernel packages (never loaded in an LXC), for the overview."""
     rows = (await db.execute(
@@ -559,6 +575,7 @@ async def get_host(inventory_id: int, db: AsyncSession = Depends(get_db),
         "remove_simulation": f"apt-get -s purge {' '.join(remove)}" if remove else None,
         "remove_risk": removal_risk(inv.removal_check if inv else None, remove) if remove else None,
         "kernel": kernel_section(inv),
+        "build_tools": await build_section(db, inv),
         "foreign_sources": foreign_sources(inv.upgrade_check if inv else None, {
             n: v for n, v in (await db.execute(
                 select(T.tool_name, T.detected_version).where(T.inventory_id == inventory_id, T.removed_at.is_(None))
@@ -1106,6 +1123,30 @@ async def fixes_log(days: int = Query(7, ge=0, le=3650), host_id: Optional[int] 
 class VMScanSwitch(BaseModel):
     enabled: bool
     ip: Optional[str] = Field(None, max_length=64)
+
+
+class BuildToolsBody(BaseModel):
+    needed: Optional[bool] = None  # None: forget the answer, ask again
+
+
+@router.put("/hosts/{inventory_id}/build-tools")
+async def set_build_tools(inventory_id: int, body: BuildToolsBody, db: AsyncSession = Depends(get_db),
+                          _: User = Depends(require_write_access)):
+    """Answer to "Compiler noch nötig?": no → the tools go into the suggestions."""
+    from sqlalchemy import delete as sql_delete
+    from vigilance.actions.runner import BUILD_PREFIX
+    from vigilance.database import crud as db_crud
+    from vigilance.database.models import AppSetting
+    inv = await db.get(I, inventory_id)
+    if not inv:
+        raise HTTPException(status_code=404, detail="Host nicht gefunden")
+    key = BUILD_PREFIX + str(inv.id)
+    if body.needed is None:
+        await db.execute(sql_delete(AppSetting).where(AppSetting.key == key))
+    else:
+        await db_crud.set_setting(db, key, "keep" if body.needed else "remove", "Build tools still needed (UI)")
+    await db.commit()
+    return {"build_tools": await build_section(db, inv)}
 
 
 @router.put("/hosts/{inventory_id}/scan")

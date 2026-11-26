@@ -361,6 +361,18 @@ visudo -cf /tmp/vk && install -o root -g root -m 0440 /tmp/vk /etc/sudoers.d/vig
 
 If Vigilance gets a new key pair, install the script again with the new key.
 
+### Compilers and old kernel headers
+
+The scan also looks for compilers and build tools (`build-essential`, `gcc`, `g++`, `clang`, `dkms`).
+They are no standard part of Proxmox or of a container template, but Vigilance cannot tell whether
+something is compiled on the host or whether DKMS modules must be rebuilt after a kernel update. The host
+page therefore asks "Werden diese Werkzeuge noch gebraucht?" and shows the DKMS modules. Only after "Nein"
+do they go into "Vorschläge umsetzen": with `purge --autoremove` if the simulation takes nothing else
+along, otherwise without `--autoremove`, otherwise not at all (with the reason). On pve, for example,
+autoremove would also remove `sudo`, which is marked as automatically installed there. Header packages of
+kernels that are no longer installed (`proxmox-headers-6.2…` after the move to 7.0) are always suggested.
+The answer is stored per host.
+
 ### Packages from vendor repositories
 
 Debian has no advisories for software installed from a vendor's own apt repository. Each scan records

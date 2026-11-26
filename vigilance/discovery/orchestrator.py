@@ -30,7 +30,8 @@ from vigilance.discovery.ssh import AUTH_REJECTED, DEFAULT_KEY_PATH, DEFAULT_KNO
 from vigilance.discovery import access, keyinstall
 from vigilance.discovery.osinfo import probe_os
 from vigilance.discovery.sshkey import ensure_ssh_key
-from vigilance.discovery.removal import check_kernels, check_removal, check_upgrades, dumps as dump_removal, obsolete_binaries
+from vigilance.discovery.removal import (check_build_tools, check_kernels, check_removal, check_upgrades,
+                                        dumps as dump_removal, obsolete_binaries, orphan_headers)
 
 logger = logging.getLogger(__name__)
 
@@ -198,6 +199,7 @@ class DiscoveryOrchestrator:
             await self.db.execute(
                 update(ActionRun).where(ActionRun.inventory_id == inv.id).values(inventory_id=None))
             await self.db.execute(delete(AppSetting).where(AppSetting.key == f"vm_scan.{inv.vmid}"))
+            await self.db.execute(delete(AppSetting).where(AppSetting.key == f"build_tools.{inv.id}"))
             if vtype == "qemu":
                 from vigilance.core.runtime_settings import VM_SCAN_OVERRIDES
                 VM_SCAN_OVERRIDES.pop(inv.vmid, None)
@@ -431,6 +433,10 @@ class DiscoveryOrchestrator:
                 check = await check_removal(host, port, user, key_path, known_hosts, obsolete_binaries(packages))
                 if inv_type == "lxc" and any(p.manager == "dpkg" for p in packages):
                     check["kernel"] = await check_kernels(host, port, user, key_path, known_hosts)
+                if any(p.manager == "dpkg" for p in packages):
+                    # containers: kernel headers are part of the kernel check above
+                    old = orphan_headers(packages) if inv_type != "lxc" else []
+                    check["build"] = await check_build_tools(host, port, user, key_path, known_hosts, old)
                 data["removal"] = check
                 if any(p.manager == "dpkg" for p in packages):
                     data["upgrades"] = await check_upgrades(host, port, user, key_path, known_hosts)

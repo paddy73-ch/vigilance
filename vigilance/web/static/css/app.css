@@ -504,3 +504,5 @@ th[aria-sort="ascending"] .th-sort, th[aria-sort="descending"] .th-sort { color:
 .page-head h1 .info::after { left: 0; transform: none; bottom: auto; top: calc(100% + 8px); font-weight: 400; }
 td .info::after { left: -8px; transform: none; }
 .switch-row.off { opacity: .55; cursor: default; }
+.question { padding: 12px 14px; border-radius: var(--radius); background: var(--action-soft); }
+button.link { border: 0; background: none; padding: 0; color: var(--action); font: inherit; text-decoration: underline; cursor: pointer; }

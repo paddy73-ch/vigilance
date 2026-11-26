@@ -3,6 +3,17 @@
 Alle nennenswerten Änderungen an Vigilance. Die Einträge bis 0.12.0 stammen aus den Pull Requests des
 ursprünglichen, privaten Repositorys; dessen Geschichte wurde vor der Veröffentlichung bereinigt.
 
+## 0.19.0 – 2026-11-26
+
+### Neu
+- **Compiler und Build-Werkzeuge:** Der Scan erkennt `build-essential`, `gcc`, `g++`, `clang` und `dkms`
+  samt DKMS-Modulen und simuliert das Entfernen. Die Hostseite fragt „Werden diese Werkzeuge noch
+  gebraucht?“. Erst bei „Nein“ kommen sie in „Vorschläge umsetzen“: mit `--autoremove`, wenn dabei nichts
+  Fremdes mitgeht, sonst ohne, sonst gar nicht (mit Grund). Die Antwort gilt pro Host und lässt sich
+  zurücksetzen.
+- **Header ohne Kernel:** Header-Pakete von Kernels, die nicht mehr installiert sind (z. B.
+  `proxmox-headers-6.2…` nach dem Wechsel auf 7.0), stehen immer in den Vorschlägen.
+
 ## 0.18.2 – 2026-11-26
 
 ### Behoben

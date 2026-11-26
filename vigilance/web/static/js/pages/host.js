@@ -11,6 +11,17 @@ document.addEventListener("alpine:init", () => {
       try { this.suggested = (await V.api("/api/actions/available?host_id=" + id)).suggested.length > 0; }
       catch (e) { this.suggested = false; }
     },
+    async setBuild(needed) {
+      try {
+        const r = await V.api("/api/hosts/" + id + "/build-tools", { method: "PUT", headers: { "Content-Type": "application/json" },
+                                                                    body: JSON.stringify({ needed }) });
+        this.h.build_tools = r.build_tools;
+        V.toast(needed === false ? "In den Vorschlägen." : (needed ? "Als nötig markiert." : "Frage zurückgesetzt."));
+        try { this.suggested = (await V.api("/api/actions/available?host_id=" + id)).suggested.length > 0; } catch (e) { /* bleibt */ }
+      } catch (e) {
+        if (!e.cancelled) V.toast("Nicht gespeichert: " + e.message, true);
+      }
+    },
     key(g) { return g.package + "|" + g.installed_version; },
     isOpen(g) { return !!this.open[this.key(g)]; },
     toggle(g) { this.open[this.key(g)] = !this.open[this.key(g)]; },

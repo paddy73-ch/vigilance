@@ -92,6 +92,59 @@ def kernel_info(inv: Inventory) -> Optional[dict]:
         return None
 
 
+BUILD_PREFIX = "build_tools."  # app_settings key + inventory id: "keep" or "remove", as answered in the UI
+
+
+def build_info(inv: Inventory) -> Optional[dict]:
+    try:
+        return (json.loads(inv.removal_check or "{}") or {}).get("build")
+    except ValueError:
+        return None
+
+
+async def build_decision(db: AsyncSession, inv: Inventory) -> Optional[str]:
+    from vigilance.database import crud
+    value = await crud.get_setting(db, BUILD_PREFIX + str(inv.id))
+    return value if value in ("keep", "remove") else None
+
+
+def build_plan(info: Optional[dict], decision: Optional[str], sudo: str = "") -> dict:
+    """What "Vorschläge umsetzen" does with the compilers / build tools and old kernel headers of a host.
+
+    Headers of kernels that are no longer installed are always suggested. The tools only after the user
+    answered "nicht mehr nötig"; with --autoremove if that takes nothing unrelated along, else without
+    (dependencies stay), else not at all."""
+    out = {"command": None, "skipped": [], "note": None, "packages": []}
+    if not info:
+        return out
+    old = info.get("old_headers") or []
+    old_ok = bool(old) and not info.get("old_extra")
+    if old and not old_ok:
+        out["skipped"].append({"package": ", ".join(old),
+                               "reason": "würde zusätzlich entfernen: " + ", ".join(info["old_extra"])})
+    roots = info.get("roots") or []
+    autoremove = False
+    if roots and decision == "remove":
+        if info.get("error"):
+            out["skipped"].append({"package": ", ".join(roots), "reason": "Simulation fehlgeschlagen: " + info["error"]})
+            roots = []
+        elif not info.get("extra"):
+            autoremove = True
+        elif not info.get("plain_extra"):
+            out["note"] = ("ohne --autoremove, weil apt sonst auch " + ", ".join(info["extra"]) + " entfernen würde")
+        else:
+            out["skipped"].append({"package": ", ".join(roots),
+                                   "reason": "würde zusätzlich entfernen: " + ", ".join(info["plain_extra"])})
+            roots = []
+    else:
+        roots = []
+    packages = roots + (old if old_ok else [])
+    if packages:
+        out["packages"] = packages
+        out["command"] = f"{sudo}apt-get purge -y {'--autoremove ' if autoremove else ''}" + " ".join(packages)
+    return out
+
+
 def kernel_command(info: dict) -> str:
     names = [p["name"] for p in info["packages"]]
     return "apt-get purge -y --autoremove " + " ".join(names)
@@ -150,6 +203,10 @@ async def plan(db: AsyncSession, inv: Inventory, kind: str) -> dict:
                                f"{sudo}apt-get install -y {DPKG_OPTS} --only-upgrade " + " ".join(sorted(upgrades))]
     if removals:
         result["commands"].append(f"{sudo}apt-get purge -y " + " ".join(sorted(removals)))
+    build = build_plan(build_info(inv), await build_decision(db, inv), sudo)
+    if build["command"]:
+        result["commands"].append(build["command"])
+    result["skipped"] += build["skipped"]
     if not node:
         info = kernel_info(inv)
         if info:
@@ -171,7 +228,7 @@ async def hosts_with_suggestions(db: AsyncSession, inventories: List[Inventory])
     out = []
     for inv in inventories:
         h = counts.get(inv.id) or {}
-        if not (h.get("upgrade_packages") or h.get("remove_packages") or kernel_info(inv)):
+        if not (h.get("upgrade_packages") or h.get("remove_packages") or kernel_info(inv) or build_info(inv)):
             continue
         p = await plan(db, inv, "suggested")
         if not p["blocked"] and p["commands"]:
