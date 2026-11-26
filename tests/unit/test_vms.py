@@ -74,7 +74,8 @@ async def test_discover_vms(db_session, monkeypatch, agent_error, expect_ip):
     assert invs[300].last_scan_status == "not_configured" and invs[300].last_scan_at is None
     assert ("qemu", 300) not in [(v, i) for v, i, _ in scanned]
     assert invs[150].last_scan_status == "unsupported" and "Windows" in invs[150].last_scan_error
-    assert invs[112].last_scan_status == "stopped"
+    # named "haos": Home Assistant OS, not scannable even when listed
+    assert invs[112].last_scan_status == "unsupported" and invs[112].os_id == "haos"
     if expect_ip:
         assert scanned == [("qemu", 201, "192.0.2.201")]
     else:

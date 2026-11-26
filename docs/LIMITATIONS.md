@@ -22,7 +22,11 @@ geprüften Daten“.
   dafür braucht der Proxmox-Token das Recht `VM.GuestAgent.Audit`. Nicht aktivierte VMs stehen in der
   Hostliste unter „Läuft, nicht gescannt“ bzw. „Gestoppt“; in der Übersicht zählen sie nicht mit.
 - **Nicht gescannt werden** Windows-VMs (auch wenn eingetragen) und Home Assistant OS: Beide haben kein
-  apt, und Home Assistant OS lässt sich nicht wie ein Debian-System aktualisieren.
+  apt, und Home Assistant OS lässt sich nicht wie ein Debian-System aktualisieren. Windows erkennt
+  Vigilance am Betriebssystemtyp der VM. Home Assistant OS hat in Proxmox den allgemeinen Typ „l26“; bei
+  laufender VM fragt Vigilance den Guest Agent (Recht `VM.GuestAgent.Audit`), sonst sucht es „haos“ oder
+  „Home Assistant OS“ in Name und Beschreibung. Eine HAOS-VM mit anderem Namen, ohne Guest Agent oder
+  ohne dieses Recht wird deshalb nicht erkannt; aktivierst du sie, scheitert der Scan an SSH.
 - Erfasst werden die Pakete des Paketmanagers (dpkg, apk, rpm). **Nicht erfasst** werden:
   - Docker-Container und -Images und die Software darin (die Docker-Erkennung ist ausgeschaltet)
   - Sprachpakete ausserhalb des Paketmanagers: pip in virtuellen Umgebungen, npm, Go- und Rust-Programme,

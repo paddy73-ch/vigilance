@@ -137,6 +137,11 @@ class ProxmoxClient:
         data = await self._request("GET", f"/api2/json/nodes/{node}/qemu/{vmid}/agent/network-get-interfaces")
         return data.get("data", {})
 
+    async def get_vm_osinfo(self, node: str, vmid: int) -> dict:
+        """/etc/os-release of a running VM through the QEMU guest agent (needs VM.GuestAgent.Audit)."""
+        data = await self._request("GET", f"/api2/json/nodes/{node}/qemu/{vmid}/agent/get-osinfo")
+        return (data.get("data") or {}).get("result") or {}
+
     async def get_lxc_interfaces(self, node: str, vmid: int) -> dict:
         data = await self._request("GET", f"/api2/json/nodes/{node}/lxc/{vmid}/interfaces")
         return data.get("data", {})

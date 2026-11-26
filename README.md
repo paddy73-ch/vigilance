@@ -302,8 +302,11 @@ Every VM appears in the host list. Running VMs that are not scanned are grouped 
 gescannt". Switch scanning on with a right click on the row (or its ⋯ button) › "Für den Scan
 aktivieren …", optionally with an IP; a scan starts right away. That choice is stored in the database
 and takes precedence over `config.yaml`, where VMs can also be listed under the node. Scanned VMs are
-handled like containers (SSH as root with Vigilance's key, apt only; Windows and Home Assistant OS are
-not supported):
+handled like containers (SSH as root with Vigilance's key, apt only). Windows and Home Assistant OS are
+not supported and cannot be switched on; they get an (i) with the reason. Windows is recognised by the
+VM's OS type. Home Assistant OS has the generic type "l26", so Vigilance asks the QEMU guest agent of a
+running VM (token right `VM.GuestAgent.Audit`) and otherwise looks for "haos" or "Home Assistant OS" in
+the name or description:
 
 ```yaml
 proxmox:

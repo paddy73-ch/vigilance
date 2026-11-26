@@ -43,7 +43,7 @@
       <tbody>
         <template x-for="h in sorted(running())" :key="h.id">
           <tr class="clickable" @click="location.href = '/hosts/' + h.id" @contextmenu="contextMenu($event, h)">
-            <td data-label="Name"><a :href="'/hosts/' + h.id" class="pkg" x-text="h.name"></a><template x-if="h.os_id === 'windows'"><span class="info" tabindex="0" role="img" :aria-label="V.WINDOWS_NOTE" :data-tip="V.WINDOWS_NOTE" @click.stop>i</span></template> <button type="button" class="row-menu" x-show="h.type === 'qemu'" @click.stop="openMenu($event, h)"
+            <td data-label="Name"><a :href="'/hosts/' + h.id" class="pkg" x-text="h.name"></a><template x-if="V.unsupportedNote(h)"><span class="info" tabindex="0" role="img" :aria-label="V.unsupportedNote(h)" :data-tip="V.unsupportedNote(h)" @click.stop>i</span></template> <button type="button" class="row-menu" x-show="h.type === 'qemu'" @click.stop="openMenu($event, h)"
                       :aria-label="'Aktionen für ' + h.name" title="Aktionen (auch per Rechtsklick)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16,12A2,2 0 0,1 18,10A2,2 0 0,1 20,12A2,2 0 0,1 18,14A2,2 0 0,1 16,12M10,12A2,2 0 0,1 12,10A2,2 0 0,1 14,12A2,2 0 0,1 12,14A2,2 0 0,1 10,12M4,12A2,2 0 0,1 6,10A2,2 0 0,1 8,12A2,2 0 0,1 6,14A2,2 0 0,1 4,12Z"/></svg></button></td>
             <td data-label="Typ" x-text="typeLabel(h)"></td>
             <td data-label="Nr" class="num" x-text="h.type === 'node' ? '–' : h.vmid"></td>
@@ -67,12 +67,12 @@
         <tbody>
           <template x-for="h in sorted(notScanned())" :key="h.id">
             <tr class="clickable" @click="location.href = '/hosts/' + h.id" @contextmenu="contextMenu($event, h)">
-              <td data-label="Name"><a :href="'/hosts/' + h.id" class="pkg" x-text="h.name"></a><template x-if="h.os_id === 'windows'"><span class="info" tabindex="0" role="img" :aria-label="V.WINDOWS_NOTE" :data-tip="V.WINDOWS_NOTE" @click.stop>i</span></template> <button type="button" class="row-menu" x-show="h.type === 'qemu'" @click.stop="openMenu($event, h)"
+              <td data-label="Name"><a :href="'/hosts/' + h.id" class="pkg" x-text="h.name"></a><template x-if="V.unsupportedNote(h)"><span class="info" tabindex="0" role="img" :aria-label="V.unsupportedNote(h)" :data-tip="V.unsupportedNote(h)" @click.stop>i</span></template> <button type="button" class="row-menu" x-show="h.type === 'qemu'" @click.stop="openMenu($event, h)"
                       :aria-label="'Aktionen für ' + h.name" title="Aktionen (auch per Rechtsklick)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16,12A2,2 0 0,1 18,10A2,2 0 0,1 20,12A2,2 0 0,1 18,14A2,2 0 0,1 16,12M10,12A2,2 0 0,1 12,10A2,2 0 0,1 14,12A2,2 0 0,1 12,14A2,2 0 0,1 10,12M4,12A2,2 0 0,1 6,10A2,2 0 0,1 8,12A2,2 0 0,1 6,14A2,2 0 0,1 4,12Z"/></svg></button></td>
               <td data-label="Typ" x-text="typeLabel(h)"></td>
               <td data-label="Nr" class="num" x-text="h.vmid"></td>
-              <td data-label="System" x-text="h.os_id === 'windows' ? 'Windows' : (h.os || '–')"></td>
-              <td data-label="Hinweis" class="faint" x-text="h.os_id === 'windows' ? 'Windows wird nicht gescannt' : 'Nicht für den Scan aktiviert'"></td>
+              <td data-label="System" x-text="h.os || '–'"></td>
+              <td data-label="Hinweis" class="faint" x-text="V.unsupportedName(h) ? V.unsupportedName(h) + ' wird nicht gescannt' : 'Nicht für den Scan aktiviert'"></td>
             </tr>
           </template>
         </tbody>
@@ -87,7 +87,7 @@
         <tbody>
           <template x-for="h in sorted(stopped())" :key="h.id">
             <tr class="clickable" @click="location.href = '/hosts/' + h.id" @contextmenu="contextMenu($event, h)">
-              <td data-label="Name"><a :href="'/hosts/' + h.id" class="pkg" x-text="h.name"></a><template x-if="h.os_id === 'windows'"><span class="info" tabindex="0" role="img" :aria-label="V.WINDOWS_NOTE" :data-tip="V.WINDOWS_NOTE" @click.stop>i</span></template> <button type="button" class="row-menu" x-show="h.type === 'qemu'" @click.stop="openMenu($event, h)"
+              <td data-label="Name"><a :href="'/hosts/' + h.id" class="pkg" x-text="h.name"></a><template x-if="V.unsupportedNote(h)"><span class="info" tabindex="0" role="img" :aria-label="V.unsupportedNote(h)" :data-tip="V.unsupportedNote(h)" @click.stop>i</span></template> <button type="button" class="row-menu" x-show="h.type === 'qemu'" @click.stop="openMenu($event, h)"
                       :aria-label="'Aktionen für ' + h.name" title="Aktionen (auch per Rechtsklick)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16,12A2,2 0 0,1 18,10A2,2 0 0,1 20,12A2,2 0 0,1 18,14A2,2 0 0,1 16,12M10,12A2,2 0 0,1 12,10A2,2 0 0,1 14,12A2,2 0 0,1 12,14A2,2 0 0,1 10,12M4,12A2,2 0 0,1 6,10A2,2 0 0,1 8,12A2,2 0 0,1 6,14A2,2 0 0,1 4,12Z"/></svg></button></td>
               <td data-label="Typ" x-text="typeLabel(h)"></td>
               <td data-label="Nr" class="num" x-text="h.vmid"></td>
@@ -104,8 +104,8 @@
     <template x-if="menu.host">
       <div>
         <div class="ctx-title" x-text="menu.host.name + ' (VM ' + menu.host.vmid + ')'"></div>
-        <button type="button" role="menuitem" x-show="!menu.host.scan_configured" :disabled="menu.host.os_id === 'windows'"
-                @click="askEnable(menu.host)" x-text="menu.host.os_id === 'windows' ? 'Windows wird nicht gescannt' : 'Für den Scan aktivieren …'"></button>
+        <button type="button" role="menuitem" x-show="!menu.host.scan_configured" :disabled="!!V.unsupportedName(menu.host)"
+                @click="askEnable(menu.host)" x-text="V.unsupportedName(menu.host) ? V.unsupportedName(menu.host) + ' wird nicht gescannt' : 'Für den Scan aktivieren …'"></button>
         <button type="button" role="menuitem" x-show="menu.host.scan_configured" @click="disableScan(menu.host)">Scan deaktivieren</button>
         <a role="menuitem" :href="'/hosts/' + menu.host.id">Ansicht öffnen</a>
       </div>

@@ -3,6 +3,15 @@
 Alle nennenswerten Änderungen an Vigilance. Die Einträge bis 0.12.0 stammen aus den Pull Requests des
 ursprünglichen, privaten Repositorys; dessen Geschichte wurde vor der Veröffentlichung bereinigt.
 
+## 0.18.1 – 2026-11-26
+
+### Neu
+- **Home Assistant OS wird erkannt** und lässt sich wie Windows nicht für den Scan aktivieren: Der
+  Menüpunkt ist ausgegraut, ein (i) erklärt den Grund, als System steht „Home Assistant OS“. Erkannt über
+  den Guest Agent einer laufenden VM (Recht `VM.GuestAgent.Audit`), sonst über „haos“ oder „Home
+  Assistant OS“ in Name oder Beschreibung. Eine VM namens „homeassistant“ gilt nicht als HAOS, weil
+  Home Assistant auch auf Debian laufen kann.
+
 ## 0.18.0 – 2026-11-26
 
 ### Neu
