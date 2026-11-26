@@ -9,6 +9,13 @@ simulated preview first, and notify you of new findings via Gotify.
 
 The web UI is in German; this README and the code are in English.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/overview-dark.png">
+  <img src="docs/images/overview-light.png" alt="Übersicht: 149 offene Befunde lassen sich jetzt beheben, davon 93 kritisch oder hoch; Hosts mit Ampelfarben" width="100%">
+</picture>
+
+<sub>Screenshots from a demo copy of a homelab: names and addresses changed, findings real.</sub>
+
 ## Features
 
 - **Inventory** of nodes, LXC containers and selected VMs via the Proxmox VE API, including stopped
@@ -207,9 +214,21 @@ docker compose exec -u vigilance vigilance vigilance <command>
   superfluous kernel packages, packages to look at first, 30-day trend.
 - **Hosts** (`/hosts`, `/hosts/{id}`): per container, VM or Proxmox host the packages to fix with the
   commands, findings without a fix, packages from other sources, exceptions, scan problems; buttons
-  for the actions.
+  for the actions. In the host list, a right click on a VM switches its scan on or off.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/host-dark.png">
+  <img src="docs/images/host-light.png" alt="Host docker-all: Befehle für Updates und zum Entfernen alter Pakete, Prüfung „unbedenklich“, Pakete mit Schwere und Anzahl Lücken" width="100%">
+</picture>
+
 - **Schwachstellen** (`/vulnerabilities`): by package or by vulnerability, filters (status, fix,
   severity, host), search incl. CVE IDs, detail panel with the solution and "Ausnahme anlegen".
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/cves-dark.png">
+  <img src="docs/images/cves-light.png" alt="Schwachstellen nach CVE: offene Lücken mit Fix, sortiert nach Schwere und CVSS, mit Paket, Anzahl Hosts und Fix-Version" width="100%">
+</picture>
+
 - **Verwaltung** (`/admin/…`): Quellen (sources on/off), Ausnahmen, Aktionen (log), Einstellungen
   (schedule, API token, Gotify, Proxmox/SSH) and Grenzen (limitations).
 
@@ -398,8 +417,8 @@ vigilance/
 ├── .github/workflows/      # CI: tests
 ├── config/                 # config.yaml.example, logging
 ├── docker/                 # Dockerfile, docker-compose.yml, entrypoint
-├── docs/                   # LIMITATIONS.md (shown in the UI)
-├── scripts/                # distribute-ssh-key.sh
+├── docs/                   # LIMITATIONS.md (shown in the UI), images/ (README screenshots)
+├── scripts/                # distribute-ssh-key.sh, vigilance-install-key
 ├── tests/                  # unit and browser tests
 ├── vigilance/              # Python package
 │   ├── actions/            # running fixes (preview, batches, log)
