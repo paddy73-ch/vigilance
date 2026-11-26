@@ -14,6 +14,8 @@ ursprünglichen, privaten Repositorys; dessen Geschichte wurde vor der Veröffen
 
 ### Behoben
 - Mit `full_scan_on_start: false` lief der regelmässige Scan nie: Der Auftrag wurde pausiert angelegt.
+- `deploy.sh` räumt nach einem erfolgreichen Deployment das alte, nicht mehr getaggte Image weg. Bisher
+  blieb pro Deployment eines liegen, bis die Disk von CT 123 voll war und der Build abbrach.
 
 ## 0.15.0 – 2026-11-26
 
