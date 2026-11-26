@@ -238,3 +238,107 @@ async def check_kernels(host: str, port: int, user: str, key_path: str, known_ho
     client = pool.get_client(host, port, user, key_path, known_hosts, CHECK_TIMEOUT)
     res = client.run_command(f"sh -s <<'VIGILANCE_EOF'\n{KERNEL_SCRIPT}\nVIGILANCE_EOF", timeout=CHECK_TIMEOUT)
     return parse_kernel_output(res.stdout or "")
+
+
+# ---------------------------------------------------------------- compilers and build tools
+#
+# gcc, build-essential, dkms … are no standard part of Proxmox or of a container template. They are
+# needed to compile something on the host or to build DKMS modules after a kernel update, which
+# Vigilance cannot tell; the UI asks the user. The check lists them, the DKMS modules, and simulates
+# removing them together with what then becomes unused (purge --autoremove). Header packages of
+# kernels that are no longer installed (old proxmox-headers-*) are listed separately: they are of no
+# use either way.
+BUILD_ROOTS = ("build-essential", "gcc", "g++", "clang", "dkms")
+BUILD_SCRIPT = r"""LC_ALL=C; export LC_ALL
+roots=""
+for p in __ROOTS__; do
+  s=$(dpkg-query -W -f='${db:Status-Abbrev}' "$p" 2>/dev/null)
+  case "$s" in ii*|hi*) roots="$roots $p"; echo "##BROOT $p";; esac
+done
+old="__OLD__"
+for p in $old; do echo "##BOLD $p"; done
+[ -n "$roots$old" ] || exit 0
+if command -v dkms >/dev/null 2>&1; then dkms status 2>/dev/null | sed 's/^/##BDKMS /'; fi
+if [ -n "$old" ]; then
+  apt-get -s -o Debug::NoLocking=1 -o Dir::Log::Planner=/dev/null purge $old 2>&1 \
+    | awk '/^(Purg|Remv) / {print "##BOSIM " $2} /^E:/ {print "##BOERR " $0}'
+fi
+if [ -n "$roots" ]; then
+  apt-get -s -o Debug::NoLocking=1 -o Dir::Log::Planner=/dev/null --autoremove purge $roots $old 2>&1 \
+    | awk '/^(Purg|Remv) / {print "##BSIM " $2} /^E:/ {print "##BERR " $0}'
+  apt-get -s -o Debug::NoLocking=1 -o Dir::Log::Planner=/dev/null purge $roots $old 2>&1 \
+    | awk '/^(Purg|Remv) / {print "##BPSIM " $2}'
+fi
+"""
+# What removing the build tools may take along without that being a surprise
+BUILD_RELATED = re.compile(
+    r"^(build-essential|dkms|gcc|g\+\+|cpp|clang|llvm|lld|libclang|libllvm|make|patch|dpkg-dev|libdpkg-perl"
+    r"|binutils|libbinutils|libctf|libgprofng|libsframe|libgcc-.*-dev|libstdc\+\+-.*-dev|libc6-dev|libc-dev-bin"
+    r"|linux-libc-dev|libcrypt-dev|libnsl-dev|libtirpc-dev|rpcsvc-proto|manpages-dev|lto-disabled-list"
+    r"|lib(asan|lsan|tsan|ubsan|hwasan|itm|quadmath|atomic|cc1|isl|mpc|mpfr|gomp|objc)\d"
+    r"|libgcc-s1-dbg|fakeroot|libfakeroot|libalgorithm-|libfile-fcntllock-perl|libjansson"
+    r"|proxmox-headers|pve-headers|linux-headers|linux-kbuild|linux-compiler)"
+)
+_HEADER_PKG = re.compile(r"^(proxmox-headers|pve-headers|linux-headers)-(\d[\w.+~-]*)$")
+_KERNEL_PKG = re.compile(r"^(proxmox-kernel|pve-kernel|linux-image)-(\d[\w.+~-]*?)(-signed)?$")
+
+
+def orphan_headers(packages: List[PackageInfo]) -> List[str]:
+    """Kernel header packages whose kernel is no longer installed (e.g. proxmox-headers-6.2.16-19-pve
+    and the meta package proxmox-headers-6.2 after the move to kernel 7.0)."""
+    names = {p.name for p in packages if p.manager == "dpkg"}
+    kernels = {m.group(2) for n in names for m in [_KERNEL_PKG.match(n)] if m}
+    if not kernels:
+        return []  # no kernel package at all (e.g. a container): nothing to compare with
+    out = []
+    for n in names:
+        m = _HEADER_PKG.match(n)
+        if not m:
+            continue
+        ver = m.group(2)
+        # exact (6.2.16-19-pve) or series of a meta package (6.2 → 6.2.x)
+        if not any(k == ver or k.startswith(ver + ".") or k.startswith(ver + "-") for k in kernels):
+            out.append(n)
+    return sorted(out)
+
+
+def build_script(old_headers: List[str]) -> str:
+    old = " ".join(n for n in old_headers if _PKG_NAME_RE.match(n))
+    return BUILD_SCRIPT.replace("__ROOTS__", " ".join(BUILD_ROOTS)).replace("__OLD__", old)
+
+
+def parse_build_output(output: str) -> Optional[dict]:
+    roots, old, dkms, would_remove, old_remove, plain, error = [], [], [], [], [], [], None
+    for line in output.splitlines():
+        tag, _, rest = line.partition(" ")
+        rest = rest.strip()
+        if tag == "##BROOT" and rest:
+            roots.append(rest)
+        elif tag == "##BOLD" and rest:
+            old.append(rest)
+        elif tag == "##BDKMS" and rest:
+            dkms.append(rest)
+        elif tag == "##BSIM" and rest and rest not in would_remove:
+            would_remove.append(rest)
+        elif tag == "##BPSIM" and rest and rest not in plain:
+            plain.append(rest)
+        elif tag == "##BOSIM" and rest and rest not in old_remove:
+            old_remove.append(rest)
+        elif tag in ("##BERR", "##BOERR"):
+            error = rest or "Simulation fehlgeschlagen"
+    if not roots and not old:
+        return None
+    return {"roots": roots, "old_headers": old, "dkms": dkms, "would_remove": would_remove,
+            "extra": [p for p in would_remove if not BUILD_RELATED.match(p)],
+            # without --autoremove: only the tools and what depends on them
+            "plain_remove": plain, "plain_extra": [p for p in plain if not BUILD_RELATED.match(p)],
+            "old_extra": [p for p in old_remove if p not in old], "error": error}
+
+
+async def check_build_tools(host: str, port: int, user: str, key_path: str, known_hosts: str,
+                            old_headers: List[str]) -> Optional[dict]:
+    pool = get_ssh_pool()
+    client = pool.get_client(host, port, user, key_path, known_hosts, CHECK_TIMEOUT)
+    res = client.run_command(f"sh -s <<'VIGILANCE_EOF'\n{build_script(old_headers)}\nVIGILANCE_EOF",
+                             timeout=CHECK_TIMEOUT)
+    return parse_build_output(res.stdout or "")

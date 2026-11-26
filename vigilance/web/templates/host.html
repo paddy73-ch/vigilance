@@ -57,6 +57,44 @@
           </div>
         </section>
       </template>
+      <template x-if="h.build_tools">
+        <section class="panel panel-pad stack">
+          <h2>Compiler und Build-Werkzeuge</h2>
+          <template x-if="h.build_tools.roots.length">
+            <div class="stack">
+              <p><span class="tag">Installiert</span> <span class="ver" x-text="h.build_tools.roots.join(', ')"></span></p>
+              <p class="muted">Gehört nicht zur Grundinstallation. Gebraucht wird es nur, wenn hier etwas kompiliert wird oder
+                DKMS-Module nach einem Kernel-Update neu gebaut werden müssen. Ob das so ist, weiss Vigilance nicht.</p>
+              <div x-show="h.build_tools.dkms.length">
+                <p><span class="tag">DKMS</span> <span class="ver" x-text="h.build_tools.dkms.join('; ')"></span></p>
+                <p class="faint" x-show="h.build_tools.dkms.length && h.build_tools.dkms.every((l) => / added$/.test(l))">Eingetragen, aber für keinen Kernel gebaut: Das Modul ist im Moment nicht in Gebrauch.</p>
+              </div>
+              <div class="question" x-show="!h.build_tools.decision">
+                <p><strong x-text="'Werden diese Werkzeuge auf ' + h.name + ' noch gebraucht?'"></strong></p>
+                <div class="row-gap">
+                  <button class="btn" @click="setBuild(true)">Ja, behalten</button>
+                  <button class="btn" @click="setBuild(false)">Nein, in die Vorschläge</button>
+                </div>
+              </div>
+              <p x-show="h.build_tools.decision === 'keep'">Als nötig markiert, Vigilance schlägt sie nicht zum Entfernen vor.
+                <button class="link" @click="setBuild(null)">Frage zurücksetzen</button></p>
+              <div class="risk" x-show="h.build_tools.decision === 'remove'" :data-status="h.build_tools.skipped.length ? 'check' : 'ok'">
+                <p class="risk-head" x-text="h.build_tools.skipped.length ? 'Nicht in den Vorschlägen' : 'In den Vorschlägen'"></p>
+                <ul>
+                  <template x-for="s in h.build_tools.skipped" :key="s.package"><li x-text="s.package + ': ' + s.reason"></li></template>
+                  <li x-show="h.build_tools.note" x-text="'Der Befehl ' + h.build_tools.note + '.'"></li>
+                  <li x-show="!h.build_tools.skipped.length">„Vorschläge umsetzen“ entfernt sie, vorher siehst du die Simulation.</li>
+                </ul>
+                <button class="link" @click="setBuild(true)">Doch behalten</button>
+              </div>
+              <p class="faint" x-show="h.build_tools.extra.length && !h.build_tools.plain_extra.length" x-text="'apt autoremove würde hier zusätzlich ' + h.build_tools.extra.join(', ') + ' entfernen, weil als „automatisch installiert“ markiert. Der Vorschlag behält es und markiert es dabei als manuell installiert.'"></p>
+            </div>
+          </template>
+          <p x-show="h.build_tools.old_headers.length"><span class="tag">Header ohne Kernel</span> <span class="ver" x-text="h.build_tools.old_headers.join(', ')"></span>
+            <span class="faint">Gehören zu Kernels, die nicht mehr installiert sind, und stehen deshalb immer in den Vorschlägen.</span></p>
+          <div class="cmd" x-show="h.build_tools.suggested_command"><code x-text="h.build_tools.suggested_command"></code><button class="btn btn-sm" @click="V.copy(h.build_tools.suggested_command)">Kopieren</button></div>
+        </section>
+      </template>
       <template x-if="h.type === 'node'">
         <div class="panel panel-pad note-node">
           <h2>Was hier nicht geprüft wird</h2>
