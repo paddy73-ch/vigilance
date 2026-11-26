@@ -383,8 +383,10 @@ are only in the text, so each bulletin is classified; only client issues with a 
 version become findings. The sources page shows the counts and lists the unrecognised ones.
 
 **Operating systems.** Reviewed entries of the Go vulnerability database list the affected systems
-(`goos`). If that list does not include Linux, the finding gets the status "Anderes OS" instead of
-"open". If only the text names another system, Vigilance shows a hint ("laut Meldung nur FreeBSD") but
+(`goos`). If that list does not include Linux, the finding gets the status "Nicht betroffen" instead of
+"open". The same happens to kernel CVEs on hosts where the only packages built from Debian's kernel
+source `linux` are header or build files (`linux-libc-dev`, `linux-headers-*`, `linux-kbuild-*`): they
+contain no kernel. If only the text names another system, Vigilance shows a hint ("laut Meldung nur FreeBSD") but
 does not hide the finding by itself.
 
 ### Limitations

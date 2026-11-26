@@ -16,6 +16,7 @@
 import fnmatch
 import json
 import logging
+import re
 from dataclasses import dataclass, field
 from datetime import datetime
 from types import SimpleNamespace
@@ -131,6 +132,19 @@ def _suppressed(suppressions: Sequence[Suppression], cve: CVEEntry, tool: Discov
 
 HIDEABLE = ("open", "suppressed", "unknown_version", "not_affected")
 
+# Packages built from Debian's kernel source "linux" that contain no kernel: header files for compiling
+# (linux-libc-dev comes with gcc / build-essential), build scripts and the kernel source. Debian files every
+# kernel CVE under the source "linux", but a kernel flaw affects the running kernel, not these files.
+_HEADER_ONLY = re.compile(r"^(linux-libc-dev|linux-headers-.+|linux-kbuild-.+|linux-source(-.+)?)(:[a-z0-9]+)?$")
+
+
+def kernel_headers_only(tool: DiscoveredTool, details: dict) -> bool:
+    """All installed binaries of the source package "linux" on this host are headers / build files."""
+    if (tool.source_name or "") != "linux":
+        return False
+    names = details.get("binaries") or [tool.tool_name]
+    return bool(names) and all(_HEADER_ONLY.match(n or "") for n in names)
+
 
 def _hide(finding: VulnerabilityFinding) -> None:
     """Hide a finding while its source is switched off; the previous status is kept to restore it."""
@@ -206,6 +220,9 @@ async def match_findings(
         if not_for_host(systems):
             status = "not_affected"  # e.g. FreeBSD only; the hosts run Linux
             details = {**details, "goos": sorted(systems)}
+        elif kernel_headers_only(tool, details):
+            status = "not_affected"  # kernel CVE on linux-libc-dev: no kernel in the package
+            details = {**details, "headers_only": True}
         finding = existing.get(key)
         if finding is None:
             finding = VulnerabilityFinding(
