@@ -63,19 +63,21 @@ def test_plan_old_headers_always_tools_only_after_no():
     p = build_plan(info, None, "sudo -n ")
     assert p["command"] == "sudo -n apt-get purge -y proxmox-headers-6.2 proxmox-headers-6.2.16-19-pve"
     assert build_plan(info, "keep")["command"] == p["command"].replace("sudo -n ", "")
-    # "no longer needed": autoremove would take sudo along, so without --autoremove
+    # "no longer needed": autoremove would take sudo along, so sudo is kept (and marked manual) with "sudo+"
     p = build_plan(info, "remove")
-    assert p["command"] == ("apt-get purge -y build-essential gcc g++ dkms "
-                            "proxmox-headers-6.2 proxmox-headers-6.2.16-19-pve")
+    assert p["command"] == ("apt-get purge -y --autoremove build-essential gcc g++ dkms "
+                            "proxmox-headers-6.2 proxmox-headers-6.2.16-19-pve sudo+")
     assert "sudo" in p["note"] and not p["skipped"]
 
 
 def test_plan_autoremove_when_clean_and_skip_when_not():
     clean = {"roots": ["gcc"], "old_headers": [], "extra": [], "plain_extra": [], "old_extra": [], "error": None}
     assert build_plan(clean, "remove")["command"] == "apt-get purge -y --autoremove gcc"
-    dirty = {**clean, "extra": ["myapp"], "plain_extra": ["myapp"]}
+    dirty = {**clean, "extra": ["myapp"], "plain_extra": ["myapp"]}  # myapp depends on gcc: cannot be kept
     p = build_plan(dirty, "remove")
     assert p["command"] is None and "myapp" in p["skipped"][0]["reason"]
+    sneaky = {**clean, "extra": ["x; rm -rf /"], "plain_extra": []}
+    assert build_plan(sneaky, "remove")["command"] == "apt-get purge -y --autoremove gcc"  # odd names never reach the shell
     assert build_plan({**clean, "error": "E: x"}, "remove")["skipped"][0]["reason"].startswith("Simulation")
 
 

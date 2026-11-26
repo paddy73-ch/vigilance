@@ -112,8 +112,12 @@ def build_plan(info: Optional[dict], decision: Optional[str], sudo: str = "") ->
     """What "Vorschläge umsetzen" does with the compilers / build tools and old kernel headers of a host.
 
     Headers of kernels that are no longer installed are always suggested. The tools only after the user
-    answered "nicht mehr nötig"; with --autoremove if that takes nothing unrelated along, else without
-    (dependencies stay), else not at all."""
+    answered "nicht mehr nötig", with --autoremove. Unrelated packages that autoremove would take along only
+    because they are marked "automatically installed" (on pve: sudo) are kept with apt's "name+" syntax,
+    which also marks them as manually installed; one apt-get command, so the preview simulates it and the
+    sudo rule for apt-get covers it on the Proxmox host. Packages that depend on the tools cannot be kept:
+    then nothing is suggested."""
+    from vigilance.discovery.removal import _PKG_NAME_RE
     out = {"command": None, "skipped": [], "note": None, "packages": []}
     if not info:
         return out
@@ -123,25 +127,27 @@ def build_plan(info: Optional[dict], decision: Optional[str], sudo: str = "") ->
         out["skipped"].append({"package": ", ".join(old),
                                "reason": "würde zusätzlich entfernen: " + ", ".join(info["old_extra"])})
     roots = info.get("roots") or []
-    autoremove = False
+    keep: List[str] = []
     if roots and decision == "remove":
         if info.get("error"):
             out["skipped"].append({"package": ", ".join(roots), "reason": "Simulation fehlgeschlagen: " + info["error"]})
             roots = []
-        elif not info.get("extra"):
-            autoremove = True
-        elif not info.get("plain_extra"):
-            out["note"] = ("ohne --autoremove, weil apt sonst auch " + ", ".join(info["extra"]) + " entfernen würde")
-        else:
+        elif info.get("plain_extra"):
             out["skipped"].append({"package": ", ".join(roots),
-                                   "reason": "würde zusätzlich entfernen: " + ", ".join(info["plain_extra"])})
+                                   "reason": "würde zusätzlich entfernen, weil davon abhängig: " + ", ".join(info["plain_extra"])})
             roots = []
+        else:
+            keep = [p for p in info.get("extra") or [] if _PKG_NAME_RE.match(p)]
+            if keep:
+                out["note"] = ("markiert " + ", ".join(keep) + " als manuell installiert, damit --autoremove es "
+                               "nicht mitnimmt")
     else:
         roots = []
     packages = roots + (old if old_ok else [])
     if packages:
         out["packages"] = packages
-        out["command"] = f"{sudo}apt-get purge -y {'--autoremove ' if autoremove else ''}" + " ".join(packages)
+        out["command"] = (f"{sudo}apt-get purge -y {'--autoremove ' if roots else ''}" + " ".join(packages)
+                          + "".join(f" {k}+" for k in keep))
     return out
 
 

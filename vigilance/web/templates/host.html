@@ -82,12 +82,12 @@
                 <p class="risk-head" x-text="h.build_tools.skipped.length ? 'Nicht in den Vorschlägen' : 'In den Vorschlägen'"></p>
                 <ul>
                   <template x-for="s in h.build_tools.skipped" :key="s.package"><li x-text="s.package + ': ' + s.reason"></li></template>
-                  <li x-show="h.build_tools.note" x-text="'Entfernt ' + h.build_tools.note + '.'"></li>
+                  <li x-show="h.build_tools.note" x-text="'Der Befehl ' + h.build_tools.note + '.'"></li>
                   <li x-show="!h.build_tools.skipped.length">„Vorschläge umsetzen“ entfernt sie, vorher siehst du die Simulation.</li>
                 </ul>
                 <button class="link" @click="setBuild(true)">Doch behalten</button>
               </div>
-              <p class="faint" x-show="h.build_tools.extra.length" x-text="'Hinweis: apt autoremove würde hier zusätzlich ' + h.build_tools.extra.join(', ') + ' entfernen, weil als „automatisch installiert“ markiert. Mit „apt-mark manual ' + h.build_tools.extra.join(' ') + '“ verhinderst du das.'"></p>
+              <p class="faint" x-show="h.build_tools.extra.length && !h.build_tools.plain_extra.length" x-text="'apt autoremove würde hier zusätzlich ' + h.build_tools.extra.join(', ') + ' entfernen, weil als „automatisch installiert“ markiert. Der Vorschlag behält es und markiert es dabei als manuell installiert.'"></p>
             </div>
           </template>
           <p x-show="h.build_tools.old_headers.length"><span class="tag">Header ohne Kernel</span> <span class="ver" x-text="h.build_tools.old_headers.join(', ')"></span>

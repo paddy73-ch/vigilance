@@ -367,9 +367,11 @@ The scan also looks for compilers and build tools (`build-essential`, `gcc`, `g+
 They are no standard part of Proxmox or of a container template, but Vigilance cannot tell whether
 something is compiled on the host or whether DKMS modules must be rebuilt after a kernel update. The host
 page therefore asks "Werden diese Werkzeuge noch gebraucht?" and shows the DKMS modules. Only after "Nein"
-do they go into "Vorschläge umsetzen": with `purge --autoremove` if the simulation takes nothing else
-along, otherwise without `--autoremove`, otherwise not at all (with the reason). On pve, for example,
-autoremove would also remove `sudo`, which is marked as automatically installed there. Header packages of
+do they go into "Vorschläge umsetzen", with `purge --autoremove`. Unrelated packages that autoremove would
+take along only because they are marked as automatically installed are kept with apt's `name+` syntax,
+which also marks them as manually installed (on pve that was `sudo`). It is one apt-get command, so the
+preview simulates it and the sudo rule for apt-get covers it on the Proxmox host. If something depends on
+the tools, nothing is suggested and the host page says why. Header packages of
 kernels that are no longer installed (`proxmox-headers-6.2…` after the move to 7.0) are always suggested.
 The answer is stored per host.
 

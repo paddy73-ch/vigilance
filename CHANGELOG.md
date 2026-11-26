@@ -8,9 +8,10 @@ ursprünglichen, privaten Repositorys; dessen Geschichte wurde vor der Veröffen
 ### Neu
 - **Compiler und Build-Werkzeuge:** Der Scan erkennt `build-essential`, `gcc`, `g++`, `clang` und `dkms`
   samt DKMS-Modulen und simuliert das Entfernen. Die Hostseite fragt „Werden diese Werkzeuge noch
-  gebraucht?“. Erst bei „Nein“ kommen sie in „Vorschläge umsetzen“: mit `--autoremove`, wenn dabei nichts
-  Fremdes mitgeht, sonst ohne, sonst gar nicht (mit Grund). Die Antwort gilt pro Host und lässt sich
-  zurücksetzen.
+  gebraucht?“. Erst bei „Nein“ kommen sie in „Vorschläge umsetzen“, mit `--autoremove`. Würde das Fremdes
+  mitnehmen, nur weil es als „automatisch installiert“ markiert ist (auf pve: `sudo`), behält der Befehl
+  es mit `name+` und markiert es dabei als manuell installiert. Hängt etwas von den Werkzeugen ab, gibt es
+  keinen Vorschlag, mit Grund. Die Antwort gilt pro Host und lässt sich zurücksetzen.
 - **Header ohne Kernel:** Header-Pakete von Kernels, die nicht mehr installiert sind (z. B.
   `proxmox-headers-6.2…` nach dem Wechsel auf 7.0), stehen immer in den Vorschlägen.
 
