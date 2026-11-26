@@ -1,0 +1,14 @@
+#!/bin/sh
+# Vigilance: put Vigilance's public SSH key into a running LXC container on this Proxmox host.
+# Called by Vigilance (switch "Schlüssel in neue Container selbst eintragen") as
+#   sudo -n /usr/local/sbin/vigilance-install-key <CT-ID>
+# The key is built into this script, so the sudo rule cannot be used to add any other key.
+# Install: see README, "Let Vigilance put its key into new containers".
+set -eu
+KEY='__VIGILANCE_PUBLIC_KEY__'
+case "${1:-}" in ''|*[!0-9]*) echo "Aufruf: $0 <CT-ID>" >&2; exit 2 ;; esac
+VMID=$1
+[ -f "/etc/pve/lxc/$VMID.conf" ] || { echo "CT $VMID gibt es auf diesem Node nicht" >&2; exit 3; }
+/usr/sbin/pct status "$VMID" | grep -q 'status: running' || { echo "CT $VMID laeuft nicht" >&2; exit 4; }
+/usr/sbin/pct exec "$VMID" -- sh -c 'umask 077; mkdir -p /root/.ssh; chmod 700 /root/.ssh; touch /root/.ssh/authorized_keys; grep -qxF "$1" /root/.ssh/authorized_keys || printf "%s\n" "$1" >> /root/.ssh/authorized_keys' sh "$KEY"
+echo "Schluessel in CT $VMID eingetragen"

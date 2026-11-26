@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from vigilance.discovery import keyinstall
 from vigilance.api.deps import get_db, get_current_user_optional, require_write_access
 from vigilance.api.schemas import GotifyTestRequest, GotifyTestResponse
 from vigilance.database import crud
@@ -109,6 +110,8 @@ async def get_settings(
         "cve_sync_interval_hours": _get_int_setting(db_settings, "cve_sync_interval_hours", settings.cve_sync_interval_hours),
         "ssh_timeout": _get_int_setting(db_settings, "ssh_timeout", settings.ssh_timeout),
         "ssh_parallel_jobs": _get_int_setting(db_settings, "ssh_parallel_jobs", settings.ssh_parallel_jobs),
+        "ssh_key_autoinstall": await keyinstall.autoinstall_enabled(db),
+        "ssh_key_helper": keyinstall.HELPER,
         "gotify_configured": bool(settings.notifications and settings.notifications.gotify and settings.notifications.gotify.url),
         "gotify": _gotify_info(),
         "sources_disabled": [s for s in ("nvd", "debian", "ubuntu", "ghsa", "osv", "tailscale") if not _source_on(s)],
@@ -131,6 +134,7 @@ class SettingsUpdate(BaseModel):
     cve_sync_interval_hours: Optional[int] = Field(None, ge=1, le=168)
     ssh_timeout: Optional[int] = Field(None, ge=5, le=300)
     ssh_parallel_jobs: Optional[int] = Field(None, ge=1, le=50)
+    ssh_key_autoinstall: Optional[bool] = None
 
 
 @router.post("/settings")
@@ -152,6 +156,8 @@ async def update_settings(
     if update.ssh_parallel_jobs is not None:
         await crud.set_setting(db, "ssh_parallel_jobs", str(update.ssh_parallel_jobs), "SSH parallel jobs")
         settings.ssh_parallel_jobs = update.ssh_parallel_jobs
+    if update.ssh_key_autoinstall is not None:
+        await keyinstall.set_autoinstall(db, update.ssh_key_autoinstall)
     await db.commit()
     if update.scan_interval_hours is not None or update.cve_sync_interval_hours is not None:
         from vigilance.core.scheduler import reschedule_jobs

@@ -79,6 +79,11 @@
           <p class="cmd-label">Öffentlicher SSH-Schlüssel von Vigilance (für <code>/root/.ssh/authorized_keys</code> der Container)</p>
           <div class="cmd"><code x-text="sshKey"></code><button class="btn btn-sm" @click="V.copy(sshKey)">Kopieren</button></div>
         </div>
+        <label class="check"><input type="checkbox" x-model="s.ssh_key_autoinstall" @change="saveAutoinstall()">
+          Schlüssel in neue Container selbst eintragen</label>
+        <p class="faint">Lehnt ein laufender Container den Schlüssel ab, lässt Vigilance ihn vom Proxmox-Host eintragen und
+          scannt gleich weiter. Dafür braucht der Host das Hilfsskript <code x-text="s.ssh_key_helper"></code> und eine
+          sudo-Regel für den Scan-Benutzer (siehe Grenzen). VMs sind ausgenommen.</p>
       </div>
     </section>
   </div>

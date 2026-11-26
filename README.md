@@ -301,6 +301,23 @@ vigilance-scan ALL=(root) NOPASSWD: /usr/bin/apt-get
 Without it the preview says that the rule is missing and nothing runs. On the host, apt runs detached
 (nohup) and Vigilance polls for the result, so a dropped SSH connection does not interrupt it.
 
+### Let Vigilance put its key into new containers
+
+With the switch "Schlüssel in neue Container selbst eintragen" (Verwaltung › Einstellungen › Proxmox und
+SSH; off by default), a running container that rejects Vigilance's key gets it from the Proxmox host
+during the scan, and the scan goes on. The host runs only `scripts/vigilance-install-key`, which has the
+public key built in, through its own sudo rule for `vigilance-scan`. VMs are left out. On pve:
+
+```bash
+PUB='ssh-ed25519 AAAA… vigilance@…'   # from: vigilance ssh-key-show
+sed "s|__VIGILANCE_PUBLIC_KEY__|$PUB|" scripts/vigilance-install-key > /tmp/vik
+install -o root -g root -m 0755 /tmp/vik /usr/local/sbin/vigilance-install-key && rm /tmp/vik
+echo 'vigilance-scan ALL=(root) NOPASSWD: /usr/local/sbin/vigilance-install-key' > /tmp/vk
+visudo -cf /tmp/vk && install -o root -g root -m 0440 /tmp/vk /etc/sudoers.d/vigilance-keys && rm /tmp/vk
+```
+
+If Vigilance gets a new key pair, install the script again with the new key.
+
 ### Packages from vendor repositories
 
 Debian has no advisories for software installed from a vendor's own apt repository. Each scan records
