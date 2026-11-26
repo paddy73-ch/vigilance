@@ -465,6 +465,8 @@ def _finding_row(f: F, t: T, c: C) -> dict:
         "binaries": details.get("binaries") or [t.tool_name],
         # filtered: the advisory data restricts it to other systems; hint: only the title says so
         "only_on": [os_label(g) for g in details.get("goos") or []],
+        "not_affected_reason": ("nur Kernel-Header, kein Kernel" if details.get("headers_only") else
+                                ("nur " + ", ".join(os_label(g) for g in details["goos"]) if details.get("goos") else None)),
         "os_hint": os_hint(c.title, (c.description or "")[:300]),
         "note": source_note(c.source, c.title, c.description),
     }
@@ -884,7 +886,7 @@ async def get_vulnerability(cve_entry_id: int, db: AsyncSession = Depends(get_db
         row = {
             **{k: v for k, v in _finding_row(f, t, cve).items() if k in (
                 "finding_id", "status", "fix_available", "fixed_version", "urgency", "first_seen", "resolved_at", "binaries",
-                "only_on")},
+                "only_on", "not_affected_reason")},
             "host_id": i.id, "host": i.name, "package": pkg, "installed_version": ver,
         }
         row["display_name"] = ", ".join(row["binaries"]) if (i.id, pkg, ver) in obsolete else pkg

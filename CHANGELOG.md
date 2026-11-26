@@ -3,6 +3,19 @@
 Alle nennenswerten Änderungen an Vigilance. Die Einträge bis 0.12.0 stammen aus den Pull Requests des
 ursprünglichen, privaten Repositorys; dessen Geschichte wurde vor der Veröffentlichung bereinigt.
 
+## 0.18.2 – 2026-11-26
+
+### Behoben
+- **Kernel-Lücken auf `linux-libc-dev`:** Debian führt jede Kernel-Lücke beim Quellpaket `linux`, aus dem
+  auch `linux-libc-dev` stammt (Header-Dateien zum Kompilieren, kommt mit gcc). Vigilance zeigte deshalb
+  auf pve und einigen Containern je über 300 offene, teils kritische Lücken, obwohl dort kein Debian-Kernel
+  installiert ist. Sind auf einem Host aus `linux` nur Header- oder Build-Pakete installiert
+  (`linux-libc-dev`, `linux-headers-*`, `linux-kbuild-*`), stehen diese Befunde jetzt unter „Nicht
+  betroffen“ mit dem Grund „nur Kernel-Header, kein Kernel“. Ist daneben ein Debian-Kernel installiert,
+  bleiben sie offen.
+- Der Filter „Anderes OS“ und der Abschnitt „Anderes Betriebssystem“ heissen jetzt „Nicht betroffen“, weil
+  dort beide Gründe stehen.
+
 ## 0.18.1 – 2026-11-26
 
 ### Neu

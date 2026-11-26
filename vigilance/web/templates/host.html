@@ -166,7 +166,7 @@
                       <td><a href="#" @click.prevent x-text="a.label"></a><span class="info" tabindex="0" role="img" x-show="a.note" :aria-label="a.note" :data-tip="a.note" @click.stop>i</span> <span class="also" x-show="a.also.length" x-text="'auch ' + a.also.join(', ')"></span></td>
                       <td><span class="sev" :class="'sev-' + a.severity" x-text="V.sevLabel(a.severity)"></span></td>
                       <td class="num" x-text="a.cvss ? 'CVSS ' + a.cvss : ''"></td>
-                      <td class="faint" x-text="sec.key === 'fixed' ? 'behoben ' + V.day(a.resolved_at) : (sec.key === 'not_affected' ? 'nur ' + a.only_on.join(', ') : (a.os_hint ? 'laut Meldung nur ' + a.os_hint : (a.urgency === 'unimportant' ? 'Debian: unwichtig' : '')))"></td>
+                      <td class="faint" x-text="sec.key === 'fixed' ? 'behoben ' + V.day(a.resolved_at) : (sec.key === 'not_affected' ? (a.not_affected_reason || '') : (a.os_hint ? 'laut Meldung nur ' + a.os_hint : (a.urgency === 'unimportant' ? 'Debian: unwichtig' : '')))"></td>
                     </tr>
                   </template>
                 </tbody>

@@ -51,7 +51,7 @@
                         <td data-label="Host"><a :href="'/hosts/' + a.host_id" x-text="a.host"></a></td>
                         <td data-label="Paket"><span class="pkg" x-text="a.display_name"></span><div class="ver" x-text="a.installed_version"></div></td>
                         <td data-label="Fix"><span class="ver" x-text="a.fixed_version || 'noch kein Fix'"></span><div class="faint" x-show="a.urgency === 'unimportant'">Debian: unwichtig</div></td>
-                        <td data-label="Status"><span x-text="statusLabel(a.status)"></span><div class="faint" x-show="a.only_on && a.only_on.length" x-text="'nur ' + (a.only_on || []).join(', ')"></div></td>
+                        <td data-label="Status"><span x-text="statusLabel(a.status)"></span><div class="faint" x-show="a.not_affected_reason" x-text="a.not_affected_reason"></div></td>
                       </tr>
                     </template>
                   </tbody>

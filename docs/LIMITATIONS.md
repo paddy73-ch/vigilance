@@ -64,9 +64,14 @@ sichtbar, solange eine davon eingeschaltet ist.
   es nicht. Beispiel: Ein Tailscale-Bulletin zu Serve, SSH oder Funnel wird gemeldet, auch wenn diese
   Funktion auf dem Host nicht aktiv ist.
 - **Betriebssystem:** Alle gescannten Hosts laufen unter Linux. Meldungen, die laut Daten nur andere
-  Systeme betreffen, stehen unter „Anderes OS“. Das klappt nur, wenn die Daten das Betriebssystem
+  Systeme betreffen, stehen unter „Nicht betroffen“. Das klappt nur, wenn die Daten das Betriebssystem
   strukturiert angeben (Go-Datenbank, Feld `goos`, bei Tailscale die Zeile „Affected platforms“). Steht es
   nur im Text, zeigt Vigilance „laut Meldung nur …“ und blendet nichts selbst aus.
+- **Kernel-Header:** Debian führt jede Kernel-Lücke beim Quellpaket `linux`. Daraus stammen auch
+  `linux-libc-dev` (kommt mit gcc bzw. build-essential), `linux-headers-*` und `linux-kbuild-*`, die keinen
+  Kernel enthalten. Sind auf einem Host nur solche Pakete aus `linux` installiert, stehen die Kernel-Lücken
+  unter „Nicht betroffen“ („nur Kernel-Header, kein Kernel“). Den Kernel von Proxmox
+  (`proxmox-kernel-*`) prüft Vigilance nicht, er steht nicht in den Debian-Daten.
 - **Schwere:** Vigilance übernimmt die Bewertung aus den Daten (CVSS, sonst Debian-Dringlichkeit) und
   passt sie nicht an deine Umgebung an. Viele neue Meldungen haben noch keine Bewertung („Ohne Bewertung“).
 - **„Debian: unwichtig“** ist die Einschätzung des Debian-Sicherheitsteams, nicht von Vigilance.

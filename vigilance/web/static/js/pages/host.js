@@ -20,7 +20,7 @@ document.addEventListener("alpine:init", () => {
       return [
         { key: "without_fix", list: h.without_fix_list, title: "Offen ohne Fix (" + V.plural(count(h.without_fix_list), "Lücke", "Lücken") + ")", empty: "Keine." },
         { key: "suppressed", list: h.suppressed_list, title: "Ausnahmen (" + count(h.suppressed_list) + ")", empty: "Keine Ausnahmen für diesen Host." },
-        { key: "not_affected", list: h.not_affected_list || [], title: "Anderes Betriebssystem (" + count(h.not_affected_list || []) + ")", empty: "Keine. Hier stehen Befunde, die laut Sicherheitsdaten nur andere Systeme als Linux betreffen." },
+        { key: "not_affected", list: h.not_affected_list || [], title: "Nicht betroffen (" + count(h.not_affected_list || []) + ")", empty: "Keine. Hier stehen Befunde, die laut Sicherheitsdaten nur andere Systeme als Linux betreffen, und Kernel-Lücken bei Paketen, die nur Kernel-Header enthalten." },
         { key: "fixed", list: h.fixed_list, title: "Behoben in den letzten 30 Tagen (" + count(h.fixed_list) + ")", empty: "In den letzten 30 Tagen wurde nichts behoben." },
       ];
     },
@@ -30,7 +30,7 @@ document.addEventListener("alpine:init", () => {
         return unimportant === g.count ? "Debian: unwichtig" : (unimportant ? unimportant + " davon laut Debian unwichtig" : "");
       }
       if (key === "fixed") return "behoben " + V.day(g.advisories[0].resolved_at);
-      if (key === "not_affected") return "betrifft nur " + (g.advisories[0].only_on || []).join(", ");
+      if (key === "not_affected") return g.advisories[0].not_affected_reason || "";
       const hinted = g.advisories.filter((a) => a.os_hint);
       if (hinted.length) return hinted.length + " laut Meldung nur " + [...new Set(hinted.map((a) => a.os_hint))].join(", ");
       return "";
