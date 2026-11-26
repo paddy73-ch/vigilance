@@ -64,21 +64,28 @@ cp .env.example .env
 # edit .env: at least VIGILANCE_PROXMOX_URL, _TOKEN_ID, _TOKEN_SECRET
 ```
 
-### 2. Proxmox API token (read-only)
+### 2. Proxmox API token
 
 On the Proxmox host as root:
 
 ```bash
-pveum role add VigilanceRole -privs "VM.Audit"
+pveum role add VigilanceRole -privs "VM.Audit,VM.GuestAgent.Audit,VM.Snapshot"
 pveum user add vigilance@pam
 pveum acl modify / -role VigilanceRole -user vigilance@pam
 pveum user token add vigilance@pam vigilance --privsep 1
 pveum acl modify / -role VigilanceRole -token 'vigilance@pam!vigilance'
 ```
 
-Put the token ID (`vigilance@pam!vigilance`) and the secret into `.env`. To find the IPs of VMs through
-the QEMU guest agent, add `VM.GuestAgent.Audit` to the role (Proxmox VE 9); it allows read-only agent
-calls only.
+Put the token ID (`vigilance@pam!vigilance`) and the secret into `.env`. What the rights are for:
+
+- `VM.Audit`: list containers and VMs with their configuration (required).
+- `VM.GuestAgent.Audit` (Proxmox VE 9): read-only calls to the QEMU guest agent, for the IPs of VMs and to
+  recognise Home Assistant OS. Optional.
+- `VM.Snapshot`: a snapshot right before "Vorschläge umsetzen" and the other actions change a container
+  or VM (switch "Vorher Snapshot anlegen" in the dialog, on by default). Vigilance keeps one snapshot
+  `vigilance-JJJJMMTT-HHMMSS` per guest, deletes its older ones and never touches others; it cannot roll
+  back. Without the right the snapshot fails and the host is left unchanged, unless the switch is off.
+  Containers with mount points on storage without snapshot support cannot be snapshotted.
 
 ### 3. Start
 

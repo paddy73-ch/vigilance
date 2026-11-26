@@ -16,12 +16,14 @@ document.addEventListener("alpine:init", () => {
     error: null,
     starting: false,
     confirmHost: false,
+    snapshot: true,
     openLog: {},
     timer: null,
 
     async open(detail) {
       Object.assign(this, { visible: true, phase: "preview", kind: detail.kind, hostIds: detail.hostIds || null,
-        title: detail.title || "", preview: null, runs: [], batchId: null, error: null, openLog: {}, confirmHost: false });
+        title: detail.title || "", preview: null, runs: [], batchId: null, error: null, openLog: {}, confirmHost: false,
+        snapshot: true });
       try {
         this.preview = await V.api("/api/actions/preview", { method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ kind: this.kind, host_ids: this.hostIds }) });
@@ -40,6 +42,7 @@ document.addEventListener("alpine:init", () => {
       if (this.kind === "full_upgrade" && this.hasNode()) return "dist-upgrade auf dem Proxmox-Host";
       return KIND_LABEL[this.kind];
     },
+    hasGuest() { return !!(this.preview && this.runnable().some((h) => h.type === "lxc" || h.type === "qemu")); },
     hasVM() { return !!(this.preview && this.runnable().some((h) => h.type === "qemu")); },
     hasNode() { return !!(this.preview && this.preview.hosts.some((h) => h.type === "node")); },
     intro() {
@@ -70,7 +73,8 @@ document.addEventListener("alpine:init", () => {
       this.starting = true;
       try {
         const r = await V.api("/api/actions", { method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ kind: this.kind, host_ids: this.runnable().map((h) => h.host_id), confirm_host: this.confirmHost }) });
+          body: JSON.stringify({ kind: this.kind, host_ids: this.runnable().map((h) => h.host_id), confirm_host: this.confirmHost,
+                                 snapshot: this.snapshot }) });
         this.batchId = r.batch_id;
         this.phase = "running";
         this.poll();

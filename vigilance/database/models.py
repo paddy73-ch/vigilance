@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from typing import Optional, List
 from sqlalchemy import (
-    Integer, String, Text, Boolean, Date, DateTime, ForeignKey, UniqueConstraint, Index, JSON
+    Integer, String, Text, Boolean, Date, DateTime, ForeignKey, UniqueConstraint, Index, JSON, false
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from vigilance.database.base import Base
@@ -247,6 +247,9 @@ class ActionRun(Base):
     skipped: Mapped[Optional[str]] = mapped_column(Text)  # JSON list of {package, reason}
     output: Mapped[Optional[str]] = mapped_column(Text)
     exit_code: Mapped[Optional[int]] = mapped_column(Integer)
+    # "Vorher Snapshot anlegen": requested, and the name of the snapshot once taken
+    snapshot_requested: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
+    snapshot: Mapped[Optional[str]] = mapped_column(String(64))
     created_by: Mapped[Optional[str]] = mapped_column(String(255))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     started_at: Mapped[Optional[datetime]] = mapped_column(DateTime)

@@ -119,6 +119,21 @@ def _patch_exec(monkeypatch, maker, calls, scans, detached=None):
         monkeypatch.setattr(runner, "_run_detached", fake_detached)
 
 
+SNAPSHOTS = []
+
+
+@pytest.fixture(autouse=True)
+def fake_snapshots(monkeypatch):
+    """No Proxmox in the tests: snapshots "succeed" and are recorded (test_snapshot_* override this)."""
+    from vigilance.actions import snapshots
+    SNAPSHOTS.clear()
+
+    async def create(node, inv, name):
+        SNAPSHOTS.append((inv.name, name))
+        return True, None
+    monkeypatch.setattr(snapshots, "create", create)
+
+
 async def _wait_batch(client, batch):
     for _ in range(100):
         await asyncio.sleep(0.02)
@@ -333,3 +348,80 @@ async def test_available_lists_only_hosts_with_suggestions(client, any_engine):
             inv.upgrade_check = json.dumps({"lists_at": None, "candidates": {}})
         await db.commit()
     assert (await client.get("/api/actions/available")).json()["suggested"] == []
+
+
+@pytest.mark.asyncio
+async def test_snapshot_before_changes(client, any_engine, monkeypatch):
+    maker = async_sessionmaker(any_engine, class_=AsyncSession, expire_on_commit=False)
+    calls, scans = [], []
+    _patch_exec(monkeypatch, maker, calls, scans)
+    ids = [client.hosts["adguard"].id]
+    r = await client.post("/api/actions", json={"kind": "full_upgrade", "host_ids": ids}, headers=AUTH)
+    runs = await _wait_batch(client, r.json()["batch_id"])
+    assert runs["adguard"]["status"] == "ok"
+    assert [h for h, _ in SNAPSHOTS] == ["adguard"]
+    assert runs["adguard"]["snapshot"] == SNAPSHOTS[0][1] and SNAPSHOTS[0][1].startswith("vigilance-")
+    # switched off in the dialog: no snapshot
+    r = await client.post("/api/actions", json={"kind": "full_upgrade", "host_ids": ids, "snapshot": False}, headers=AUTH)
+    runs = await _wait_batch(client, r.json()["batch_id"])
+    assert runs["adguard"]["status"] == "ok" and runs["adguard"]["snapshot"] is None and len(SNAPSHOTS) == 1
+
+
+@pytest.mark.asyncio
+async def test_snapshot_failure_changes_nothing(client, any_engine, monkeypatch):
+    from vigilance.actions import snapshots
+    maker = async_sessionmaker(any_engine, class_=AsyncSession, expire_on_commit=False)
+    calls, scans = [], []
+    _patch_exec(monkeypatch, maker, calls, scans)
+
+    async def broken(node, inv, name):
+        return False, "dem Proxmox-Token fehlt das Recht VM.Snapshot"
+    monkeypatch.setattr(snapshots, "create", broken)
+    r = await client.post("/api/actions", json={"kind": "full_upgrade", "host_ids": [client.hosts["adguard"].id]},
+                          headers=AUTH)
+    runs = await _wait_batch(client, r.json()["batch_id"])
+    run = (await client.get(f"/api/actions/{runs['adguard']['id']}")).json()
+    assert run["status"] == "failed" and "VM.Snapshot" in run["output"] and "nichts geändert" in run["output"]
+    assert calls == [] and scans == []  # no command ran, so no rescan
+
+
+@pytest.mark.asyncio
+async def test_no_snapshot_for_the_proxmox_host(client, any_engine, monkeypatch):
+    maker = async_sessionmaker(any_engine, class_=AsyncSession, expire_on_commit=False)
+    calls, scans = [], []
+    _patch_exec(monkeypatch, maker, calls, scans)
+    node_id = await _node(client, any_engine)
+    r = await client.post("/api/actions", json={"kind": "full_upgrade", "host_ids": [node_id], "confirm_host": True},
+                          headers=AUTH)
+    runs = await _wait_batch(client, r.json()["batch_id"])
+    assert runs["pve"]["snapshot_requested"] is False and SNAPSHOTS == []
+
+
+def test_snapshot_names_and_ownership():
+    from datetime import datetime
+    from vigilance.actions.snapshots import _OURS, snapshot_name
+    name = snapshot_name(datetime(2026, 11, 26, 20, 51, 7))
+    assert name == "vigilance-20261126-205107" and _OURS.match(name)
+    assert not _OURS.match("vor-update") and not _OURS.match("vigilance-mein-snapshot")
+
+
+@pytest.mark.asyncio
+async def test_prune_keeps_own_and_newest(monkeypatch):
+    from types import SimpleNamespace
+    from vigilance.actions import snapshots
+    monkeypatch.setattr(snapshots.asyncio, "sleep", lambda s: asyncio.sleep(0))
+    deleted = []
+
+    class Client:
+        async def _request(self, method, path, **kw):
+            if method == "GET" and path.endswith("/snapshot"):
+                return {"data": [{"name": n} for n in ("current", "vor-update", "vigilance-20261101-101010",
+                                                        "vigilance-20261120-090000", "vigilance-20261126-205107")]}
+            if method == "DELETE":
+                deleted.append(path.rsplit("/", 1)[1])
+                return {"data": "UPID:x"}
+            return {"data": {"status": "stopped", "exitstatus": "OK"}}
+
+    inv = SimpleNamespace(type="lxc", vmid=124, name="netalertx")
+    removed = await snapshots._prune(Client(), "pve", inv, keep="vigilance-20261126-205107")
+    assert removed == deleted == ["vigilance-20261101-101010", "vigilance-20261120-090000"]
