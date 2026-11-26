@@ -3,6 +3,12 @@
 Alle nennenswerten Änderungen an Vigilance. Die Einträge bis 0.12.0 stammen aus den Pull Requests des
 ursprünglichen, privaten Repositorys; dessen Geschichte wurde vor der Veröffentlichung bereinigt.
 
+## Unveröffentlicht
+
+### Dokumentation
+- README mit Screenshots (Übersicht, Host, offene CVEs mit Fix), hell und dunkel je nach Einstellung
+  von GitHub. Aufgenommen mit einer Demo-Kopie: Namen und Adressen geändert, Befunde echt.
+
 ## 0.17.1 – 2026-11-26
 
 ### Geändert
