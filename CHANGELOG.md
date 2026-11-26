@@ -3,6 +3,18 @@
 Alle nennenswerten Änderungen an Vigilance. Die Einträge bis 0.12.0 stammen aus den Pull Requests des
 ursprünglichen, privaten Repositorys; dessen Geschichte wurde vor der Veröffentlichung bereinigt.
 
+## 0.20.0 – 2026-11-26
+
+### Neu
+- **Snapshot vor Änderungen:** Im Dialog von „Vorschläge umsetzen“, „Vollständiges Upgrade“ und „Kernel
+  aufräumen“ steht der Schalter „Vorher Snapshot anlegen“, standardmässig an. Direkt bevor Vigilance
+  einen Container oder eine VM ändert, legt es über die Proxmox-API den Snapshot
+  `vigilance-JJJJMMTT-HHMMSS` an und wartet darauf. Klappt das nicht, bleibt der Host unverändert und der
+  Lauf zeigt den Grund. Pro Host bleibt der neueste Snapshot von Vigilance; ältere löscht es, eigene
+  Snapshots nie. Verlauf und Dialog nennen den Snapshot; zurück geht es in Proxmox mit „Rollback“. Den
+  Proxmox-Host selbst kann Proxmox nicht als Snapshot sichern. Braucht das Recht `VM.Snapshot`
+  (Migration 008).
+
 ## 0.19.0 – 2026-11-26
 
 ### Neu

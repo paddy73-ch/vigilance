@@ -141,6 +141,11 @@ sichtbar, solange eine davon eingeschaltet ist.
   sudo-Regel (README). Damit kommt Vigilance als root in jeden laufenden Container des Nodes, auch in
   solche, die du ihm nicht freigegeben hast. Für VMs gibt es das nicht. Neue Container erkennt
   Vigilance erst beim nächsten Scan, nicht schon beim Start des Containers.
+- **Snapshot vor Änderungen** (Schalter im Dialog, standardmässig an): nur für Container und VMs, nicht für
+  den Proxmox-Host. Vigilance legt ihn an und räumt alte eigene auf, ein Rollback machst du in Proxmox.
+  Container mit Mountpoints auf Speicher ohne Snapshots (z. B. NFS, Bind-Mounts) lassen sich nicht
+  sichern; dann bleibt der Host unverändert, bis du den Schalter ausschaltest. Ein Snapshot liegt auf
+  demselben Speicher wie der Gast und ersetzt kein Backup.
 - „Vorschläge umsetzen“ installiert nur Fixes, die in den Paketquellen liegen, und entfernt nur
   Altpakete mit Risikoprüfung „unbedenklich“.
 - Geänderte Konfigurationsdateien bleiben, wie sie sind (`--force-confold`). Neue Standardwerte des

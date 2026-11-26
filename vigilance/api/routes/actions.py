@@ -21,6 +21,8 @@ class ActionRequest(BaseModel):
     host_ids: Optional[List[int]] = Field(None, description="Leer = alle laufenden LXC-Container")
     # Required to change the Proxmox host; the host is only accepted as the sole target
     confirm_host: bool = False
+    # Snapshot of each container / VM right before its commands run (not possible for the Proxmox host)
+    snapshot: bool = True
 
 
 async def _targets(db: AsyncSession, host_ids: Optional[List[int]]) -> List[Inventory]:
@@ -55,6 +57,7 @@ def _run_dict(r: ActionRun, with_output: bool = True) -> dict:
         "id": r.id, "batch_id": r.batch_id, "host_id": r.inventory_id, "host": r.host_name, "kind": r.kind,
         "status": r.status, "commands": json.loads(r.commands or "[]"), "skipped": json.loads(r.skipped or "[]"),
         "exit_code": r.exit_code, "created_by": r.created_by, "created_at": iso(r.created_at),
+        "snapshot": r.snapshot, "snapshot_requested": bool(r.snapshot_requested),
         "started_at": iso(r.started_at), "finished_at": iso(r.finished_at),
     }
     if with_output:
@@ -75,7 +78,7 @@ async def execute(body: ActionRequest, db: AsyncSession = Depends(get_db), user:
     if any(i.type == "node" for i in targets) and not body.confirm_host:
         raise HTTPException(status_code=400, detail="Für den Proxmox-Host ist eine ausdrückliche Bestätigung nötig.")
     try:
-        batch_id = await runner.start_batch(db, targets, body.kind, user.username)
+        batch_id = await runner.start_batch(db, targets, body.kind, user.username, snapshot=body.snapshot)
     except runner.ActionBusy:
         raise HTTPException(status_code=409, detail="Es läuft bereits eine Aktion. Bitte warten, bis sie fertig ist.")
     return {"batch_id": batch_id}

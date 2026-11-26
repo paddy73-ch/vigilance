@@ -26,6 +26,7 @@
           <template x-if="open[r.id]">
             <tr class="sub"><td colspan="6">
               <div class="stack">
+                <p class="faint" x-show="r.snapshot" x-text="'Vorher Snapshot ' + r.snapshot + ' angelegt. Zurück in Proxmox mit „Rollback“, solange Vigilance keinen neueren angelegt hat.'"></p>
                 <div class="cmd" x-show="r.commands.length"><code x-text="r.commands.join('\n')"></code></div>
                 <ul class="act-skipped" x-show="r.skipped.length">
                   <template x-for="s in r.skipped" :key="s.package"><li><span class="pkg" x-text="s.package"></span> <span class="faint" x-text="'übersprungen: ' + s.reason"></span></li></template>

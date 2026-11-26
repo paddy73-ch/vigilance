@@ -58,6 +58,16 @@
                   <label class="check"><input type="checkbox" x-model="confirmHost"> Ich habe die Simulation geprüft und will den Proxmox-Host ändern.</label>
                 </div>
               </template>
+              <template x-if="hasGuest()">
+                <div>
+                  <label class="switch-row"><span class="switch"><input type="checkbox" role="switch" x-model="snapshot"><span class="track"></span></span>
+                    Vorher Snapshot anlegen</label>
+                  <p class="faint" x-text="snapshot
+                    ? 'Vigilance legt direkt vor der Änderung einen Snapshot vigilance-… an und ändert den Host nur, wenn das klappt. Pro Host bleibt der neueste; ältere Snapshots von Vigilance werden gelöscht, deine eigenen nicht. Zurück geht es in Proxmox mit „Rollback“.'
+                    : 'Ohne Snapshot gibt es nach der Änderung keinen schnellen Weg zurück.'"></p>
+                  <p class="faint" x-show="hasNode()">Den Proxmox-Host selbst kann Proxmox nicht als Snapshot sichern.</p>
+                </div>
+              </template>
               <p class="faint" x-show="runnable().length > 1" x-text="parallelText()"></p>
               <p class="faint" x-show="hasVM() && kind !== 'kernel_cleanup'">Ein neuer Kernel in einer VM wird erst nach deren Neustart aktiv; den führt Vigilance nicht aus.</p>
               <p class="faint">Die Simulation nutzt die Paketlisten, wie sie auf den Hosts liegen. Bei der Ausführung lädt <code>apt-get update</code> sie neu, daher kann das Ergebnis leicht abweichen.</p>
@@ -71,7 +81,7 @@
               <template x-for="r in runs" :key="r.id">
                 <tbody>
                   <tr>
-                    <td x-text="r.host"></td>
+                    <td><span x-text="r.host"></span><div class="faint" x-show="r.snapshot" x-text="'Snapshot ' + r.snapshot"></div></td>
                     <td><span class="tag" :class="statusClass(r.status)" x-text="statusLabel(r.status)"></span></td>
                     <td class="right"><button class="btn btn-sm" x-show="r.output" @click="openLog[r.id] = !openLog[r.id]" x-text="openLog[r.id] ? 'Ausgabe schliessen' : 'Ausgabe'"></button></td>
                   </tr>

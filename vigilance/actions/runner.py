@@ -373,8 +373,10 @@ def is_busy() -> bool:
     return _starting or _lock.locked()
 
 
-async def start_batch(db: AsyncSession, inventories: List[Inventory], kind: str, user: Optional[str]) -> str:
-    """Create the runs and execute them in the background. Returns the batch id."""
+async def start_batch(db: AsyncSession, inventories: List[Inventory], kind: str, user: Optional[str],
+                      snapshot: bool = False) -> str:
+    """Create the runs and execute them in the background. Returns the batch id. With ``snapshot``,
+    each container / VM gets a snapshot right before its commands run (not the Proxmox host)."""
     global _starting
     if is_busy():
         raise ActionBusy()
@@ -391,7 +393,8 @@ async def start_batch(db: AsyncSession, inventories: List[Inventory], kind: str,
                 status, note = "skipped", "Nichts zu tun."
             db.add(ActionRun(batch_id=batch_id, inventory_id=inv.id, host_name=inv.name, kind=kind, status=status,
                              commands=json.dumps(p["commands"]), skipped=json.dumps(p["skipped"]),
-                             output=note, created_by=user))
+                             output=note, created_by=user,
+                             snapshot_requested=bool(snapshot) and inv.type in ("lxc", "qemu")))
         await db.commit()
         task = asyncio.create_task(_execute(batch_id), name=f"actions-{batch_id}")
         _tasks.add(task)
@@ -453,6 +456,19 @@ async def _execute_run(run_id: int) -> bool:
         run.status, run.started_at = "running", datetime.utcnow()
         await db.commit()
         changed = False
+        if run.snapshot_requested:
+            from vigilance.actions import snapshots
+            node = await db.get(ProxmoxNode, inv.proxmox_node_id)
+            name = snapshots.snapshot_name()
+            ok, why = await snapshots.create(node, inv, name)
+            if not ok:  # no snapshot, no change
+                run.status = "failed"
+                run.output = f"Snapshot fehlgeschlagen: {why}. Auf diesem Host wurde nichts geändert."
+                run.finished_at = datetime.utcnow()
+                await db.commit()
+                return False
+            run.snapshot = name
+            await db.commit()
         try:
             target = await _ssh_target(db, inv)
             body = script(json.loads(run.commands))
