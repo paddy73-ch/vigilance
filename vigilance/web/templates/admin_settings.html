@@ -20,7 +20,7 @@
             <div class="sched-field">
               <input id="s-cve_sync" class="input" type="number" min="1" max="168" x-model.number="s.cve_sync_interval_hours" x-show="!fixed('cve_sync')">
               <span class="input sched-times" x-show="fixed('cve_sync')" x-text="scheduleText('cve_sync')"></span>
-              <button type="button" class="btn btn-icon" @click="openSchedule('cve_sync')" :aria-label="'Zeitplan für ' + kindName('cve_sync') + ' einstellen'" title="Zeitplan: feste Uhrzeiten oder Intervall"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12,20A8,8 0 0,0 20,12A8,8 0 0,0 12,4A8,8 0 0,0 4,12A8,8 0 0,0 12,20M12,2A10,10 0 0,1 22,12A10,10 0 0,1 12,22C6.47,22 2,17.5 2,12A10,10 0 0,1 12,2M12.5,7V12.25L17,14.92L16.25,16.15L11,13V7H12.5Z"/></svg></button>
+              <button type="button" class="btn btn-icon" @click="openSchedule('cve_sync')" :aria-label="'Zeitplan für ' + kindName('cve_sync') + ' einstellen'" title="Zeitplan: Intervall, feste Uhrzeiten oder nach Scan"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12,20A8,8 0 0,0 20,12A8,8 0 0,0 12,4A8,8 0 0,0 4,12A8,8 0 0,0 12,20M12,2A10,10 0 0,1 22,12A10,10 0 0,1 12,22C6.47,22 2,17.5 2,12A10,10 0 0,1 12,2M12.5,7V12.25L17,14.92L16.25,16.15L11,13V7H12.5Z"/></svg></button>
             </div>
             <span class="hint" x-text="nextRunText('cve_sync') || 'Neue Advisories für bekannte Pakete'"></span></div>
           <div class="field"><label for="s-to">SSH-Timeout (Sekunden)</label><input id="s-to" class="input" type="number" min="5" max="300" x-model.number="s.ssh_timeout"></div>
@@ -108,7 +108,9 @@
           <div class="seg" role="group" aria-label="Art des Zeitplans">
             <button type="button" :aria-pressed="sched.mode === 'interval'" @click="sched.mode = 'interval'">Alle … Stunden</button>
             <button type="button" :aria-pressed="sched.mode === 'times'" @click="sched.mode = 'times'">Feste Uhrzeiten</button>
+            <button type="button" x-show="sched.kind === 'cve_sync'" :aria-pressed="sched.mode === 'after_scan'" @click="sched.mode = 'after_scan'">Nach Scan</button>
           </div>
+          <p class="faint" x-show="sched.mode === 'after_scan'">Der CVE-Abgleich startet, sobald ein Scan beendet ist – geplant oder von Hand gestartet. Dazwischen gibt es keine eigenen Läufe. Schlägt der Scan fehl, entfällt der Abgleich bis zum nächsten Scan.</p>
           <div class="field" x-show="sched.mode === 'interval'"><label for="sched-hours">Stunden</label>
             <input id="sched-hours" class="input" type="number" min="1" max="168" x-model.number="sched.hours">
             <span class="hint">Gezählt ab dem Speichern bzw. ab dem Start von Vigilance.</span></div>

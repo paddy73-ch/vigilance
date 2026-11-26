@@ -70,3 +70,41 @@ async def test_scan_job_is_not_paused():
     finally:
         s.shutdown(wait=False)
         sched.scheduler = None
+
+
+def test_after_scan_only_for_cve_sync():
+    assert schedule.normalize({"mode": "after_scan"}, "cve_sync") == {"mode": "after_scan"}
+    with pytest.raises(schedule.ScheduleError):
+        schedule.normalize({"mode": "after_scan"}, "scan")
+
+
+@pytest.mark.asyncio
+async def test_after_scan_pauses_the_sync_job():
+    """"Nach Scan": the CVE sync has no runs of its own, the scan job keeps running."""
+    from vigilance.core import scheduler as sched
+    schedule.SCHEDULES["cve_sync"] = {"mode": "after_scan"}
+    s = sched.init_scheduler()
+    s.start(paused=True)
+    try:
+        assert s.get_job("cve_sync_job").next_run_time is None
+        assert s.get_job("scan_job").next_run_time is not None
+        sched.reschedule_jobs()  # reschedule_job would resume it
+        assert s.get_job("cve_sync_job").next_run_time is None
+        schedule.SCHEDULES.pop("cve_sync")
+        sched.reschedule_jobs()  # back to the interval
+        assert s.get_job("cve_sync_job").next_run_time is not None
+    finally:
+        s.shutdown(wait=False)
+        sched.scheduler = None
+
+
+@pytest.mark.asyncio
+async def test_api_after_scan(client):  # noqa: F811
+    r = await client.put("/api/settings/schedule/cve_sync", headers=AUTH, json={"mode": "after_scan"})
+    assert r.status_code == 200, r.text
+    assert r.json()["schedule"] == {"mode": "after_scan"}
+    assert (await client.get("/api/settings")).json()["schedules"]["cve_sync"] == {"mode": "after_scan"}
+    assert (await client.put("/api/settings/schedule/scan", headers=AUTH,
+                             json={"mode": "after_scan"})).status_code == 400
+    r = await client.put("/api/settings/schedule/cve_sync", headers=AUTH, json={"mode": "interval", "hours": 6})
+    assert r.status_code == 200 and r.json()["schedule"] == {"mode": "interval", "hours": 6}

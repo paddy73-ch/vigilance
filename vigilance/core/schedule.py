@@ -7,6 +7,9 @@ Fixed times are set with the clock in Verwaltung › Einstellungen and stored as
 
 ``days`` are weekdays, Monday = 0; empty or missing means every day. Without an entry (or with
 ``mode: "interval"``) the job runs every ``scan_interval_hours`` / ``cve_sync_interval_hours``.
+
+The CVE sync can also be set to ``{"mode": "after_scan"}``: it then has no runs of its own and only
+runs as the second step of every scan pipeline (scan -> sync -> match), i.e. right after the scan ended.
 """
 
 import json
@@ -23,6 +26,8 @@ from vigilance.config import settings
 from vigilance.database import crud
 
 KINDS = {"scan": ("scan_interval_hours", 24), "cve_sync": ("cve_sync_interval_hours", 6)}
+# Jobs that may follow the scan instead of having their own schedule
+AFTER_SCAN_KINDS = {"cve_sync"}
 PREFIX = "schedule."
 DEFAULT_TZ = "Europe/Zurich"
 MAX_TIMES = 12
@@ -37,10 +42,14 @@ class ScheduleError(ValueError):
     pass
 
 
-def normalize(data: dict) -> Optional[dict]:
+def normalize(data: dict, kind: Optional[str] = None) -> Optional[dict]:
     """Validate a schedule from the UI. Returns the dict to store, or None for interval mode."""
     if (data or {}).get("mode", "interval") == "interval":
         return None
+    if data.get("mode") == "after_scan":
+        if kind is not None and kind not in AFTER_SCAN_KINDS:
+            raise ScheduleError("„Nach Scan“ gibt es nur für den CVE-Abgleich")
+        return {"mode": "after_scan"}
     if data.get("mode") != "times":
         raise ScheduleError("Unbekannte Art des Zeitplans")
     times = []
@@ -64,10 +73,18 @@ def normalize(data: dict) -> Optional[dict]:
     return {"mode": "times", "times": sorted(times), "days": days if len(days) < 7 else [], "timezone": tz}
 
 
+def after_scan(kind: str) -> bool:
+    """True if the job has no runs of its own and only runs as part of the scan pipeline."""
+    return (SCHEDULES.get(kind) or {}).get("mode") == "after_scan"
+
+
 def build_trigger(kind: str):
-    """APScheduler trigger for a job, from the fixed times or the interval."""
+    """APScheduler trigger for a job, from the fixed times or the interval.
+
+    In ``after_scan`` mode this is the interval trigger as a placeholder; the scheduler keeps
+    the job paused then (see ``scheduler.apply_schedule``)."""
     sched = SCHEDULES.get(kind)
-    if not sched:
+    if not sched or sched.get("mode") == "after_scan":
         attr, default = KINDS[kind]
         try:
             hours = max(1, int(getattr(settings, attr)))
@@ -99,7 +116,7 @@ async def load(db: AsyncSession) -> None:
         if not raw:
             continue
         try:
-            sched = normalize(json.loads(raw))
+            sched = normalize(json.loads(raw), kind)
         except (ValueError, TypeError):
             continue
         if sched:
@@ -109,7 +126,7 @@ async def load(db: AsyncSession) -> None:
 async def save(db: AsyncSession, kind: str, data: dict) -> Optional[dict]:
     if kind not in KINDS:
         raise ScheduleError("Unbekannter Auftrag")
-    sched = normalize(data)
+    sched = normalize(data, kind)
     if sched is None:
         hours = (data or {}).get("hours")
         if hours is not None:
