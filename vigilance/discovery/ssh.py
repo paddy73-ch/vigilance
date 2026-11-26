@@ -1,5 +1,6 @@
 import logging
 import paramiko
+import shlex
 import socket
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
@@ -22,6 +23,29 @@ class CommandResult:
 
 
 AUTH_REJECTED = "SSH-Anmeldung abgelehnt"
+
+DEFAULT_KEY_PATH = "/app/data/ssh/id_rsa"
+DEFAULT_KNOWN_HOSTS = "/app/data/ssh/known_hosts"
+
+# Containers reached through the Proxmox host ("pct exec") get this pseudo address instead of an IP.
+PCT_PREFIX = "pct:"
+PCT_COMMAND = "/usr/sbin/pct"
+# sshd allows 10 sessions per connection by default (MaxSessions); all containers of a node share one
+PCT_MAX_SESSIONS = 8
+PCT_SUDO_MISSING = ("sudo-Regel für pct exec fehlt auf dem Proxmox-Host: Der Scan-Benutzer darf "
+                    "„pct exec“ nicht als root ausführen (README, Abschnitt Zugang zu Containern)")
+
+
+def pct_host(node_name: str, vmid: int) -> str:
+    return f"{PCT_PREFIX}{node_name}:{int(vmid)}"
+
+
+def parse_pct_host(host: str):
+    """("pve", 124) for "pct:pve:124", else None."""
+    if not host or not host.startswith(PCT_PREFIX):
+        return None
+    node, _, vmid = host[len(PCT_PREFIX):].rpartition(":")
+    return (node, int(vmid)) if node and vmid.isdigit() else None
 
 
 def describe_connect_error(e: Exception, host: str, port: int) -> str:
@@ -133,10 +157,47 @@ class SSHClient:
             )
 
 
+class PctClient:
+    """Runs commands in a container with `sudo pct exec <vmid> -- sh -c …` over the SSH connection to its
+    Proxmox host. Same interface as SSHClient, so every discovery module and the actions use it as is."""
+
+    def __init__(self, label: str, node_client: "SSHClient", vmid: int, slots: threading.BoundedSemaphore):
+        self.host = label
+        self.vmid = int(vmid)
+        self._node = node_client
+        self._slots = slots
+
+    @property
+    def last_error(self) -> Optional[str]:
+        return self._node.last_error
+
+    def connect(self) -> bool:
+        return self._node.connect()
+
+    def disconnect(self):
+        pass  # the connection to the Proxmox host is shared with the other containers
+
+    def run_command(self, command: str, timeout: Optional[int] = None) -> CommandResult:
+        wrapped = f"sudo -n {PCT_COMMAND} exec {self.vmid} -- sh -c {shlex.quote(command)}"
+        with self._slots:
+            res = self._node.run_command(wrapped, timeout)
+        res.host, res.command = self.host, command
+        if not res.success:
+            err = res.stderr or ""
+            if err.startswith("sudo:"):
+                res.stderr = PCT_SUDO_MISSING
+            elif f"container '{self.vmid}' not running" in err:
+                res.stderr = f"Container {self.vmid} läuft nicht"
+            elif err.startswith("Configuration file") and "does not exist" in err:
+                res.stderr = f"Container {self.vmid} gibt es auf dem Proxmox-Host nicht"
+        return res
+
+
 class SSHClientPool:
     def __init__(self, max_workers: int = 10):
         self._max_workers = max_workers
         self._clients: Dict[str, SSHClient] = {}
+        self._pct_slots: Dict[str, threading.BoundedSemaphore] = {}
         self._lock = threading.Lock()
 
     @property
@@ -144,11 +205,26 @@ class SSHClientPool:
         return settings.ssh_parallel_jobs or self._max_workers
 
     def get_client(self, host: str, port: int, user: str, key_path: str, known_hosts: str, timeout: int) -> SSHClient:
+        pct = parse_pct_host(host)
+        if pct:
+            return self._pct_client(host, *pct, timeout)
         key = f"{host}:{port}:{user}"
         with self._lock:
             if key not in self._clients:
                 self._clients[key] = SSHClient(host, port, user, key_path, known_hosts, timeout)
             return self._clients[key]
+
+    def _pct_client(self, label: str, node_name: str, vmid: int, timeout: int):
+        """Container `vmid` through its Proxmox host: SSH as the host user (vigilance-scan), then pct exec."""
+        cfg = next((c for c in settings.proxmox_nodes if c.name == node_name), None)
+        if not cfg or not cfg.ssh_host:
+            raise RuntimeError(f"Kein SSH-Zugang zum Proxmox-Host {node_name} konfiguriert")
+        node_client = self.get_client(cfg.ssh_host, cfg.ssh_port or 22, cfg.host_user,
+                                      cfg.ssh_key_path or DEFAULT_KEY_PATH,
+                                      cfg.ssh_known_hosts or DEFAULT_KNOWN_HOSTS, timeout)
+        with self._lock:
+            slots = self._pct_slots.setdefault(node_name, threading.BoundedSemaphore(PCT_MAX_SESSIONS))
+        return PctClient(label, node_client, vmid, slots)
 
     def run_parallel(
         self,

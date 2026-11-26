@@ -5,6 +5,9 @@ proxmox:
       token_id: "vigilance@pam"
       token_secret: "from-env-or-here"
       verify_tls: true
+      # How the containers are reached: "pct" (through this host as host_user, default) or "ssh"
+      # (directly to each container as root); the switch in the UI wins. See README, step 4.
+      container_access: "pct"
       ssh:
         host: "pve-node1.example.com"
         port: 22

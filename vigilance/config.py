@@ -14,6 +14,8 @@ class ProxmoxNodeConfig:
         self.token_id = data.get("token_id")
         self.token_secret = data.get("token_secret")
         self.verify_tls = data.get("verify_tls", True)
+        # How the containers are reached: "pct" (through this host, default) or "ssh" (directly)
+        self.container_access = data.get("container_access")
         ssh = data.get("ssh", {})
         self.ssh_host = ssh.get("host")
         self.ssh_port = ssh.get("port", 22)

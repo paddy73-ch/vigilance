@@ -257,6 +257,21 @@ document.addEventListener("alpine:init", () => {
       } catch (e) { if (!e.cancelled) V.toast("Nicht gespeichert: " + e.message, true); }
       finally { this.saving = false; }
     },
+    anySsh() { return (this.s.proxmox_nodes || []).some((n) => n.container_access === "ssh"); },
+    async setAccess(n, mode) {
+      if (n.container_access === mode) return;
+      const before = n.container_access;
+      n.container_access = mode;
+      try {
+        await V.api("/api/settings/container-access/" + encodeURIComponent(n.name), {
+          method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mode }) });
+        V.toast(mode === "pct" ? "Container auf " + n.name + " werden ab dem nächsten Scan über den Proxmox-Host abgefragt."
+                               : "Container auf " + n.name + " werden ab dem nächsten Scan direkt per SSH abgefragt.");
+      } catch (e) {
+        n.container_access = before;
+        if (!e.cancelled) V.toast("Nicht gespeichert: " + e.message, true);
+      }
+    },
     async saveAutoinstall() {
       const on = this.s.ssh_key_autoinstall;
       try {

@@ -3,6 +3,21 @@
 Alle nennenswerten Änderungen an Vigilance. Die Einträge bis 0.12.0 stammen aus den Pull Requests des
 ursprünglichen, privaten Repositorys; dessen Geschichte wurde vor der Veröffentlichung bereinigt.
 
+## 0.18.0 – 2026-11-26
+
+### Neu
+- **Container über den Proxmox-Host abfragen (`pct exec`):** Vigilance meldet sich als `vigilance-scan`
+  auf dem Host an und führt Scan, Prüfungen, eigene Checks und Aktionen mit `sudo pct exec <id> -- …`
+  aus. In den Containern braucht es dann weder Schlüssel noch sshd noch IP; auch Container mit DHCP ohne
+  gemeldete Adresse werden gescannt. Einstellbar pro Node unter Verwaltung › Einstellungen › Proxmox und
+  SSH („Zugang zu den Containern“) oder mit `container_access` in `config.yaml`. Standard für neue
+  Installationen ist `pct`; bestehende behalten SSH (Migration 007), bis man umschaltet. Die nötige
+  sudo-Regel steht im README. Fehlt sie, steht das beim Container. VMs bleiben bei SSH.
+- **Hosts werden parallel gescannt:** Bisher kam ein Container nach dem anderen dran. Jetzt liest
+  Vigilance bis zu `ssh.parallel_jobs` Container und VMs gleichzeitig und speichert danach der Reihe nach.
+  Über `pct` sind es höchstens 8 gleichzeitig pro Node, weil sshd standardmässig 10 Sitzungen pro
+  Verbindung erlaubt.
+
 ## 0.17.3 – 2026-11-26
 
 ### Behoben

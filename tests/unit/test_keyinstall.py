@@ -28,7 +28,8 @@ async def test_switch_is_stored(client):  # noqa: F811
 
 
 async def _scan_ct(any_engine, monkeypatch, enabled, install_result, probes):
-    cfg = ProxmoxNodeConfig({"name": "pve", "url": "x", "ssh": {"host": "192.0.2.49", "key_path": "/k"}})
+    cfg = ProxmoxNodeConfig({"name": "pve", "url": "x", "container_access": "ssh",
+                             "ssh": {"host": "192.0.2.49", "key_path": "/k"}})
     monkeypatch.setattr(type(settings), "proxmox_nodes", property(lambda self: [cfg]), raising=False)
     answers = list(probes)
 

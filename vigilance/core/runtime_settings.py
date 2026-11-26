@@ -39,6 +39,8 @@ async def load(db: AsyncSession) -> None:
     await load_gotify(db)
     await load_source_overrides(db)
     await load_vm_overrides(db)
+    from vigilance.discovery import access
+    await access.load(db)
 
 
 async def load_gotify(db: AsyncSession) -> None:

@@ -87,15 +87,27 @@
           </dl>
         </template>
         <p class="faint">Kommt aus <code>.env</code> bzw. <code>config.yaml</code> und wird beim nächsten Scan übernommen.</p>
+        <template x-for="n in s.proxmox_nodes || []" :key="'acc-' + n.name">
+          <div class="field">
+            <span class="field-label" x-text="'Zugang zu den Containern auf ' + n.name"></span>
+            <div class="seg" role="group" :aria-label="'Zugang zu den Containern auf ' + n.name">
+              <button type="button" :aria-pressed="n.container_access === 'pct'" @click="setAccess(n, 'pct')" :disabled="!n.ssh_host">Über den Proxmox-Host (pct)</button>
+              <button type="button" :aria-pressed="n.container_access === 'ssh'" @click="setAccess(n, 'ssh')">Direkt per SSH</button>
+            </div>
+            <span class="hint" x-show="n.container_access === 'pct'" x-text="'Vigilance meldet sich als ' + n.host_user + ' auf ' + n.name + ' an und ruft „sudo pct exec“ auf. In den Containern braucht es weder Schlüssel noch sshd noch IP. Die sudo-Regel dafür steht im README.'"></span>
+            <span class="hint" x-show="n.container_access === 'ssh'">Vigilance verbindet sich als root mit der IP jedes Containers. Dafür muss dort sein Schlüssel eingetragen sein.</span>
+          </div>
+        </template>
         <div x-show="sshKey">
           <p class="cmd-label">Öffentlicher SSH-Schlüssel von Vigilance (für <code>/root/.ssh/authorized_keys</code> der Container)</p>
           <div class="cmd"><code x-text="sshKey"></code><button class="btn btn-sm" @click="V.copy(sshKey)">Kopieren</button></div>
         </div>
-        <label class="switch-row"><span class="switch"><input type="checkbox" role="switch" x-model="s.ssh_key_autoinstall" @change="saveAutoinstall()"><span class="track"></span></span>
+        <label class="switch-row" :class="{ off: !anySsh() }"><span class="switch"><input type="checkbox" role="switch" x-model="s.ssh_key_autoinstall" @change="saveAutoinstall()" :disabled="!anySsh()"><span class="track"></span></span>
           Schlüssel in neue Container selbst eintragen</label>
         <p class="faint">Lehnt ein laufender Container den Schlüssel ab, lässt Vigilance ihn vom Proxmox-Host eintragen und
           scannt gleich weiter. Dafür braucht der Host das Hilfsskript <code x-text="s.ssh_key_helper"></code> und eine
-          sudo-Regel für den Scan-Benutzer (siehe Grenzen). VMs sind ausgenommen.</p>
+          sudo-Regel für den Scan-Benutzer (siehe Grenzen). VMs sind ausgenommen. Nur nötig für Nodes mit
+          Zugang „Direkt per SSH“.</p>
       </div>
     </section>
   </div>

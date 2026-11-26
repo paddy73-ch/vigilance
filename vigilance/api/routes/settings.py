@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from vigilance.discovery import keyinstall
+from vigilance.discovery import access, keyinstall
 from vigilance.core import schedule
 from vigilance.core.scheduler import next_runs, reschedule_jobs
 from vigilance.api.deps import get_db, get_current_user_optional, require_write_access
@@ -127,6 +127,9 @@ async def get_settings(
                 "token_id": node.token_id,
                 "verify_tls": node.verify_tls,
                 "ssh_host": node.ssh_host,
+                "host_user": node.host_user,
+                "container_access": access.mode_for(node.name),
+                "container_access_origin": access.origin_for(node.name),
             }
             for node in settings.proxmox_nodes
         ],
@@ -167,6 +170,28 @@ async def update_settings(
         from vigilance.core.scheduler import reschedule_jobs
         reschedule_jobs()
     return {"message": "Settings saved successfully"}
+
+
+class AccessUpdate(BaseModel):
+    mode: Literal["pct", "ssh"]
+
+
+@router.put("/settings/container-access/{node_name}")
+async def update_container_access(
+    node_name: str,
+    update: AccessUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_write_access),
+):
+    """How Vigilance reaches the containers of a node: through the Proxmox host (pct) or by SSH."""
+    cfg = next((c for c in settings.proxmox_nodes if c.name == node_name), None)
+    if not cfg:
+        raise HTTPException(status_code=404, detail="Unbekannter Node")
+    if update.mode == "pct" and not cfg.ssh_host:
+        raise HTTPException(status_code=400, detail="Für pct braucht der Node einen SSH-Zugang (ssh.host in config.yaml)")
+    await access.set_mode(db, node_name, update.mode)
+    await db.commit()
+    return {"name": node_name, "container_access": update.mode}
 
 
 class ScheduleUpdate(BaseModel):
