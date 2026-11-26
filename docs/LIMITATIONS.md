@@ -118,6 +118,13 @@ sichtbar, solange eine davon eingeschaltet ist.
   Defaults:vigilance-scan env_keep += "DEBIAN_FRONTEND NEEDRESTART_MODE NEEDRESTART_SUSPEND APT_LISTCHANGES_FRONTEND LC_ALL"
   vigilance-scan ALL=(root) NOPASSWD: /usr/bin/apt-get
   ```
+- **Schlüssel selbst eintragen** (Schalter unter Verwaltung › Einstellungen, aus als Standard): Lehnt ein
+  laufender Container den Schlüssel von Vigilance ab, ruft Vigilance auf dem Proxmox-Host
+  `sudo -n /usr/local/sbin/vigilance-install-key <CT-ID>` auf und scannt danach weiter. Das Skript
+  enthält den Schlüssel fest, andere Schlüssel lassen sich damit nicht eintragen; es braucht eine eigene
+  sudo-Regel (README). Damit kommt Vigilance als root in jeden laufenden Container des Nodes, auch in
+  solche, die du ihm nicht freigegeben hast. Für VMs gibt es das nicht. Neue Container erkennt
+  Vigilance erst beim nächsten Scan, nicht schon beim Start des Containers.
 - „Vorschläge umsetzen“ installiert nur Fixes, die in den Paketquellen liegen, und entfernt nur
   Altpakete mit Risikoprüfung „unbedenklich“.
 - Geänderte Konfigurationsdateien bleiben, wie sie sind (`--force-confold`). Neue Standardwerte des

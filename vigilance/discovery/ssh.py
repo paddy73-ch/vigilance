@@ -21,10 +21,13 @@ class CommandResult:
     success: bool
 
 
+AUTH_REJECTED = "SSH-Anmeldung abgelehnt"
+
+
 def describe_connect_error(e: Exception, host: str, port: int) -> str:
     """Short German reason for a failed SSH connect, shown in the UI."""
     if isinstance(e, paramiko.AuthenticationException):
-        return ("SSH-Anmeldung abgelehnt: Der Schlüssel von Vigilance ist auf dem Host nicht eingetragen "
+        return (AUTH_REJECTED + ": Der Schlüssel von Vigilance ist auf dem Host nicht eingetragen "
                 "(Verwaltung › Einstellungen)")
     if isinstance(e, paramiko.BadHostKeyException):
         return f"SSH-Host-Schlüssel von {host} hat sich geändert"

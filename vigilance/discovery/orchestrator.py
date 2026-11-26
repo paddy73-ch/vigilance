@@ -20,7 +20,8 @@ from vigilance.discovery.docker import discover_docker_on_host, DockerContainer,
 from vigilance.discovery.packages import discover_packages_on_host, PackageInfo
 from vigilance.discovery.services import discover_services_on_host, ServiceInfo
 from vigilance.discovery.custom import run_all_custom_checks, CustomCheckResult
-from vigilance.discovery.ssh import get_ssh_pool
+from vigilance.discovery.ssh import AUTH_REJECTED, get_ssh_pool
+from vigilance.discovery import keyinstall
 from vigilance.discovery.osinfo import probe_os
 from vigilance.discovery.sshkey import ensure_ssh_key
 from vigilance.discovery.removal import check_kernels, check_removal, check_upgrades, dumps as dump_removal, obsolete_binaries
@@ -302,6 +303,17 @@ class DiscoveryOrchestrator:
             "known_hosts": ssh_known_hosts,
         }
 
+    async def _try_key_install(self, inventory: Inventory, ssh_config: dict, error: str):
+        """The container rejects our key: let the Proxmox host put it in, then try once more."""
+        node = await self.db.get(ProxmoxNode, inventory.proxmox_node_id)
+        node_config = next((c for c in settings.proxmox_nodes if node and c.name == node.name), None)
+        ok, why = await keyinstall.install_key(node_config, inventory.vmid,
+                                               ssh_config["key_path"], ssh_config["known_hosts"])
+        if not ok:
+            return None, f"{error}. Selbst eintragen fehlgeschlagen: {why}"
+        return await probe_os(ssh_config["host"], ssh_config["port"], ssh_config["user"],
+                              ssh_config["key_path"], ssh_config["known_hosts"])
+
     async def _run_ssh_discovery(
         self,
         inventory: Inventory,
@@ -320,6 +332,9 @@ class DiscoveryOrchestrator:
         #    also tells whether the host is reachable at all
         inventory.last_scan_at = datetime.utcnow()
         os_info, error = await probe_os(host, port, user, key_path, known_hosts)
+        if not os_info and inventory.type == "lxc" and (error or "").startswith(AUTH_REJECTED) \
+                and await keyinstall.autoinstall_enabled(self.db):
+            os_info, error = await self._try_key_install(inventory, ssh_config, error)
         if not os_info:
             inventory.last_scan_status = "unreachable"
             inventory.last_scan_error = error

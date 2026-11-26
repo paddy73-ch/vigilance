@@ -94,6 +94,17 @@ document.addEventListener("alpine:init", () => {
       } catch (e) { if (!e.cancelled) V.toast("Nicht gespeichert: " + e.message, true); }
       finally { this.saving = false; }
     },
+    async saveAutoinstall() {
+      const on = this.s.ssh_key_autoinstall;
+      try {
+        await V.api("/api/settings", { method: "POST", headers: { "Content-Type": "application/json" },
+                                       body: JSON.stringify({ ssh_key_autoinstall: on }) });
+        V.toast(on ? "Vigilance trägt seinen Schlüssel ab dem nächsten Scan selbst ein." : "Schlüssel wird nicht mehr selbst eingetragen.");
+      } catch (e) {
+        this.s.ssh_key_autoinstall = !on;
+        if (!e.cancelled) V.toast("Nicht gespeichert: " + e.message, true);
+      }
+    },
     async rotate() {
       if (!confirm("Neuen API-Token erzeugen? Der bisherige funktioniert danach nicht mehr.")) return;
       this.rotating = true;

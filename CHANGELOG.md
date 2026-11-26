@@ -3,6 +3,15 @@
 Alle nennenswerten Änderungen an Vigilance. Die Einträge bis 0.12.0 stammen aus den Pull Requests des
 ursprünglichen, privaten Repositorys; dessen Geschichte wurde vor der Veröffentlichung bereinigt.
 
+## 0.15.0 – 2026-11-26
+
+### Neu
+- **Schlüssel in neue Container selbst eintragen:** Schalter unter Verwaltung › Einstellungen › Proxmox
+  und SSH (aus als Standard). Lehnt ein laufender Container den Schlüssel von Vigilance ab, trägt der
+  Proxmox-Host ihn über `scripts/vigilance-install-key` ein, und der Scan geht weiter. Das Skript hat den
+  Schlüssel fest eingebaut und läuft über eine eigene sudo-Regel für `vigilance-scan`. Fehlt die Regel,
+  steht das beim Host.
+
 ## 0.14.1 – 2026-11-26
 
 ### Behoben
