@@ -162,7 +162,10 @@ in `.env`. Set `VIGILANCE_PUBLIC_URL` to get a link to the host in each message.
 | `VIGILANCE_SSH_PARALLEL_JOBS` | Parallel SSH connections | `10` |
 | `VIGILANCE_LOG_LEVEL` | Log level | `INFO` |
 
-Gotify settings and source switches saved in the UI take precedence over these values.
+Gotify settings and source switches saved in the UI take precedence over these values. The clock next
+to "Scan alle … Stunden" and "CVE-Abgleich alle … Stunden" (Verwaltung › Einstellungen) sets fixed times
+of day instead, optionally only on some weekdays, in the browser's time zone; those take precedence over
+the intervals.
 
 ### `config.yaml`
 

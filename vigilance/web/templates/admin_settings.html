@@ -9,8 +9,20 @@
       <div class="panel-head"><h2>Zeitplan</h2></div>
       <form class="panel-pad stack" @submit.prevent="save()">
         <div class="form-row">
-          <div class="field"><label for="s-scan">Scan alle … Stunden</label><input id="s-scan" class="input" type="number" min="1" max="168" x-model.number="s.scan_interval_hours"><span class="hint">Scan, danach CVE-Abgleich und Auswertung</span></div>
-          <div class="field"><label for="s-sync">CVE-Abgleich alle … Stunden</label><input id="s-sync" class="input" type="number" min="1" max="168" x-model.number="s.cve_sync_interval_hours"><span class="hint">Neue Advisories für bekannte Pakete</span></div>
+          <div class="field"><label :for="fixed('scan') ? null : 's-scan'">Scan alle … Stunden</label>
+            <div class="sched-field">
+              <input id="s-scan" class="input" type="number" min="1" max="168" x-model.number="s.scan_interval_hours" x-show="!fixed('scan')">
+              <span class="input sched-times" x-show="fixed('scan')" x-text="scheduleText('scan')"></span>
+              <button type="button" class="btn btn-icon" @click="openSchedule('scan')" :aria-label="'Zeitplan für ' + kindName('scan') + ' einstellen'" title="Zeitplan: feste Uhrzeiten oder Intervall"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12,20A8,8 0 0,0 20,12A8,8 0 0,0 12,4A8,8 0 0,0 4,12A8,8 0 0,0 12,20M12,2A10,10 0 0,1 22,12A10,10 0 0,1 12,22C6.47,22 2,17.5 2,12A10,10 0 0,1 12,2M12.5,7V12.25L17,14.92L16.25,16.15L11,13V7H12.5Z"/></svg></button>
+            </div>
+            <span class="hint" x-text="nextRunText('scan') || 'Scan, danach CVE-Abgleich und Auswertung'"></span></div>
+          <div class="field"><label :for="fixed('cve_sync') ? null : 's-cve_sync'">CVE-Abgleich alle … Stunden</label>
+            <div class="sched-field">
+              <input id="s-cve_sync" class="input" type="number" min="1" max="168" x-model.number="s.cve_sync_interval_hours" x-show="!fixed('cve_sync')">
+              <span class="input sched-times" x-show="fixed('cve_sync')" x-text="scheduleText('cve_sync')"></span>
+              <button type="button" class="btn btn-icon" @click="openSchedule('cve_sync')" :aria-label="'Zeitplan für ' + kindName('cve_sync') + ' einstellen'" title="Zeitplan: feste Uhrzeiten oder Intervall"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12,20A8,8 0 0,0 20,12A8,8 0 0,0 12,4A8,8 0 0,0 4,12A8,8 0 0,0 12,20M12,2A10,10 0 0,1 22,12A10,10 0 0,1 12,22C6.47,22 2,17.5 2,12A10,10 0 0,1 12,2M12.5,7V12.25L17,14.92L16.25,16.15L11,13V7H12.5Z"/></svg></button>
+            </div>
+            <span class="hint" x-text="nextRunText('cve_sync') || 'Neue Advisories für bekannte Pakete'"></span></div>
           <div class="field"><label for="s-to">SSH-Timeout (Sekunden)</label><input id="s-to" class="input" type="number" min="5" max="300" x-model.number="s.ssh_timeout"></div>
           <div class="field"><label for="s-par">Parallele SSH-Verbindungen</label><input id="s-par" class="input" type="number" min="1" max="50" x-model.number="s.ssh_parallel_jobs"></div>
         </div>
@@ -87,5 +99,66 @@
       </div>
     </section>
   </div>
+  <template x-if="sched.kind">
+    <div class="dialog-scrim" @click.self="closeSchedule()" @keydown.escape.window="escSchedule()">
+      <form class="dialog" role="dialog" aria-modal="true" aria-labelledby="sched-title" @submit.prevent="saveSchedule()">
+        <h2 id="sched-title" x-text="'Zeitplan für ' + kindName(sched.kind)"></h2>
+
+        <div class="stack" x-show="!clock.open">
+          <div class="seg" role="group" aria-label="Art des Zeitplans">
+            <button type="button" :aria-pressed="sched.mode === 'interval'" @click="sched.mode = 'interval'">Alle … Stunden</button>
+            <button type="button" :aria-pressed="sched.mode === 'times'" @click="sched.mode = 'times'">Feste Uhrzeiten</button>
+          </div>
+          <div class="field" x-show="sched.mode === 'interval'"><label for="sched-hours">Stunden</label>
+            <input id="sched-hours" class="input" type="number" min="1" max="168" x-model.number="sched.hours">
+            <span class="hint">Gezählt ab dem Speichern bzw. ab dem Start von Vigilance.</span></div>
+          <div class="stack" x-show="sched.mode === 'times'">
+            <div class="field"><span class="field-label">Uhrzeiten</span>
+              <div class="time-chips">
+                <template x-for="(t, i) in sched.times" :key="t">
+                  <span class="time-chip"><button type="button" class="tc-time" @click="editTime(i)" :aria-label="t + ' ändern'" x-text="t"></button><button type="button" class="tc-x" @click="removeTime(i)" :aria-label="t + ' entfernen'">×</button></span>
+                </template>
+                <button type="button" class="btn btn-sm" @click="addTime()" :disabled="sched.times.length >= 12">+ Uhrzeit</button>
+              </div></div>
+            <div class="field"><span class="field-label">Wochentage</span>
+              <div class="days" role="group" aria-label="Wochentage">
+                <template x-for="(d, i) in DAYS" :key="i">
+                  <button type="button" :aria-pressed="sched.days.includes(i)" @click="toggleDay(i)" x-text="d"></button>
+                </template>
+              </div></div>
+            <p class="faint" x-text="'Zeitzone: ' + sched.timezone"></p>
+          </div>
+          <p class="error" x-show="sched.error" x-text="sched.error"></p>
+          <div class="actions">
+            <button class="btn" type="button" @click="closeSchedule()">Abbrechen</button>
+            <button class="btn btn-primary" type="submit" :disabled="sched.saving">Speichern</button>
+          </div>
+        </div>
+
+        <div class="clock" x-show="clock.open">
+          <div class="clock-head">
+            <button type="button" :aria-pressed="clock.step === 'h'" @click="setStep('h')" x-text="pad(clock.h)" aria-label="Stunde wählen"></button><span aria-hidden="true">:</span><button type="button" :aria-pressed="clock.step === 'm'" @click="setStep('m')" x-text="pad(clock.m)" aria-label="Minute wählen"></button>
+          </div>
+          <div class="dial" tabindex="0" role="slider" x-ref="dial"
+               :aria-label="clock.step === 'h' ? 'Stunde' : 'Minute'" :aria-valuenow="clock.step === 'h' ? clock.h : clock.m"
+               aria-valuemin="0" :aria-valuemax="clock.step === 'h' ? 23 : 59" :aria-valuetext="pad(clock.h) + ':' + pad(clock.m)"
+               @pointerdown.prevent="dialDown($event)" @pointermove="dialMove($event)" @pointerup="dialUp($event)" @pointercancel="clock.drag = false"
+               @keydown="dialKey($event)">
+            <span class="dial-hand" :style="handStyle()"></span>
+            <span class="dial-tip" :style="tipStyle()"></span>
+            <span class="dial-center"></span>
+            <template x-for="n in dialNumbers()" :key="clock.step + n.v">
+              <span class="dial-num" :class="{ inner: n.inner, sel: n.sel }" :style="n.style" x-text="n.label"></span>
+            </template>
+          </div>
+          <p class="faint dial-help" x-text="clock.step === 'h' ? 'Stunde antippen oder ziehen, innen 00 und 13–23.' : 'Minute antippen oder ziehen. Pfeiltasten ändern um eine Minute.'"></p>
+          <div class="actions">
+            <button class="btn" type="button" @click="clock.open = false">Zurück</button>
+            <button class="btn btn-primary" type="button" @click="clockOk()">OK</button>
+          </div>
+        </div>
+      </form>
+    </div>
+  </template>
 </div>
 {% endblock %}

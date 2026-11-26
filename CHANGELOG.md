@@ -3,6 +3,18 @@
 Alle nennenswerten Änderungen an Vigilance. Die Einträge bis 0.12.0 stammen aus den Pull Requests des
 ursprünglichen, privaten Repositorys; dessen Geschichte wurde vor der Veröffentlichung bereinigt.
 
+## 0.16.0 – 2026-11-26
+
+### Neu
+- **Zeitplan mit Uhr:** Neben „Scan alle … Stunden“ und „CVE-Abgleich alle … Stunden“ öffnet ein
+  Uhrsymbol den Zeitplan. Dort wählst du statt eines Intervalls feste Uhrzeiten, bis zu zwölf pro Tag, auf
+  einer analogen Uhr wie bei Android: zuerst die Stunde (innen 00 und 13–23), dann die Minute; Pfeiltasten
+  gehen auch. Wochentage lassen sich abwählen. Es gilt die Zeitzone des Browsers. Unter den Feldern steht
+  der nächste Lauf.
+
+### Behoben
+- Mit `full_scan_on_start: false` lief der regelmässige Scan nie: Der Auftrag wurde pausiert angelegt.
+
 ## 0.15.0 – 2026-11-26
 
 ### Neu
