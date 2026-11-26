@@ -3,6 +3,13 @@
 Alle nennenswerten Änderungen an Vigilance. Die Einträge bis 0.12.0 stammen aus den Pull Requests des
 ursprünglichen, privaten Repositorys; dessen Geschichte wurde vor der Veröffentlichung bereinigt.
 
+## 0.20.3 – 2026-11-26
+
+### Behoben
+- Übersicht: Eine Hostkarte mit langem Namen (z. B. `proxmox-datacenter-manager`) wurde breiter als ihre
+  Spalte, samt Balken, und „CT 125“ brach um. Jetzt wird der Name mit „…“ gekürzt (voller Name als
+  Tooltip), die Kennung bricht nie um.
+
 ## 0.20.2 – 2026-11-26
 
 ### Geändert
