@@ -3,6 +3,15 @@
 Alle nennenswerten Änderungen an Vigilance. Die Einträge bis 0.12.0 stammen aus den Pull Requests des
 ursprünglichen, privaten Repositorys; dessen Geschichte wurde vor der Veröffentlichung bereinigt.
 
+## 0.17.3 – 2026-11-26
+
+### Behoben
+- In Proxmox gelöschte Container und VMs (`pct destroy`, `qm destroy`) blieben in Vigilance stehen. Jetzt
+  entfernt der nächste Scan sie samt Paketen, Befunden, hostbezogenen Ausnahmen und der Scan-Einstellung
+  der VM; der Verlauf der Aktionen bleibt, ohne Verweis auf den Host. Meldet Proxmox gar keine Container
+  bzw. VMs, obwohl Vigilance welche kennt, wird nichts entfernt (Token ohne VM.Audit liefert eine leere
+  Liste statt eines Fehlers).
+
 ## 0.17.2 – 2026-11-26
 
 ### Neu
