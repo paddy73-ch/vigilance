@@ -416,7 +416,7 @@ async def host_summaries(db: AsyncSession, inventory_id: Optional[int] = None) -
             from vigilance.core.runtime_settings import VM_SCAN_OVERRIDES
             r["scan_origin"] = "ui" if r["vmid"] in VM_SCAN_OVERRIDES else "config"
             r["scan_ip"] = (VM_SCAN_OVERRIDES.get(r["vmid"]) or {}).get("ip")
-        os_name = {"debian": "Debian", "ubuntu": "Ubuntu", "alpine": "Alpine"}.get(r["os_id"] or "", r["os_id"] or "")
+        os_name = {"debian": "Debian", "ubuntu": "Ubuntu", "alpine": "Alpine", "windows": "Windows"}.get(r["os_id"] or "", r["os_id"] or "")
         r["os"] = " ".join(x for x in [os_name, r["os_version_id"] or ""] if x) or None
         if r["os"] and r["os_codename"]:
             r["os"] += f" ({r['os_codename']})"

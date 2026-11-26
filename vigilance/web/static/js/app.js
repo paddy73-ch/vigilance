@@ -180,6 +180,10 @@
       debianData: "Debian hat ein gleichnamiges Paket, installiert ist aber der Build dieser Paketquelle. Vigilance nutzt die Debian-Daten; Treffer und Fix-Versionen können deshalb ungenau sein.",
       noData: "Für diese Pakete gibt es keine Sicherheitsdaten, die Vigilance abfragt. Lücken darin werden nicht erkannt.",
     },
+    WINDOWS_NOTE: "Windows wird nicht gescannt. Vigilance liest die installierten Pakete per SSH aus dpkg, apk "
+      + "oder rpm und gleicht sie mit Advisories pro Paketversion ab. Windows hat keinen solchen Paketverwalter, "
+      + "und Microsoft veröffentlicht Lücken pro Windows-Build und Update (KB), nicht pro Paket. "
+      + "Aktuell hält die VM Windows Update.",
     hostLabel(h) { return h.type === "node" ? "Proxmox-Host" : (h.type === "qemu" ? "VM " : "CT ") + h.vmid; },
     // ---- solution and removal risk (see /api remedy objects)
     replacementText(rem) {

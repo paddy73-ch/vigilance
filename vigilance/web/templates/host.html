@@ -15,7 +15,7 @@
     <div class="stack">
       <div class="page-head">
         <div>
-          <h1 x-text="h.name"></h1>
+          <h1><span x-text="h.name"></span><template x-if="h.os_id === 'windows'"><span class="info" tabindex="0" role="img" :aria-label="V.WINDOWS_NOTE" :data-tip="V.WINDOWS_NOTE">i</span></template></h1>
           <p class="muted" x-text="[V.hostLabel(h), h.ip_address, h.os].filter(Boolean).join(', ')"></p>
         </div>
         <div class="right">
