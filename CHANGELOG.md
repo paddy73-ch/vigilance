@@ -3,7 +3,12 @@
 Alle nennenswerten Änderungen an Vigilance. Die Einträge bis 0.12.0 stammen aus den Pull Requests des
 ursprünglichen, privaten Repositorys; dessen Geschichte wurde vor der Veröffentlichung bereinigt.
 
-## Unveröffentlicht
+## 0.17.2 – 2026-11-26
+
+### Neu
+- Windows-VMs haben in der Hostliste und auf ihrer Hostseite ein (i) neben dem Namen. Es erklärt, warum
+  Vigilance sie nicht scannt: kein Paketverwalter wie dpkg, apk oder rpm, und Microsoft veröffentlicht
+  Lücken pro Windows-Build und Update (KB), nicht pro Paket. Als System steht „Windows“.
 
 ### Dokumentation
 - README mit Screenshots (Übersicht, Host, offene CVEs mit Fix), hell und dunkel je nach Einstellung
