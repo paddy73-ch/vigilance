@@ -171,7 +171,7 @@ code, .mono { font-family: var(--mono); font-size: 13px; }
 .meter .m-CRITICAL { background: var(--crit); } .meter .m-HIGH { background: var(--high); }
 .meter .m-MEDIUM { background: var(--med); } .meter .m-LOW { background: var(--low); }
 .meter.clear { background: var(--ok); opacity: 0.55; }
-.meter .m-TIDY { background: var(--tidy); }
+.meter .m-TIDY { background: var(--tidy); flex: 1; }
 .board-group { padding: 0 20px 16px; }
 .board-group summary { cursor: pointer; color: var(--muted); font-size: 14px; padding: 4px 0; }
 

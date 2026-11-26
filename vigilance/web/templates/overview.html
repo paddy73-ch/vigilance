@@ -54,7 +54,7 @@
               <div class="slot-top"><span class="slot-name" x-text="h.name"></span><span class="slot-id" x-text="V.hostLabel(h)"></span></div>
               <div class="meter" :class="{ clear: h.level === 'ok' && !h.cleanup }">
                 <template x-for="seg in V.meter(h)"><span :class="'m-' + seg.sev" :style="{ width: seg.pct + '%' }"></span></template>
-                <template x-if="h.cleanup && !V.meter(h).length"><span class="m-TIDY" style="width: 100%"></span></template>
+                <template x-if="h.cleanup && !V.meter(h).length"><span class="m-TIDY"></span></template>
               </div>
               <div class="slot-line" x-text="slotText(h)"></div>
             </a>
