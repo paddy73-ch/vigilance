@@ -3,9 +3,10 @@
 Self-hosted security and patch monitoring for a Proxmox VE homelab.
 
 Vigilance takes the inventory of a Proxmox node over its API, reads the installed packages of every
-running LXC container (and, if you list them, VMs and the Proxmox host) over SSH, matches them against
-security advisories and shows per host what to update or remove. It can run the fixes itself, with a
-simulated preview first, and notify you of new findings via Gotify.
+running LXC container (through the Proxmox host with `pct exec`, or by SSH), of the VMs you switch on and,
+optionally, of the Proxmox host itself. It matches them against security advisories and shows per host
+what to update, remove or tidy up. It can run the fixes itself, with a simulated preview and a snapshot
+first, and notify you of new findings via Gotify.
 
 The web UI is in German; this README and the code are in English.
 
@@ -18,9 +19,11 @@ The web UI is in German; this README and the code are in English.
 
 ## Features
 
-- **Inventory** of nodes, LXC containers and selected VMs via the Proxmox VE API, including stopped
-  containers and containers without an IP (shown with the reason).
-- **Package scan over SSH**: dpkg, apk and rpm packages; optionally Docker images, systemd services and
+- **Inventory** of nodes, LXC containers and VMs via the Proxmox VE API, including stopped ones. Guests
+  deleted in Proxmox disappear on the next scan. Windows and Home Assistant OS VMs are recognised and
+  marked as not scannable.
+- **Package scan** through the Proxmox host (`pct exec`, no key or IP needed in the containers) or by SSH,
+  several hosts at a time: dpkg, apk and rpm packages; optionally Docker images, systemd services and
   custom checks (`config.yaml`, `discovery:`).
 - **Advisory sources**: OSV.dev (Debian, Ubuntu, Alpine, Go modules), GitHub Security Advisories, the
   Tailscale security bulletins; optionally NVD, the Debian and the Ubuntu security trackers. Each source
@@ -28,11 +31,15 @@ The web UI is in German; this README and the code are in English.
 - **Version comparison** by the rules of each ecosystem (dpkg, SemVer, Docker tags).
 - **Per host what to do**: update commands for fixes that are in the host's package sources, removal of
   old packages left over from a release upgrade (with a read-only removal check), kernel packages in
-  containers, packages from vendor repositories.
+  containers, headers of kernels that are gone, compilers you no longer need (Vigilance asks), packages
+  from vendor repositories. Kernel CVEs on hosts that only have kernel headers count as not affected.
 - **Actions**: run the suggested commands or a full upgrade from the UI, on one host or on all
-  containers and VMs, with an `apt-get -s` preview, parallel runs and a log.
+  containers and VMs, with an `apt-get -s` preview, a snapshot of each container or VM first, parallel
+  runs and a log.
 - **Exceptions** per host or everywhere, with a reason and an optional expiry. Advisories for the same
   CVE (e.g. `DEBIAN-CVE-…` and `DSA-…`) count as one vulnerability.
+- **Schedule**: scan and advisory sync every N hours or at fixed times of day (set on an analogue clock),
+  the sync optionally right after each scan.
 - **Gotify notifications** for new findings, single or as a digest.
 - **Web UI**: Jinja2 + Alpine.js, own CSS, no external resources (strict Content-Security-Policy),
   light/dark, usable on a phone.
@@ -41,16 +48,16 @@ The web UI is in German; this README and the code are in English.
 ## Architecture
 
 ```
-┌──────────────────┐  API   ┌──────────────────┐  HTTPS  ┌──────────────────┐
-│   Proxmox VE     │◀───────│    Vigilance     │────────▶│ Advisory sources │
-│   node           │        │    (FastAPI)     │         │ OSV, GHSA,       │
-└──────────────────┘        └───┬─────────┬────┘         │ Tailscale, (NVD, │
-┌──────────────────┐   SSH      │         │              │ Debian, Ubuntu)  │
-│ LXC containers,  │◀───────────┘         │              └──────────────────┘
-│ listed VMs, host │                      ▼
-└──────────────────┘            ┌──────────────────┐     ┌──────────────────┐
-                                │   PostgreSQL     │     │     Gotify       │
-                                └──────────────────┘     └──────────────────┘
+┌──────────────────┐ API, SSH ┌──────────────────┐  HTTPS  ┌──────────────────┐
+│ Proxmox VE node  │◀─────────│    Vigilance     │────────▶│ Advisory sources │
+│ (vigilance-scan) │          │    (FastAPI)     │         │ OSV, GHSA,       │
+└────────┬─────────┘          └───┬─────────┬────┘         │ Tailscale, (NVD, │
+         │ pct exec               │ SSH     │              │ Debian, Ubuntu)  │
+┌────────▼─────────┐   ┌──────────▼───────┐ │              └──────────────────┘
+│ LXC containers   │   │ VMs (and         │ ▼
+│                  │   │ containers, ssh) │ ┌──────────────────┐ ┌──────────────┐
+└──────────────────┘   └──────────────────┘ │   PostgreSQL     │ │    Gotify    │
+                                            └──────────────────┘ └──────────────┘
 ```
 
 ## Quick start
@@ -107,8 +114,9 @@ Containern") or with `container_access: pct | ssh` on the node in `config.yaml`;
 
 **Through the Proxmox host (`pct`, default).** Vigilance logs in to the host as the unprivileged user
 `vigilance-scan` and runs `sudo pct exec <id> -- …`. The containers need no key, no sshd and no known
-IP. Up to `ssh.parallel_jobs` containers are read at the same time, at most 8 per node over one SSH
-connection (sshd allows 10 sessions per connection by default). Each `pct exec` takes about half a
+IP. Up to `discovery.ssh.parallel_jobs` hosts (UI: "Parallele SSH-Verbindungen", default 10) are read at
+the same time, at most 8 containers per node over one SSH connection (sshd allows 10 sessions per
+connection by default). Each `pct exec` takes about half a
 second to start. On the Proxmox host:
 
 ```bash
@@ -200,7 +208,7 @@ in `.env`. Set `VIGILANCE_PUBLIC_URL` to get a link to the host in each message.
 | `VIGILANCE_NVD_API_KEY` | NVD API key (only if NVD is switched on) | – |
 | `VIGILANCE_GITHUB_TOKEN` | GitHub token for GHSA (higher rate limit) | – |
 | `VIGILANCE_SSH_TIMEOUT` | SSH timeout in seconds | `30` |
-| `VIGILANCE_SSH_PARALLEL_JOBS` | Parallel SSH connections | `10` |
+| `VIGILANCE_SSH_PARALLEL_JOBS` | Hosts scanned at the same time (via `pct`: at most 8 per node) | `10` |
 | `VIGILANCE_LOG_LEVEL` | Log level | `INFO` |
 
 Gotify settings and source switches saved in the UI take precedence over these values. The clock next
@@ -244,11 +252,16 @@ docker compose exec -u vigilance vigilance vigilance <command>
 
 ## Web UI
 
-- **Übersicht** (`/`): status of scan and sync, what can be fixed now, hosts, containers with
-  superfluous kernel packages, packages to look at first, 30-day trend.
-- **Hosts** (`/hosts`, `/hosts/{id}`): per container, VM or Proxmox host the packages to fix with the
-  commands, findings without a fix, packages from other sources, exceptions, scan problems; buttons
-  for the actions. In the host list, a right click on a VM switches its scan on or off.
+- **Übersicht** (`/`): status of scan and sync, what can be fixed now, a card per host, containers with
+  superfluous kernel packages, packages to look at first, 30-day trend. The bar on a host card shows the
+  fixable findings by severity, or green if there is nothing to fix; a violet fifth at its end means
+  something to tidy up (old kernel headers, kernel packages in a container, compilers whose question is
+  open or answered with "no"), named in the line below.
+- **Hosts** (`/hosts`, `/hosts/{id}`): the list is sortable by its columns and groups running hosts,
+  "Läuft, nicht gescannt" and "Gestoppt"; a right click (or ⋯) on a VM switches its scan on or off. Per
+  container, VM or Proxmox host: the packages to fix with the commands, findings without a fix,
+  findings that do not apply ("Nicht betroffen"), packages from other sources, compilers and old kernel
+  headers, exceptions, scan problems; buttons for the actions.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/host-dark.png">
@@ -264,7 +277,8 @@ docker compose exec -u vigilance vigilance vigilance <command>
 </picture>
 
 - **Verwaltung** (`/admin/…`): Quellen (sources on/off), Ausnahmen, Aktionen (log), Einstellungen
-  (schedule, API token, Gotify, Proxmox/SSH) and Grenzen (limitations).
+  (schedule with the clock, API token, Gotify, access to the containers, SSH key) and Grenzen
+  (limitations). „Behoben in 7 Tagen“ on the overview opens a log of all fixes.
 
 ## How it works
 
@@ -291,17 +305,20 @@ Every run needs the API token and shows a preview first: the commands, what is s
 what `apt-get -s` says would change.
 
 - **Vorschläge umsetzen**: `apt-get install --only-upgrade` for packages whose fix is in the host's
-  package sources, `apt-get purge` for old packages whose removal check is "ok", and the kernel cleanup
-  if nothing else would be removed.
+  package sources, `apt-get purge` for old packages whose removal check is "ok", the kernel cleanup if
+  nothing else would be removed, headers of kernels that are gone, and compilers answered with "no".
 - **Vollständiges Upgrade**: `apt-get update && apt-get full-upgrade` (`dist-upgrade` on the Proxmox
   host), non-interactive, existing configuration files are kept.
 - **Kernel aufräumen** (containers only): a container always runs the host's kernel, so kernel
   packages in it are never loaded. They come in e.g. with the `wireguard` meta package.
 
-Containers and listed VMs are changed as root. "All" on the Hosts page means all running containers and
-listed VMs, never the Proxmox host. Up to 4 hosts run in parallel; a host with `apt-cacher-ng` runs
-first and alone, because the others may download through it. Output and exit code of every run are
-kept, and a scan starts afterwards. Vigilance never reboots anything.
+Containers (through `pct exec` or by SSH) and VMs switched on for scanning are changed as root. "All" on
+the Hosts page means all running containers and those VMs, never the Proxmox host. With "Vorher Snapshot
+anlegen" (on by default) each container or VM gets a snapshot right before its commands run; if that
+fails, the host is left unchanged (see the token rights in step 2). Up to 4 hosts run in parallel; a host
+with `apt-cacher-ng` runs first and alone, because the others may download through it. Output, exit code
+and snapshot name of every run are kept, and a scan starts afterwards. Vigilance never reboots anything
+and never rolls back a snapshot; that is done in Proxmox.
 
 ### VMs
 
@@ -309,7 +326,8 @@ Every VM appears in the host list. Running VMs that are not scanned are grouped 
 gescannt". Switch scanning on with a right click on the row (or its ⋯ button) › "Für den Scan
 aktivieren …", optionally with an IP; a scan starts right away. That choice is stored in the database
 and takes precedence over `config.yaml`, where VMs can also be listed under the node. Scanned VMs are
-handled like containers (SSH as root with Vigilance's key, apt only). Windows and Home Assistant OS are
+handled like containers, but always by SSH as root with Vigilance's key (there is no `pct exec` for VMs),
+apt only. Windows and Home Assistant OS are
 not supported and cannot be switched on; they get an (i) with the reason. Windows is recognised by the
 VM's OS type. Home Assistant OS has the generic type "l26", so Vigilance asks the QEMU guest agent of a
 running VM (token right `VM.GuestAgent.Audit`) and otherwise looks for "haos" or "Home Assistant OS" in
@@ -353,8 +371,9 @@ Without it the preview says that the rule is missing and nothing runs. On the ho
 
 ### Let Vigilance put its key into new containers
 
-Only for nodes whose containers are reached directly by SSH. With the switch "Schlüssel in neue Container selbst eintragen" (Verwaltung › Einstellungen › Proxmox und
-SSH; off by default), a running container that rejects Vigilance's key gets it from the Proxmox host
+Only for nodes whose containers are reached directly by SSH. With the switch "Schlüssel in neue
+Container selbst eintragen" (Verwaltung › Einstellungen › Proxmox und SSH; off by default), a running
+container that rejects Vigilance's key gets it from the Proxmox host
 during the scan, and the scan goes on. The host runs only `scripts/vigilance-install-key`, which has the
 public key built in, through its own sudo rule for `vigilance-scan`. VMs are left out. On pve:
 
@@ -378,9 +397,9 @@ do they go into "Vorschläge umsetzen", with `purge --autoremove`. Unrelated pac
 take along only because they are marked as automatically installed are kept with apt's `name+` syntax,
 which also marks them as manually installed (on pve that was `sudo`). It is one apt-get command, so the
 preview simulates it and the sudo rule for apt-get covers it on the Proxmox host. If something depends on
-the tools, nothing is suggested and the host page says why. Header packages of
-kernels that are no longer installed (`proxmox-headers-6.2…` after the move to 7.0) are always suggested.
-The answer is stored per host.
+the tools, nothing is suggested and the host page says why. Header packages of kernels that are no longer
+installed (`proxmox-headers-6.2…` after the move to 7.0) are always suggested. The answer is stored per
+host and can be reset.
 
 ### Packages from vendor repositories
 
@@ -407,8 +426,8 @@ version become findings. The sources page shows the counts and lists the unrecog
 (`goos`). If that list does not include Linux, the finding gets the status "Nicht betroffen" instead of
 "open". The same happens to kernel CVEs on hosts where the only packages built from Debian's kernel
 source `linux` are header or build files (`linux-libc-dev`, `linux-headers-*`, `linux-kbuild-*`): they
-contain no kernel. If only the text names another system, Vigilance shows a hint ("laut Meldung nur FreeBSD") but
-does not hide the finding by itself.
+contain no kernel. If only the text names another system, Vigilance shows a hint ("laut Meldung nur
+FreeBSD") but does not hide the finding by itself.
 
 ### Limitations
 
@@ -464,13 +483,13 @@ vigilance/
 ├── scripts/                # distribute-ssh-key.sh, vigilance-install-key
 ├── tests/                  # unit and browser tests
 ├── vigilance/              # Python package
-│   ├── actions/            # running fixes (preview, batches, log)
+│   ├── actions/            # running fixes (preview, batches, log, snapshots)
 │   ├── api/                # FastAPI routes
 │   ├── cli/                # command line
-│   ├── core/               # auth, scheduler, notifications, settings from the UI
+│   ├── core/               # auth, scheduler and schedule, notifications, settings from the UI
 │   ├── cve/                # advisory sources, matching, version comparison
 │   ├── database/           # SQLAlchemy models, migrations, CRUD
-│   ├── discovery/          # Proxmox API, SSH, packages, removal check
+│   ├── discovery/          # Proxmox API, SSH and pct access, packages, removal and build-tool checks
 │   └── web/                # templates, CSS, JavaScript
 ├── CHANGELOG.md
 ├── deploy.sh
