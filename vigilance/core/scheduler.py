@@ -22,6 +22,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 
 from vigilance.config import settings
+from vigilance.core import schedule
 from vigilance.core.notifications import get_digest_queue, notify_digest
 from vigilance.cve.sync import CVESyncOrchestrator
 from vigilance.database import crud
@@ -121,17 +122,18 @@ def init_scheduler() -> AsyncIOScheduler:
 
     scheduler.add_job(
         run_scan_job,
-        IntervalTrigger(hours=_hours(settings.scan_interval_hours, 24)),
+        schedule.build_trigger("scan"),
         id="scan_job",
         name="Scan -> CVE sync -> match",
-        next_run_time=first_scan,
+        # next_run_time=None would add the job *paused* (APScheduler 3), so pass it only when set
+        **({"next_run_time": first_scan} if first_scan else {}),
         misfire_grace_time=3600,
         coalesce=True,
         max_instances=1,
     )
     scheduler.add_job(
         run_cve_sync_job,
-        IntervalTrigger(hours=_hours(settings.cve_sync_interval_hours, 6)),
+        schedule.build_trigger("cve_sync"),
         id="cve_sync_job",
         name="CVE sync -> match",
         misfire_grace_time=3600,
@@ -170,10 +172,19 @@ def reschedule_jobs():
     """Apply changed scan / CVE sync intervals (called after saving settings)."""
     if not scheduler:
         return
-    scheduler.reschedule_job("scan_job", trigger=IntervalTrigger(hours=_hours(settings.scan_interval_hours, 24)))
-    scheduler.reschedule_job("cve_sync_job", trigger=IntervalTrigger(hours=_hours(settings.cve_sync_interval_hours, 6)))
-    logger.info("Rescheduled jobs: scan every %sh, CVE sync every %sh",
-                settings.scan_interval_hours, settings.cve_sync_interval_hours)
+    scheduler.reschedule_job("scan_job", trigger=schedule.build_trigger("scan"))
+    scheduler.reschedule_job("cve_sync_job", trigger=schedule.build_trigger("cve_sync"))
+    logger.info("Rescheduled jobs: scan %s, CVE sync %s", schedule.describe("scan"), schedule.describe("cve_sync"))
+
+
+def next_runs() -> dict:
+    """Next start of the scan and the CVE sync (UTC, ISO), for the settings page."""
+    out = {}
+    for kind, job_id in (("scan", "scan_job"), ("cve_sync", "cve_sync_job")):
+        job = scheduler.get_job(job_id) if scheduler else None
+        when = getattr(job, "next_run_time", None) if job else None
+        out[kind] = when.astimezone(timezone.utc).isoformat().replace("+00:00", "Z") if when else None
+    return out
 
 
 async def start_scheduler():
@@ -238,6 +249,7 @@ async def lifespan(app):
                     pass
         from vigilance.core import runtime_settings
         await runtime_settings.load(db)  # Gotify and CVE sources as set in the UI
+        await schedule.load(db)  # fixed times for scan / CVE sync
     # Remediation runs that were cut off by a restart
     from vigilance.actions.runner import mark_interrupted
     async with async_session_maker() as db:

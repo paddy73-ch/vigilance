@@ -468,3 +468,34 @@ th[aria-sort="ascending"] .th-sort, th[aria-sort="descending"] .th-sort { color:
   background: none; color: var(--ink); font: inherit; font-size: 14px; cursor: pointer; text-decoration: none; }
 .ctx-menu button:hover, .ctx-menu a:hover, .ctx-menu button:focus-visible, .ctx-menu a:focus-visible { background: var(--action-soft); outline: none; }
 .ctx-menu button:disabled { color: var(--faint); cursor: not-allowed; background: none; }
+
+/* Zeitplan mit analoger Uhr */
+.sched-field { display: flex; gap: 6px; align-items: stretch; }
+.sched-field .input { flex: 1; min-width: 0; }
+.sched-times { display: flex; align-items: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; background: var(--surface-2); }
+.btn-icon { padding: 0 9px; display: inline-flex; align-items: center; justify-content: center; }
+.btn-icon svg { width: 20px; height: 20px; fill: currentColor; }
+.field-label { font-size: 13px; font-weight: 500; color: var(--muted); }
+.time-chips { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.time-chip { display: inline-flex; align-items: stretch; border: 1px solid var(--action); border-radius: 999px; overflow: hidden; background: var(--action-soft); }
+.time-chip button { border: 0; background: transparent; color: var(--action); font: 600 14px var(--mono); cursor: pointer; padding: 4px 6px 4px 12px; }
+.time-chip .tc-x { font: 500 16px var(--font); padding: 2px 10px 2px 4px; }
+.time-chip button:focus-visible { outline: 2px solid var(--action); outline-offset: -2px; }
+.days { display: flex; flex-wrap: wrap; gap: 6px; }
+.days button { width: 40px; height: 34px; border-radius: var(--radius); border: 1px solid var(--line-strong); background: var(--surface); color: var(--muted); font: 500 13px var(--font); cursor: pointer; }
+.days button[aria-pressed="true"] { background: var(--action); border-color: var(--action); color: var(--action-ink); }
+.clock { display: grid; justify-items: center; gap: 14px; }
+.clock .actions { justify-self: stretch; }
+.clock-head { display: flex; align-items: center; gap: 4px; font: 500 44px/1 var(--mono); color: var(--muted); }
+.clock-head button { font: inherit; padding: 6px 10px; border: 0; border-radius: var(--radius); background: var(--surface-2); color: var(--muted); cursor: pointer; }
+.clock-head button[aria-pressed="true"] { background: var(--action-soft); color: var(--action); }
+.dial { position: relative; width: 260px; height: 260px; border-radius: 50%; background: var(--surface-2); border: 1px solid var(--line); touch-action: none; user-select: none; cursor: pointer; flex: none; }
+.dial:focus-visible { outline: 2px solid var(--action); outline-offset: 3px; }
+.dial-center { position: absolute; left: 126px; top: 126px; width: 8px; height: 8px; border-radius: 50%; background: var(--action); }
+.dial-hand { position: absolute; left: 129px; bottom: 130px; width: 2px; background: var(--action); transform-origin: 50% 100%; }
+.dial-tip { position: absolute; border-radius: 50%; background: var(--action); }
+.dial-num { position: absolute; width: 34px; height: 34px; display: flex; align-items: center; justify-content: center; border-radius: 50%; font: 500 15px var(--font); color: var(--ink); pointer-events: none; }
+.dial-num.inner { font-size: 12px; color: var(--muted); }
+.dial-num.sel { color: var(--action-ink); }
+.dial-help { text-align: center; }
+@media (prefers-reduced-motion: no-preference) { .dial-hand, .dial-tip { transition: transform .12s, left .12s, top .12s; } }

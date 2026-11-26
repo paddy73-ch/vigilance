@@ -77,6 +77,10 @@ for attempt in $(seq 1 60); do
     sleep 3
 done
 
+# The previous image is now untagged ("dangling"); without this, every deployment leaves ~400 MB behind
+# until the disk is full. Only dangling images go, the running ones stay.
+docker image prune -f >/dev/null || true
+
 curl -fsS http://127.0.0.1:8000/api/health
 printf '\nDashboard severity counts: '
 curl -fsS http://127.0.0.1:8000/api/dashboard/stats | python3 -c 'import json,sys; print(json.dumps(json.load(sys.stdin).get("findings_by_severity", {}), sort_keys=True))'
