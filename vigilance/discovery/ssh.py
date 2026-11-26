@@ -21,6 +21,22 @@ class CommandResult:
     success: bool
 
 
+def describe_connect_error(e: Exception, host: str, port: int) -> str:
+    """Short German reason for a failed SSH connect, shown in the UI."""
+    if isinstance(e, paramiko.AuthenticationException):
+        return ("SSH-Anmeldung abgelehnt: Der Schlüssel von Vigilance ist auf dem Host nicht eingetragen "
+                "(Verwaltung › Einstellungen)")
+    if isinstance(e, paramiko.BadHostKeyException):
+        return f"SSH-Host-Schlüssel von {host} hat sich geändert"
+    if isinstance(e, paramiko.SSHException) and "not found in known_hosts" in str(e):
+        return f"SSH-Host-Schlüssel von {host} ist unbekannt"
+    if isinstance(e, (socket.timeout, TimeoutError)):
+        return f"Keine Antwort von {host} (Port {port})"
+    if isinstance(e, (paramiko.ssh_exception.NoValidConnectionsError, ConnectionError, OSError)):
+        return f"Keine SSH-Verbindung zu {host} (Port {port})"
+    return f"SSH-Verbindung zu {host} fehlgeschlagen"
+
+
 class SSHClient:
     def __init__(self, host: str, port: int, user: str, key_path: str, known_hosts: str, timeout: int = 30):
         self.host = host
@@ -30,6 +46,7 @@ class SSHClient:
         self.known_hosts = known_hosts
         self.timeout = timeout
         self._client: Optional[paramiko.SSHClient] = None
+        self.last_error: Optional[str] = None
         self._lock = threading.Lock()
 
     def connect(self) -> bool:
@@ -58,6 +75,7 @@ class SSHClient:
                 return True
             except Exception as e:
                 logger.error(f"SSH connection failed to {self.host}: {e}")
+                self.last_error = describe_connect_error(e, self.host, self.port)
                 self._client = None
                 return False
 
@@ -73,7 +91,7 @@ class SSHClient:
                 host=self.host,
                 command=command,
                 stdout="",
-                stderr=f"Failed to connect to {self.host}",
+                stderr=self.last_error or f"Keine SSH-Verbindung zu {self.host}",
                 exit_code=-1,
                 success=False,
             )
