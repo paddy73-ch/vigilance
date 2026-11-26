@@ -97,7 +97,7 @@ document.addEventListener("alpine:init", () => {
       } catch (e) { if (!e.cancelled) V.toast("Nicht geändert: " + e.message, true); }
     },
     stoppedNote(h) {
-      if (!h.scan_configured) return h.os_id === "windows" ? "Windows, wird nicht gescannt" : "Nicht für den Scan aktiviert";
+      if (!h.scan_configured) return V.unsupportedName(h) ? V.unsupportedName(h) + ", wird nicht gescannt" : "Nicht für den Scan aktiviert";
       if (h.last_scan_status === "unsupported") return h.last_scan_error || "Wird nicht gescannt";
       return h.patchable ? V.plural(h.patchable, "behebbarer Befund", "behebbare Befunde") : "keine Daten";
     },

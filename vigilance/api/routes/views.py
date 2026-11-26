@@ -16,6 +16,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import and_, case, distinct, func, not_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from vigilance.discovery.orchestrator import UNSUPPORTED_OS
 from vigilance.api.deps import get_current_user_optional, get_db, require_write_access
 from vigilance.config import configured_vm_ids
 from vigilance.cve.advisories import merge_advisories, same_vulnerability, vuln_key
@@ -416,7 +417,8 @@ async def host_summaries(db: AsyncSession, inventory_id: Optional[int] = None) -
             from vigilance.core.runtime_settings import VM_SCAN_OVERRIDES
             r["scan_origin"] = "ui" if r["vmid"] in VM_SCAN_OVERRIDES else "config"
             r["scan_ip"] = (VM_SCAN_OVERRIDES.get(r["vmid"]) or {}).get("ip")
-        os_name = {"debian": "Debian", "ubuntu": "Ubuntu", "alpine": "Alpine", "windows": "Windows"}.get(r["os_id"] or "", r["os_id"] or "")
+        os_name = {"debian": "Debian", "ubuntu": "Ubuntu", "alpine": "Alpine", "windows": "Windows",
+                   "haos": "Home Assistant OS"}.get(r["os_id"] or "", r["os_id"] or "")
         r["os"] = " ".join(x for x in [os_name, r["os_version_id"] or ""] if x) or None
         if r["os"] and r["os_codename"]:
             r["os"] += f" ({r['os_codename']})"
@@ -1120,8 +1122,8 @@ async def switch_vm_scan(inventory_id: int, body: VMScanSwitch, db: AsyncSession
             ipaddress.ip_address(ip)
         except ValueError:
             raise HTTPException(status_code=400, detail="Keine gültige IP-Adresse.")
-    if body.enabled and inv.os_id == "windows":
-        raise HTTPException(status_code=400, detail="Windows-VMs werden nicht gescannt.")
+    if body.enabled and inv.os_id in UNSUPPORTED_OS:
+        raise HTTPException(status_code=400, detail=UNSUPPORTED_OS[inv.os_id])
     await rs.set_vm_scan(db, inv.vmid, body.enabled, ip)
     if not body.enabled:
         inv.last_scan_status = "not_configured"

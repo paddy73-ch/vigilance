@@ -184,6 +184,11 @@
       + "oder rpm und gleicht sie mit Advisories pro Paketversion ab. Windows hat keinen solchen Paketverwalter, "
       + "und Microsoft veröffentlicht Lücken pro Windows-Build und Update (KB), nicht pro Paket. "
       + "Aktuell hält die VM Windows Update.",
+    HAOS_NOTE: "Home Assistant OS wird nicht gescannt. Es hat keinen Paketverwalter wie dpkg oder apk; alles "
+      + "läuft in Docker-Containern, die der Supervisor verwaltet, und root-SSH gibt es nur auf Port 22222. "
+      + "Aktuell hältst du es über die Updates in Home Assistant selbst.",
+    unsupportedNote(h) { return h.os_id === "windows" ? this.WINDOWS_NOTE : (h.os_id === "haos" ? this.HAOS_NOTE : ""); },
+    unsupportedName(h) { return h.os_id === "windows" ? "Windows" : (h.os_id === "haos" ? "Home Assistant OS" : ""); },
     hostLabel(h) { return h.type === "node" ? "Proxmox-Host" : (h.type === "qemu" ? "VM " : "CT ") + h.vmid; },
     // ---- solution and removal risk (see /api remedy objects)
     replacementText(rem) {

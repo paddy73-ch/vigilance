@@ -42,6 +42,15 @@ class ScanResult:
     new_findings: int = 0  # filled in by the CVE match step after the sync
 
 
+UNSUPPORTED_OS = {
+    "windows": "Windows-VMs werden nicht gescannt.",
+    "haos": "Home Assistant OS wird nicht gescannt.",
+}
+# Name or description of a Home Assistant OS VM, e.g. "haos-18.1" or the community script's
+# "Homeassistant OS VM"; a plain "homeassistant" VM may run HA on Debian and stays scannable.
+HAOS_HINT = re.compile(r"(?<![a-z])haos(?![a-z])|home ?assistant[ _-]?os(?![a-z])", re.IGNORECASE)
+
+
 class DiscoveryOrchestrator:
     def __init__(self, db: AsyncSession):
         self.db = db
@@ -150,14 +159,10 @@ class DiscoveryOrchestrator:
                 logger.info("VM %s to scan is not on node %s", entry["vmid"], node.name)
                 continue
             vm.ip = entry["ip"]
-            ostype = ""
-            try:
-                ostype = (await client.get_vm_config(node.name, vm.vmid)).get("ostype") or ""
-            except Exception as exc:
-                logger.info("Could not read config of VM %s: %s", vm.vmid, exc)
-            if ostype.startswith("w"):  # win7 … win11, wxp, w2k*
-                inv = await self._record_skipped(node, vm, "unsupported", "Windows-VMs werden nicht gescannt.", vtype="qemu")
-                inv.os_id = "windows"
+            kind = await self._unsupported_os(client, node.name, vm)
+            if kind:
+                inv = await self._record_skipped(node, vm, "unsupported", UNSUPPORTED_OS[kind], vtype="qemu")
+                inv.os_id = kind
                 continue
             if vm.status != "running":
                 await self._record_skipped(node, vm, "stopped", None, vtype="qemu")
@@ -249,18 +254,40 @@ class DiscoveryOrchestrator:
         await self._run_ssh_discovery(inventory, ssh_config, scan_run_id, result)
 
     async def _record_vm_not_scanned(self, client: ProxmoxClient, node: ProxmoxNode, vm):
-        """A VM that is not listed for scanning: keep name, state and whether it is Windows current,
-        never claim a scan."""
+        """A VM that is not listed for scanning: keep name, state and whether it is an unsupported system
+        (Windows, Home Assistant OS) current, never claim a scan."""
         inventory = await crud.upsert_inventory(
             self.db, proxmox_node_id=node.id, vmid=vm.vmid, name=vm.name, type="qemu", status=vm.status)
         inventory.last_scan_status = "not_configured"
         inventory.last_scan_error = "Nicht für den Scan aktiviert."
-        try:
-            ostype = (await client.get_vm_config(node.name, vm.vmid)).get("ostype") or ""
-        except Exception:
-            ostype = ""
-        if ostype.startswith("w"):
-            inventory.os_id = "windows"
+        kind = await self._unsupported_os(client, node.name, vm)
+        if kind:
+            inventory.os_id = kind
+        elif inventory.os_id in UNSUPPORTED_OS:
+            inventory.os_id = None  # no longer detected (e.g. renamed)
+
+    async def _unsupported_os(self, client: ProxmoxClient, node_name: str, vm, config: Optional[dict] = None):
+        """"windows", "haos" or None. Windows from the VM's OS type; Home Assistant OS from the guest agent of
+        a running VM (needs VM.GuestAgent.Audit), else from name or description (the Proxmox OS type is
+        just "l26", generic Linux)."""
+        if config is None:
+            try:
+                config = await client.get_vm_config(node_name, vm.vmid)
+            except Exception:
+                config = {}
+        if str(config.get("ostype") or "").startswith("w"):  # win7 … win11, wxp, w2k*
+            return "windows"
+        if vm.status == "running":
+            try:
+                info = await client.get_vm_osinfo(node_name, vm.vmid)
+            except Exception:
+                info = None  # no agent, or no right to ask it: fall back to the name
+            if info:
+                ident = (info.get("id") or "").lower()
+                names = " ".join(str(info.get(k) or "") for k in ("name", "pretty-name")).lower()
+                return "haos" if ident == "haos" or "home assistant" in names else None
+        text = f"{vm.name or ''} {config.get('description') or ''}"
+        return "haos" if HAOS_HINT.search(text) else None
 
     async def _record_skipped(self, node: ProxmoxNode, lxc, status: str, error: Optional[str], vtype: str = "lxc"):
         inventory = await crud.upsert_inventory(
