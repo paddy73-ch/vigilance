@@ -3,6 +3,14 @@
 Alle nennenswerten Änderungen an Vigilance. Die Einträge bis 0.12.0 stammen aus den Pull Requests des
 ursprünglichen, privaten Repositorys; dessen Geschichte wurde vor der Veröffentlichung bereinigt.
 
+## 0.14.1 – 2026-11-26
+
+### Behoben
+- „Jetzt scannen“ in der Übersicht startete keinen Scan, sondern meldete `Field required`: Der Endpunkt
+  `POST /api/scans/trigger` verlangte einen JSON-Body. Der Body ist jetzt optional.
+- Scheitert die SSH-Verbindung, nennt Vigilance den Grund statt pauschal „Failed to connect“: Schlüssel
+  nicht eingetragen, keine Verbindung, keine Antwort, Host-Schlüssel unbekannt oder geändert.
+
 ## 0.14.0 – 2026-11-25
 
 ### Neu

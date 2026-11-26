@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -23,11 +23,12 @@ async def list_scans(
 
 @router.post("/scans/trigger", response_model=ScanTriggerResponse)
 async def trigger_scan(
-    request: ScanTriggerRequest,
+    request: Optional[ScanTriggerRequest] = None,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_write_access),
 ):
-    """Trigger a new scan."""
+    """Trigger a new scan. The body is optional (the overview button sends none)."""
+    request = request or ScanTriggerRequest()
     scan_run_id = await trigger_scan_now(full=request.full)
     return ScanTriggerResponse(
         scan_run_id=scan_run_id,
