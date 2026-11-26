@@ -118,6 +118,9 @@ sichtbar, solange eine davon eingeschaltet ist.
   Defaults:vigilance-scan env_keep += "DEBIAN_FRONTEND NEEDRESTART_MODE NEEDRESTART_SUSPEND APT_LISTCHANGES_FRONTEND LC_ALL"
   vigilance-scan ALL=(root) NOPASSWD: /usr/bin/apt-get
   ```
+- **Gelöschte Container und VMs** verschwinden beim nächsten Scan samt ihren Befunden, auch aus „Behoben
+  in 7 Tagen“. Löschst du den letzten Container oder die letzte VM eines Nodes, bleibt der Eintrag stehen:
+  Eine leere Liste von Proxmox nimmt Vigilance nicht ernst, weil ein Token ohne Rechte genauso aussieht.
 - **Schlüssel selbst eintragen** (Schalter unter Verwaltung › Einstellungen, aus als Standard): Lehnt ein
   laufender Container den Schlüssel von Vigilance ab, ruft Vigilance auf dem Proxmox-Host
   `sudo -n /usr/local/sbin/vigilance-install-key <CT-ID>` auf und scannt danach weiter. Das Skript

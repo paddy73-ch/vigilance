@@ -5,15 +5,20 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import List, Optional
 
+from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from vigilance.config import settings
 from vigilance.database import crud
 from vigilance.database.models import (
+    ActionRun,
+    AppSetting,
     ProxmoxNode,
     Inventory,
     DiscoveredTool,
     ScanRun,
+    Suppression,
+    VulnerabilityFinding,
 )
 from vigilance.discovery.proxmox import ProxmoxClient, ProxmoxVM, ProxmoxLXC, get_all_proxmox_clients
 from vigilance.discovery.docker import discover_docker_on_host, DockerContainer, DockerImage
@@ -113,7 +118,10 @@ class DiscoveryOrchestrator:
             for vtype, lxc in all_targets:
                 await self._process_inventory_target(node, vtype, lxc, scan_run_id, result)
 
-            await self._discover_vms(client, node, scan_run_id, result)
+            vm_ids = await self._discover_vms(client, node, scan_run_id, result)
+            await self._remove_deleted_guests(node, "lxc", {lxc.vmid for lxc in lxcs})
+            if vm_ids is not None:
+                await self._remove_deleted_guests(node, "qemu", vm_ids)
 
         await self._scan_node_host(node, scan_run_id, result)
 
@@ -127,7 +135,7 @@ class DiscoveryOrchestrator:
             vms = await client.get_vms(node.name)
         except Exception as exc:
             logger.warning("Could not list VMs on %s: %s", node.name, exc)
-            return
+            return None
         by_id = {vm.vmid: vm for vm in vms}
         listed = {e["vmid"] for e in wanted}
         for vm in vms:
@@ -159,6 +167,40 @@ class DiscoveryOrchestrator:
                 continue
             result.nodes_scanned += 1
             await self._process_inventory_target(node, "qemu", vm, scan_run_id, result)
+        return set(by_id)
+
+    async def _remove_deleted_guests(self, node: ProxmoxNode, vtype: str, present: set) -> List[str]:
+        """Drop containers / VMs that Proxmox no longer lists (deleted with `pct destroy` / `qm destroy`),
+        with their packages, findings and host-specific exceptions.
+
+        An empty list from Proxmox while Vigilance knows such guests is not trusted: a token that lost
+        VM.Audit gets an empty list instead of an error, and that must not wipe the history."""
+        known = (await self.db.execute(
+            select(Inventory).where(Inventory.proxmox_node_id == node.id, Inventory.type == vtype))).scalars().all()
+        gone = [inv for inv in known if inv.vmid not in present]
+        if not gone:
+            return []
+        if not present:
+            logger.warning("Proxmox lists no %s on %s, but Vigilance knows %d; nothing removed (token rights?)",
+                           vtype, node.name, len(known))
+            return []
+        names = []
+        for inv in gone:
+            await self.db.execute(delete(Suppression).where(Suppression.inventory_id == inv.id))
+            await self.db.execute(
+                update(ActionRun).where(ActionRun.inventory_id == inv.id).values(inventory_id=None))
+            await self.db.execute(delete(AppSetting).where(AppSetting.key == f"vm_scan.{inv.vmid}"))
+            if vtype == "qemu":
+                from vigilance.core.runtime_settings import VM_SCAN_OVERRIDES
+                VM_SCAN_OVERRIDES.pop(inv.vmid, None)
+            tool_ids = select(DiscoveredTool.id).where(DiscoveredTool.inventory_id == inv.id).scalar_subquery()
+            await self.db.execute(delete(VulnerabilityFinding).where(VulnerabilityFinding.discovered_tool_id.in_(tool_ids)))
+            await self.db.execute(delete(DiscoveredTool).where(DiscoveredTool.inventory_id == inv.id))
+            names.append(f"{inv.name} ({vtype} {inv.vmid})")
+            await self.db.execute(delete(Inventory).where(Inventory.id == inv.id))
+        await self.db.flush()
+        logger.info("Removed deleted guests on %s: %s", node.name, ", ".join(names))
+        return names
 
     async def _vm_ip_from_agent(self, client: ProxmoxClient, node_name: str, vmid: int):
         """(ip, reason if none) from the QEMU guest agent."""
