@@ -51,7 +51,7 @@
       <div class="panel-head"><h2>Benachrichtigungen (Gotify)</h2></div>
       <form class="panel-pad stack" @submit.prevent="saveGotify()">
         <p class="muted" x-text="gotifyState()"></p>
-        <label class="check"><input type="checkbox" x-model="g.enabled"> Meldungen bei neuen Befunden senden</label>
+        <label class="switch-row"><span class="switch"><input type="checkbox" role="switch" x-model="g.enabled"><span class="track"></span></span> Meldungen bei neuen Befunden senden</label>
         <div class="field"><label for="g-url">Adresse des Gotify-Servers</label>
           <input id="g-url" class="input" type="url" placeholder="https://gotify.example.ch" x-model.trim="g.url" autocomplete="off"></div>
         <div class="field"><label for="g-token">App-Token</label>
@@ -66,7 +66,7 @@
           <div class="field"><label for="g-int">Sammelmeldung alle … Minuten</label>
             <input id="g-int" class="input" type="number" min="5" max="1440" x-model.number="g.digest_interval_minutes" :disabled="!g.digest_mode"></div>
         </div>
-        <label class="check"><input type="checkbox" x-model="g.digest_mode"> Sammelmeldung statt einzelner Meldungen</label>
+        <label class="switch-row"><span class="switch"><input type="checkbox" role="switch" x-model="g.digest_mode"><span class="track"></span></span> Sammelmeldung statt einzelner Meldungen</label>
         <div class="row-gap">
           <button class="btn btn-primary" type="submit" :disabled="savingGotify">Speichern</button>
           <button class="btn" type="button" @click="testGotify()" :disabled="testing">Testnachricht senden</button>
@@ -91,7 +91,7 @@
           <p class="cmd-label">Öffentlicher SSH-Schlüssel von Vigilance (für <code>/root/.ssh/authorized_keys</code> der Container)</p>
           <div class="cmd"><code x-text="sshKey"></code><button class="btn btn-sm" @click="V.copy(sshKey)">Kopieren</button></div>
         </div>
-        <label class="check"><input type="checkbox" x-model="s.ssh_key_autoinstall" @change="saveAutoinstall()">
+        <label class="switch-row"><span class="switch"><input type="checkbox" role="switch" x-model="s.ssh_key_autoinstall" @change="saveAutoinstall()"><span class="track"></span></span>
           Schlüssel in neue Container selbst eintragen</label>
         <p class="faint">Lehnt ein laufender Container den Schlüssel ab, lässt Vigilance ihn vom Proxmox-Host eintragen und
           scannt gleich weiter. Dafür braucht der Host das Hilfsskript <code x-text="s.ssh_key_helper"></code> und eine

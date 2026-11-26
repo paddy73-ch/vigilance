@@ -499,3 +499,4 @@ th[aria-sort="ascending"] .th-sort, th[aria-sort="descending"] .th-sort { color:
 .dial-num.sel { color: var(--action-ink); }
 .dial-help { text-align: center; }
 @media (prefers-reduced-motion: no-preference) { .dial-hand, .dial-tip { transition: transform .12s, left .12s, top .12s; } }
+.switch-row { display: flex; gap: 10px; align-items: center; cursor: pointer; }
