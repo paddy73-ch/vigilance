@@ -26,6 +26,7 @@
   --low:  #3a5bbf;  --low-soft:  #e3e9fa;
   --none: #6c7884;  --none-soft: #e8ecef;
   --ok:   #1d7a46;  --ok-soft:   #dff1e6;
+  --tidy: #7a4fa0;  --tidy-soft: #efe6f6;
   --warn: #c2560a;
 
   --radius: 6px;
@@ -54,6 +55,7 @@
   --low:  #8fa8f2;  --low-soft:  #1c2647;
   --none: #94a1ad;  --none-soft: #222d35;
   --ok:   #6fcf97;  --ok-soft:   #15301f;
+  --tidy: #c39be6;  --tidy-soft: #2a1f36;
   --shadow-drawer: -12px 0 32px rgba(0, 0, 0, 0.5);
 }
 
@@ -169,6 +171,7 @@ code, .mono { font-family: var(--mono); font-size: 13px; }
 .meter .m-CRITICAL { background: var(--crit); } .meter .m-HIGH { background: var(--high); }
 .meter .m-MEDIUM { background: var(--med); } .meter .m-LOW { background: var(--low); }
 .meter.clear { background: var(--ok); opacity: 0.55; }
+.meter .m-TIDY { background: var(--tidy); }
 .board-group { padding: 0 20px 16px; }
 .board-group summary { cursor: pointer; color: var(--muted); font-size: 14px; padding: 4px 0; }
 
