@@ -3,6 +3,13 @@
 Alle nennenswerten Änderungen an Vigilance. Die Einträge bis 0.12.0 stammen aus den Pull Requests des
 ursprünglichen, privaten Repositorys; dessen Geschichte wurde vor der Veröffentlichung bereinigt.
 
+## Unveröffentlicht
+
+### Dokumentation
+- README auf den Stand von 0.20.3 gebracht: Zugang über `pct exec`, Architekturbild, paralleler Scan,
+  gelöschte Gäste, Windows/HAOS, Snapshot vor Aktionen, Aufräumen (alte Header, Compiler) samt violettem
+  Balkenende, Zeitplan, Hostliste; Schlüssel für parallele Scans korrigiert (`discovery.ssh.parallel_jobs`).
+
 ## 0.20.3 – 2026-11-26
 
 ### Behoben
